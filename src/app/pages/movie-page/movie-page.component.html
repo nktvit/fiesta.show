@@ -172,7 +172,7 @@
           <!-- Plot -->
           @if (adjustedPlot) {
             <div class="mt-8">
-              <p class="text-[10px] uppercase tracking-widest text-gray-500 font-bold mb-2">Plot</p>
+              <p class="text-base font-bold text-white mb-2">Plot</p>
               <p class="text-gray-300 leading-relaxed text-sm md:text-base"
                 [ngClass]="{'line-clamp-3': shouldClamp}">
                 {{ adjustedPlot }}
@@ -189,7 +189,7 @@
           <!-- Details -->
           @if (movieDetailsArray.length > 0) {
             <div class="mt-8 mb-4">
-              <p class="text-[10px] uppercase tracking-widest text-gray-500 font-bold mb-4">Details</p>
+              <p class="text-base font-bold text-white mb-4">Details</p>
               <dl class="space-y-3">
                 @for (detail of movieDetailsArray; track detail) {
                   @if (detail.show && detail.value && detail.value !== 'N/A') {
