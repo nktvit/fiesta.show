@@ -18,7 +18,7 @@
     <section class="relative w-full">
 
       <!-- Backdrop: landscape crop — shorter on mobile, taller on desktop -->
-      <div class="relative w-full h-[35vh] md:h-[52vh] overflow-hidden">
+      <div class="relative w-full h-[40vh] md:h-[52vh] overflow-hidden">
         @if (backdropUrl) {
           <img [src]="backdropUrl" [alt]="movieDetails.Title"
             class="w-full h-full object-cover object-top">
@@ -34,7 +34,7 @@
         <div class="absolute bottom-0 left-0 right-0 h-28 bg-gradient-to-t from-[#0a0a0a] to-transparent"></div>
       </div>
 
-      <!-- Back button over hero (all breakpoints) -->
+      <!-- Back button over hero -->
       <div class="absolute top-[72px] left-4 md:left-6 lg:left-10 z-20">
         <app-back-button></app-back-button>
       </div>
@@ -45,11 +45,12 @@
     <!-- ── CONTENT ───────────────────────────────────────────────────── -->
     <div class="relative z-10 mx-auto w-full max-w-5xl px-4 md:px-8">
 
-      <!-- Two-column: poster + info at all breakpoints, overlap hero -->
-      <div class="flex flex-row gap-4 md:gap-8 -mt-20 md:-mt-40">
+      <!-- Mobile: full-width info, no overlap, starts below hero -->
+      <!-- Desktop: two-column with poster overlapping hero via -mt-40 -->
+      <div class="flex flex-col md:flex-row gap-6 md:gap-8 pt-5 md:pt-0 md:-mt-40">
 
-        <!-- Left: poster column — small on mobile, larger on desktop -->
-        <div class="flex-shrink-0 w-28 sm:w-36 md:w-44 lg:w-52">
+        <!-- Left: sticky poster (desktop only) -->
+        <div class="hidden md:block flex-shrink-0 w-44 lg:w-52">
           <div class="md:sticky md:top-24">
             <app-poster class="block overflow-hidden rounded-lg shadow-2xl shadow-black/80"
               [movie]="movieDetails"></app-poster>
@@ -63,7 +64,7 @@
           </div>
         </div>
 
-        <!-- Right: info column -->
+        <!-- Info column: full width on mobile, flex-grow on desktop -->
         <div class="flex-grow min-w-0">
 
           <!-- Type badge -->
@@ -78,10 +79,10 @@
           }
 
           <!-- Title -->
-          <h1 class="text-xl sm:text-3xl md:text-5xl font-black tracking-tight leading-tight text-white">
+          <h1 class="text-3xl md:text-5xl font-black tracking-tight leading-tight text-white">
             {{ movieDetails.Title }}
             @if (movieDetails.Year && movieDetails.Year !== 'N/A') {
-              <span class="text-gray-500 font-normal text-base md:text-2xl ml-1">({{ movieDetails.Year }})</span>
+              <span class="text-gray-500 font-normal text-xl md:text-2xl ml-1">({{ movieDetails.Year }})</span>
             }
           </h1>
 
