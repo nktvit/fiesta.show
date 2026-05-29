@@ -57,6 +57,21 @@ function srtToVtt(srt) {
   return 'WEBVTT\n\n' + blocks.join('\n\n') + '\n';
 }
 
+// A plain-language tag for the source a subtitle was timed for, so viewers can
+// tell variants apart without decoding release jargon. '' when unknown.
+function sourceLabel(s) {
+  const name = String(s.MovieReleaseName || s.SubFileName || '');
+  if (/\b(BluRay|BRRip|BDRip)\b/i.test(name)) return 'Blu-ray';
+  if (/\bWEB[- .]?DL\b|\bWEBRip\b/i.test(name)) return 'Web';
+  if (/\bHDTV\b/i.test(name)) return 'TV';
+  if (/\bDVDRip\b/i.test(name)) return 'DVD';
+  if (/\b(HDCAM|CAM)\b/i.test(name)) return 'Cam';
+  return '';
+}
+
+// How many English variants to surface so the viewer can pick one that's in sync.
+const EN_VARIANTS = 5;
+
 async function handleList(req, res) {
   const type = req.query.type === 'tv' ? 'tv' : 'movie';
   const id = req.query.id;
@@ -66,7 +81,8 @@ async function handleList(req, res) {
   const imdb = id.replace(/^tt/, '');
 
   // One language-agnostic search returns up to 100 results spanning ~20-35
-  // languages; we group to the single best track per language below.
+  // languages; below we keep several English variants and the best of each
+  // other language.
   const parts = ['imdbid-' + imdb];
   if (type === 'tv' && req.query.s && req.query.e) {
     parts.push('season-' + String(req.query.s).replace(/\D/g, ''));
@@ -87,28 +103,58 @@ async function handleList(req, res) {
     return res.status(200).json({ tracks: [] });
   }
 
-  // Best track per language: most-downloaded, must be gzip-downloadable srt.
+  const mkSrc = (s) =>
+    '/api/subs?file=' + encodeURIComponent(s.IDSubtitleFile) + '&enc=' + encodeURIComponent(s.SubEncoding || '');
+
+  const valid = list.filter(
+    (s) =>
+      s.ISO639 &&
+      s.IDSubtitleFile &&
+      s.IDSubtitleFile !== '0' &&
+      (!s.SubFormat || s.SubFormat.toLowerCase() === 'srt'),
+  );
+
+  // English: surface several versions (most-downloaded first) so the viewer can
+  // switch if the top pick is out of sync with this particular release.
+  const english = valid
+    .filter((s) => s.ISO639 === 'en')
+    .sort((a, b) => parseInt(b.SubDownloadsCnt || '0', 10) - parseInt(a.SubDownloadsCnt || '0', 10));
+
+  const enTracks = [];
+  const seenFiles = new Set();
+  const usedLabels = new Set();
+  for (const s of english) {
+    if (seenFiles.has(s.IDSubtitleFile)) continue;
+    seenFiles.add(s.IDSubtitleFile);
+    const src = sourceLabel(s);
+    const base = 'English' + (src ? ' — ' + src : '') + (s.SubHearingImpaired === '1' ? ' (SDH)' : '');
+    let label = base;
+    for (let n = 2; usedLabels.has(label); n++) label = base + ' ' + n;
+    usedLabels.add(label);
+    enTracks.push({ lang: 'en', label, src: mkSrc(s) });
+    if (enTracks.length >= EN_VARIANTS) break;
+  }
+
+  // Other languages: single best (most-downloaded) track each.
   const byLang = new Map();
-  for (const s of list) {
-    const lang = s.ISO639;
-    const fileId = s.IDSubtitleFile;
-    if (!lang || !fileId || fileId === '0') continue;
-    if (s.SubFormat && s.SubFormat.toLowerCase() !== 'srt') continue;
+  for (const s of valid) {
+    if (s.ISO639 === 'en') continue;
     const dl = parseInt(s.SubDownloadsCnt || '0', 10);
-    const prev = byLang.get(lang);
+    const prev = byLang.get(s.ISO639);
     if (!prev || dl > prev._dl) {
-      byLang.set(lang, {
+      byLang.set(s.ISO639, {
         _dl: dl,
-        lang,
-        label: (s.LanguageName || lang) + (s.SubHearingImpaired === '1' ? ' (SDH)' : ''),
-        src: '/api/subs?file=' + encodeURIComponent(fileId) + '&enc=' + encodeURIComponent(s.SubEncoding || ''),
+        lang: s.ISO639,
+        label: (s.LanguageName || s.ISO639) + (s.SubHearingImpaired === '1' ? ' (SDH)' : ''),
+        src: mkSrc(s),
       });
     }
   }
-
-  const tracks = [...byLang.values()]
-    .sort((a, b) => (a.lang === 'en' ? -1 : b.lang === 'en' ? 1 : a.label.localeCompare(b.label)))
+  const others = [...byLang.values()]
+    .sort((a, b) => a.label.localeCompare(b.label))
     .map(({ _dl, ...t }) => t);
+
+  const tracks = [...enTracks, ...others];
 
   res.setHeader('Cache-Control', 's-maxage=86400, stale-while-revalidate=86400');
   return res.status(200).json({ tracks });
