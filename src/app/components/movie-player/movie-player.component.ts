@@ -141,19 +141,22 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     this.attachedUrl = master;
     this.destroyHls();
 
-    // Safari (and iOS) play HLS natively. Surface a friendly message if the
-    // source can't be loaded (e.g. the upstream file is gone).
-    if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = master;
-      this.restoreProgress(video);
-      if (this.started()) void video.play().catch(() => {}); // resume after a mid-watch escalation
-      video.addEventListener('error', () => this.failPlayback('native: media error'), { once: true });
-      return;
-    }
-
+    // Prefer hls.js wherever MSE is available — including desktop Safari — so we
+    // drive ABR/quality and error recovery ourselves. Safari's native HLS would
+    // otherwise pick its own (conservative) quality through the relay, which we
+    // can't tune. Native HLS is the fallback only when MSE is absent (iOS Safari).
     const Hls = (await import('hls.js')).default;
     if (Hls.isSupported()) {
-      const hls = new Hls({ enableWorker: true });
+      // The relay passes the source through, so bandwidth has headroom — bias ABR
+      // toward higher quality instead of hls.js's conservative defaults, which
+      // otherwise park on a low variant (smooth but soft) and never climb back up.
+      const hls = new Hls({
+        enableWorker: true,
+        capLevelToPlayerSize: false, // never downscale to the <video> element's pixel size
+        abrEwmaDefaultEstimate: 8_000_000, // start optimistic (~8 Mbit/s) instead of the 500 kbit/s floor
+        abrBandWidthFactor: 1.0, // trust the full measured bandwidth (default 0.95)
+        abrBandWidthUpFactor: 0.9, // upswitch readily (default 0.7)
+      });
       this.hls = hls;
       hls.loadSource(master);
       hls.attachMedia(video);
@@ -175,11 +178,18 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
           this.failPlayback(data.details || 'playback error');
         }
       });
-    } else {
-      video.src = master; // last-resort fallback
-      this.restoreProgress(video);
-      video.addEventListener('error', () => this.failPlayback('unsupported: media error'), { once: true });
+      return;
     }
+
+    // Native HLS fallback (iOS Safari, or anywhere MSE is unavailable). The
+    // browser drives quality here; surface a friendly message if it can't load.
+    const native = video.canPlayType('application/vnd.apple.mpegurl');
+    video.src = master;
+    this.restoreProgress(video);
+    if (this.started()) void video.play().catch(() => {}); // resume after a mid-watch escalation
+    video.addEventListener('error', () => this.failPlayback(native ? 'native: media error' : 'unsupported: media error'), {
+      once: true,
+    });
   }
 
   private failPlayback(detail: string) {
