@@ -48,14 +48,15 @@
       class="group absolute inset-0 z-20 flex items-center justify-center outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-inset"
     >
       <span
-        class="relative flex h-16 w-16 sm:h-20 sm:w-20 items-center justify-center rounded-full
-               bg-white/10 ring-1 ring-white/50 backdrop-blur-md shadow-2xl
+        class="relative flex h-20 w-20 sm:h-24 sm:w-24 items-center justify-center overflow-hidden rounded-2xl
+               bg-white/15 backdrop-blur-lg shadow-xl
                transition duration-200 ease-out
-               group-hover:bg-white/20 group-hover:ring-white/90 group-hover:scale-105
+               group-hover:bg-white/25 group-hover:scale-105
                group-active:scale-95"
       >
+        <span class="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-br from-white/25 to-transparent"></span>
         <svg
-          class="ml-0.5 h-7 w-7 sm:h-9 sm:w-9 text-white drop-shadow-md transition-transform duration-200 group-hover:translate-x-px"
+          class="relative ml-1 h-9 w-9 sm:h-11 sm:w-11 text-white drop-shadow-md transition-transform duration-200 group-hover:translate-x-px"
           viewBox="0 0 24 24"
           fill="currentColor"
           aria-hidden="true"
