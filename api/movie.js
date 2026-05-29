@@ -78,6 +78,7 @@ module.exports = async function handler(req, res) {
           Type: isTv ? 'series' : 'movie',
           totalSeasons: 'N/A',
           _tmdbId: tmdbMatch.id,
+          _backdrop: tmdbMatch.backdrop_path ? 'https://image.tmdb.org/t/p/w1280' + tmdbMatch.backdrop_path : null,
         };
         return res.status(200).json(builtResponse);
       }
@@ -108,6 +109,9 @@ module.exports = async function handler(req, res) {
     }
 
     omdbData._tmdbId = tmdbId;
+    omdbData._backdrop = tmdbMatch && tmdbMatch.backdrop_path
+      ? 'https://image.tmdb.org/t/p/w1280' + tmdbMatch.backdrop_path
+      : null;
 
     return res.status(200).json(omdbData);
   } catch (error) {

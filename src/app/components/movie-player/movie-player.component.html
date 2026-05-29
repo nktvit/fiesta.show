@@ -1,4 +1,4 @@
-<div class="w-full relative bg-black" style="aspect-ratio: 16 / 9;">
+<div class="w-full relative bg-black overflow-hidden" style="aspect-ratio: 16 / 9;">
   @if (masterUrl()) {
     <video
       #videoEl
@@ -8,41 +8,66 @@
     ></video>
   }
 
-  @if (masterUrl() && !started()) {
-    <button
-      type="button"
-      (click)="startPlayback()"
-      aria-label="Play"
-      class="group absolute inset-0 z-10 flex items-center justify-center bg-black/40 transition-colors hover:bg-black/25"
-    >
-      <span class="flex h-16 w-16 items-center justify-center rounded-full bg-white/90 text-black shadow-lg ring-1 ring-black/10 transition-transform group-hover:scale-105">
-        <svg class="ml-1 h-7 w-7" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z" /></svg>
-      </span>
-    </button>
+  <!-- Backdrop / episode-still cover shown until playback starts -->
+  @if (poster() && !started()) {
+    <div class="absolute inset-0 z-10">
+      <img
+        [src]="poster()"
+        alt=""
+        aria-hidden="true"
+        class="h-full w-full object-cover"
+      />
+      <div class="absolute inset-0 bg-gradient-to-t from-black/75 via-black/30 to-black/45"></div>
+    </div>
   }
 
   @if (loading()) {
-    <div class="absolute inset-0 flex items-center justify-center text-gray-300">
+    <div class="absolute inset-0 z-20 flex items-center justify-center text-gray-200">
       <svg class="w-6 h-6 mr-2 animate-spin" fill="none" viewBox="0 0 24 24">
         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
       </svg>
-      <span class="text-sm">Loading stream…</span>
+      <span class="text-sm drop-shadow">Loading stream…</span>
     </div>
   } @else if (errorMsg()) {
-    <div class="absolute inset-0 flex flex-col items-center justify-center text-gray-400 px-4 text-center">
+    <div class="absolute inset-0 z-20 flex flex-col items-center justify-center text-gray-300 px-4 text-center">
       <svg class="w-6 h-6 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/></svg>
-      <span class="text-sm">Stream unavailable</span>
+      <span class="text-sm drop-shadow">Stream unavailable</span>
       <span class="text-xs mt-1 opacity-70">{{ errorMsg() }}</span>
     </div>
   } @else if (!masterUrl()) {
-    <div class="absolute inset-0 flex items-center justify-center text-gray-500">
-      <span class="text-sm">No video source available</span>
+    <div class="absolute inset-0 z-20 flex items-center justify-center text-gray-400">
+      <span class="text-sm drop-shadow">No video source available</span>
     </div>
+  } @else if (!started()) {
+    <!-- Frosted-minimal play button: whole stage is the click target -->
+    <button
+      type="button"
+      (click)="startPlayback()"
+      aria-label="Play"
+      class="group absolute inset-0 z-20 flex items-center justify-center outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-inset"
+    >
+      <span
+        class="relative flex h-16 w-16 sm:h-20 sm:w-20 items-center justify-center rounded-full
+               bg-white/10 ring-1 ring-white/50 backdrop-blur-md shadow-2xl
+               transition duration-200 ease-out
+               group-hover:bg-white/20 group-hover:ring-white/90 group-hover:scale-105
+               group-active:scale-95"
+      >
+        <svg
+          class="ml-0.5 h-7 w-7 sm:h-9 sm:w-9 text-white drop-shadow-md transition-transform duration-200 group-hover:translate-x-px"
+          viewBox="0 0 24 24"
+          fill="currentColor"
+          aria-hidden="true"
+        >
+          <path d="M8 5v14l11-7z" />
+        </svg>
+      </span>
+    </button>
   }
 
   @if (isPreview() && masterUrl()) {
-    <div class="absolute top-2 right-2 z-20 flex items-center gap-1.5 rounded-md bg-black/75 px-2 py-1 font-mono text-[10px] leading-none text-white/90 ring-1 ring-white/10">
+    <div class="absolute top-2 right-2 z-30 flex items-center gap-1.5 rounded-md bg-black/75 px-2 py-1 font-mono text-[10px] leading-none text-white/90 ring-1 ring-white/10">
       <span class="rounded bg-emerald-500/90 px-1 py-0.5 font-semibold uppercase tracking-wide text-black">{{ env() }}</span>
       <span class="text-white/60">source:</span>
       <span [class]="segmentSource() === 'relay' ? 'text-emerald-400 font-semibold' : segmentSource() === 'proxy' ? 'text-amber-400 font-semibold' : segmentSource() === 'direct' ? 'text-sky-400 font-semibold' : 'text-white/40'">{{ segmentSource() ?? '…' }}</span>

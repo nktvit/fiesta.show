@@ -56,6 +56,7 @@ export class MoviePageComponent implements OnDestroy {
   protected showTrailer = false;
   private originalRouteId: string = '';
   protected tmdbId: number | null = null;
+  protected backdropUrl: string | null = null;
 
   private movieService = inject(MovieService);
   private tmdbService = inject(TmdbService);
@@ -98,6 +99,7 @@ export class MoviePageComponent implements OnDestroy {
         this.trailerKey = null;
         this.showTrailer = false;
         this.tmdbId = null;
+        this.backdropUrl = null;
         this.originalRouteId = id;
         window.scrollTo({ top: 0 });
 
@@ -138,9 +140,12 @@ export class MoviePageComponent implements OnDestroy {
           this.movieDetails = details;
           this.logger.log('Movie details: ', details);
 
-          // In production, _tmdbId comes from the enriched /api/movie response
+          // In production, _tmdbId / _backdrop come from the enriched /api/movie response
           if (details._tmdbId) {
             this.tmdbId = details._tmdbId;
+          }
+          if (details._backdrop) {
+            this.backdropUrl = details._backdrop;
           }
 
           if (details.Plot && details.Plot !== 'N/A') {
@@ -185,6 +190,7 @@ export class MoviePageComponent implements OnDestroy {
 
     this.tmdbService.findByImdbId(this.imdbId).subscribe(tmdb => {
       if (!tmdb) return;
+      if (tmdb.backdrop) this.backdropUrl = tmdb.backdrop;
       const patch: any = {};
 
       if (needsPoster && tmdb.poster) patch.Poster = tmdb.poster;
@@ -467,6 +473,18 @@ export class MoviePageComponent implements OnDestroy {
       queryParams: { srv: index || null },
       queryParamsHandling: 'merge',
     });
+  }
+
+  // Image shown on the player before playback: the current episode's still for
+  // series, otherwise the movie backdrop (falling back to the poster).
+  get playerPoster(): string | null {
+    if (this.type === 'tv') {
+      const ep = this.episodes.find(e => e.number === this.episode);
+      if (ep?.still) return ep.still;
+    }
+    if (this.backdropUrl) return this.backdropUrl;
+    const p = this.movieDetails?.Poster;
+    return p && p !== 'N/A' ? p : null;
   }
 
   get showMetascoreFallback(): boolean {

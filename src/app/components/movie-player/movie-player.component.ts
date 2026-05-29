@@ -24,6 +24,8 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   readonly type = input<string>('movie');
   readonly season = input<number | null>(null);
   readonly episode = input<number | null>(null);
+  // backdrop (movie) or current-episode still (series), shown until playback starts
+  readonly poster = input<string | null>(null);
   // kept for parent compatibility (query-param persistence); single clean source now
   readonly server = input<number>(0);
   readonly serverChange = output<number>();
