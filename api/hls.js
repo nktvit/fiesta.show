@@ -4,12 +4,61 @@
 // send no CORS headers, so the browser can't fetch them directly. This injects
 // the Referer, adds CORS, and rewrites playlist child URLs back through itself.
 //
+// Cloudnestra's playlist hosts (tmstr*.cloudnestra.com) are behind Cloudflare and
+// 403 datacenter IPs (e.g. Vercel), so .m3u8 fetches go through the rotating
+// residential proxy (same as resolution). Segments live on a plain CDN — fetched
+// direct first to save proxy bandwidth, falling back to the proxy only on 403.
+//
 //   GET /api/hls?u={base64url(absoluteUrl)}
 
 const UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 const STREAM_REFERER = 'https://cloudnestra.com/';
 const CLOUDNESTRA = 'https://cloudnestra.com';
+const PROXY_MAX_ATTEMPTS = parseInt(process.env.STREAM_PROXY_RETRIES || '10', 10);
+
+function makeDispatcher() {
+  const base = process.env.STREAM_PROXY_URL;
+  if (!base) return null;
+  const { ProxyAgent } = require('undici');
+  return new ProxyAgent(base);
+}
+
+// Fetch with the cloudnestra Referer. Playlists always go through the rotating
+// proxy (retrying fresh IPs on 403/5xx); segments try direct, then proxy on 403.
+async function fetchUpstream(target) {
+  const headers = { 'User-Agent': UA, Accept: '*/*', Referer: STREAM_REFERER, Origin: CLOUDNESTRA };
+  const isPlaylist = /\.m3u8($|\?)/i.test(target);
+
+  if (!isPlaylist) {
+    const direct = await fetch(target, { headers, redirect: 'follow' });
+    if (direct.status !== 403) return direct;
+  }
+  return fetchViaProxy(target, headers);
+}
+
+async function fetchViaProxy(target, headers) {
+  const proxyEnabled = !!process.env.STREAM_PROXY_URL;
+  const attempts = proxyEnabled ? PROXY_MAX_ATTEMPTS : 1;
+  let last;
+  for (let i = 0; i < attempts; i++) {
+    const dispatcher = makeDispatcher();
+    try {
+      const opts = { headers, redirect: 'follow' };
+      if (dispatcher) opts.dispatcher = dispatcher;
+      const r = await fetch(target, opts);
+      if (r.status !== 403 && r.status < 500) return r;
+      last = r;
+    } catch (e) {
+      last = e;
+    } finally {
+      if (dispatcher) dispatcher.close().catch(() => {});
+    }
+    if (!proxyEnabled) break;
+  }
+  if (last && typeof last.status === 'number') return last;
+  throw last;
+}
 
 function b64urlEncode(s) {
   return Buffer.from(s, 'utf8').toString('base64url');
@@ -66,10 +115,7 @@ module.exports = async function handler(req, res) {
 
   let upstream;
   try {
-    upstream = await fetch(target, {
-      headers: { 'User-Agent': UA, Accept: '*/*', Referer: STREAM_REFERER, Origin: CLOUDNESTRA },
-      redirect: 'follow',
-    });
+    upstream = await fetchUpstream(target);
   } catch (e) {
     console.error('hls upstream error:', e);
     return res.status(502).send('upstream fetch failed');
