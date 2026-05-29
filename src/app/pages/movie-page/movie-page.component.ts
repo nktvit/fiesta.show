@@ -90,8 +90,10 @@ export class MoviePageComponent implements OnDestroy {
         this.isFullPlot = false;
         this.imdbId = null;
         this.type = 'movie';
-        this.season = null;
-        this.episode = null;
+        // Preserve the episode from the URL across a refresh / deep link; only the
+        // TV default below fills these when the query params are genuinely absent.
+        this.season = this.route.snapshot.queryParams['s'] ? +this.route.snapshot.queryParams['s'] : null;
+        this.episode = this.route.snapshot.queryParams['e'] ? +this.route.snapshot.queryParams['e'] : null;
         this.totalSeasons = 0;
         this.seasonNumbers = [];
         this.episodes = [];

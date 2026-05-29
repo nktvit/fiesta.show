@@ -45,10 +45,15 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   // external subtitle tracks (best per language) from /api/subs
   readonly subtitleTracks = signal<{ lang: string; label: string; src: string }[]>([]);
 
+  // which cloudnestra front actually served the current stream (1=vidsrc, 2=vsembed)
+  readonly activeServer = signal<number>(1);
+
   private hls: Hls | null = null;
   private attachedUrl: string | null = null;
   private loadToken = 0;
   private recoverAttempts = 0;
+  // true once we've already escalated server 1 -> server 2, so we don't loop
+  private escalated = false;
   private pendingResumeTime: number | null = null;
   private lastProgressSaveAt = 0;
 
@@ -72,7 +77,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     this.destroyHls();
   }
 
-  private async loadStream() {
+  private async loadStream(srv?: 1 | 2, keepStarted = false) {
     const id = this.imdbId();
     if (!id) {
       this.masterUrl.set(null);
@@ -84,8 +89,9 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     this.loading.set(true);
     this.segmentSource.set(null);
     this.subtitleTracks.set([]);
-    this.started.set(false);
+    if (!keepStarted) this.started.set(false);
     this.recoverAttempts = 0;
+    if (!srv) this.escalated = false; // fresh, unforced load — reset escalation state
     this.pendingResumeTime = this.readSavedProgress();
     this.lastProgressSaveAt = 0;
 
@@ -102,6 +108,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
         params.set('s', String(s));
         params.set('e', String(e));
       }
+      if (srv) params.set('srv', String(srv));
 
       const res = await fetch(`/api/stream?${params.toString()}`);
       const data = await res.json().catch(() => ({}));
@@ -110,6 +117,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
       if (!data?.master) throw new Error('no stream returned');
 
       this.env.set(data.env ?? null);
+      this.activeServer.set(data.server ?? srv ?? 1);
       this.masterUrl.set(data.master);
       if (data.env === 'preview') void this.probeSegmentSource(data.master, token);
     } catch (err) {
@@ -131,6 +139,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     if (video.canPlayType('application/vnd.apple.mpegurl')) {
       video.src = master;
       this.restoreProgress(video);
+      if (this.started()) void video.play().catch(() => {}); // resume after a mid-watch escalation
       video.addEventListener('error', () => this.failPlayback('native: media error'), { once: true });
       return;
     }
@@ -141,7 +150,10 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
       this.hls = hls;
       hls.loadSource(master);
       hls.attachMedia(video);
-      hls.on(Hls.Events.MANIFEST_PARSED, () => this.restoreProgress(video));
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        this.restoreProgress(video);
+        if (this.started()) void video.play().catch(() => {}); // resume after a mid-watch escalation
+      });
       hls.on(Hls.Events.ERROR, (_evt, data) => {
         if (!data.fatal) return;
         // Try to recover transient fatal errors before giving up; only surface an
@@ -166,7 +178,16 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   private failPlayback(detail: string) {
     this.destroyHls();
     this.attachedUrl = null; // allow a retry to re-attach the same master
-    this.errorMsg.set(detail);
+
+    // Server 1's stream resolved but won't play (e.g. dead segments). The same
+    // title often lives on the other cloudnestra front, so transparently
+    // escalate to server 2 once, preserving the play state mid-watch.
+    if (!this.escalated && this.activeServer() === 1) {
+      this.escalated = true;
+      void this.loadStream(2, true);
+      return;
+    }
+    this.errorMsg.set(detail); // both fronts exhausted
   }
 
   retry() {

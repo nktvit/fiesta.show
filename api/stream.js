@@ -9,7 +9,12 @@
 // (playlists + segments) stream straight off that relay on unmetered home
 // bandwidth — they never touch Vercel or any metered proxy.
 //
-//   GET /api/stream?type=movie&id=tt123[&s=&e=]  ->  { master, upstream, env }
+// vidsrc.me and vsembed.ru are two front-ends onto the same cloudnestra backend;
+// each hands out a different stream instance, so when one is dead the other may
+// play. `srv` (1=vidsrc, 2=vsembed) forces a front; omit it to let the relay pick
+// the first that resolves. The relay echoes back which front it used as `server`.
+//
+//   GET /api/stream?type=movie&id=tt123[&s=&e=][&srv=1|2]  ->  { master, upstream, server, env }
 
 const RELAY_URL = (process.env.STREAM_RELAY_URL || '').replace(/\/$/, '');
 const RELAY_SECRET = process.env.STREAM_RELAY_SECRET || '';
@@ -37,6 +42,9 @@ module.exports = async function handler(req, res) {
     params.set('s', season);
     params.set('e', episode);
   }
+  if (req.query.srv === '1' || req.query.srv === '2') {
+    params.set('srv', req.query.srv);
+  }
 
   try {
     const r = await fetch(RELAY_URL + '/resolve?' + params.toString(), {
@@ -48,6 +56,7 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({
       master: data.master,
       upstream: data.upstream,
+      server: data.server ?? null,
       env: process.env.VERCEL_ENV || 'development',
     });
   } catch (e) {

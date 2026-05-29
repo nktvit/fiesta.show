@@ -94,4 +94,8 @@
       <span [class]="segmentSource() === 'relay' ? 'text-emerald-400 font-semibold' : segmentSource() === 'proxy' ? 'text-amber-400 font-semibold' : segmentSource() === 'direct' ? 'text-sky-400 font-semibold' : 'text-white/40'">{{ segmentSource() ?? '…' }}</span>
     </div>
   }
+
+  @if (activeServer() === 2 && masterUrl()) {
+    <div class="absolute top-2 left-2 z-30 rounded-md bg-black/70 px-2 py-1 text-[11px] font-medium leading-none text-white/90 ring-1 ring-white/10">Server 2</div>
+  }
 </div>
