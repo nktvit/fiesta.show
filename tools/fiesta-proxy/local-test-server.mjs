@@ -1,5 +1,5 @@
 // Lightweight harness to run the Vercel /api functions locally without `vercel dev`.
-// Mounts api/stream.js and api/hls.js, parsing ?query into req.query like Vercel does.
+// Mounts api/stream.js, parsing ?query into req.query like Vercel does.
 import http from 'node:http';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -10,18 +10,17 @@ const require = createRequire(import.meta.url);
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '../..');
 
-// Load local-only env (e.g. STREAM_PROXY_URL) from a gitignored .env.local.
+// Load local-only env (STREAM_RELAY_URL / STREAM_RELAY_SECRET) from a gitignored .env.local.
 const envFile = path.join(HERE, '.env.local');
 if (fs.existsSync(envFile)) {
   for (const line of fs.readFileSync(envFile, 'utf8').split('\n')) {
     const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/i);
     if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
   }
-  console.log('loaded .env.local; STREAM_PROXY_URL', process.env.STREAM_PROXY_URL ? 'set' : 'unset');
+  console.log('loaded .env.local; STREAM_RELAY_URL', process.env.STREAM_RELAY_URL ? 'set' : 'unset');
 }
 
 const stream = require(path.join(ROOT, 'api/stream.js'));
-const hls = require(path.join(ROOT, 'api/hls.js'));
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
@@ -34,7 +33,6 @@ const server = http.createServer(async (req, res) => {
 
   try {
     if (url.pathname === '/api/stream') return await stream(req, res);
-    if (url.pathname === '/api/hls') return await hls(req, res);
     res.statusCode = 404; res.end('not found');
   } catch (e) {
     res.statusCode = 500; res.end('handler threw: ' + (e && e.stack || e));
