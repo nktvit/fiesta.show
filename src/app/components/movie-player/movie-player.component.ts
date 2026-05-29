@@ -38,6 +38,9 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   readonly started = signal(false);
   readonly resumeTime = signal<number | null>(null);
   readonly paused = signal(false);
+  // Mid-playback stall (waiting on buffer, transient HLS recovery, seek). The
+  // <video> keeps the last decoded frame on screen; we overlay a spinner.
+  readonly buffering = signal(false);
 
   // preview-only debug: show whether segments load direct vs via the proxy
   readonly env = signal<string | null>(null);
@@ -54,6 +57,8 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   private attachedUrl: string | null = null;
   private loadToken = 0;
   private recoverAttempts = 0;
+  // Defer the buffering spinner so quick seeks/microstalls don't flash it.
+  private bufferingTimer: ReturnType<typeof setTimeout> | null = null;
   // true once we've already escalated server 1 -> server 2, so we don't loop
   private escalated = false;
   private pendingResumeTime: number | null = null;
@@ -77,6 +82,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
 
   ngOnDestroy() {
     this.destroyHls();
+    if (this.bufferingTimer) clearTimeout(this.bufferingTimer);
   }
 
   private async loadStream(srv?: 1 | 2, keepStarted = false) {
@@ -88,12 +94,18 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
 
     const token = ++this.loadToken;
     this.errorMsg.set(null);
-    this.loading.set(true);
     this.segmentSource.set(null);
     this.subtitleTracks.set([]);
     if (!keepStarted) {
+      // Fresh load: full-screen loader covers the stage.
+      this.loading.set(true);
       this.started.set(false);
       this.paused.set(false);
+      this.clearBuffering();
+    } else {
+      // Mid-watch reload (e.g. server-2 escalation): keep the last frame on
+      // screen and show the buffering spinner instead of the full loader.
+      this.beginBuffering();
     }
     this.recoverAttempts = 0;
     if (!srv) this.escalated = false; // fresh, unforced load — reset escalation state
@@ -168,11 +180,15 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
         if (!data.fatal) return;
         // Try to recover transient fatal errors before giving up; only surface an
         // error once recovery is exhausted (or the failure is unrecoverable).
+        // The video element keeps the last decoded frame on screen during this
+        // window — overlay a buffering spinner instead of an error message.
         if (data.type === Hls.ErrorTypes.NETWORK_ERROR && this.recoverAttempts < 3) {
           this.recoverAttempts++;
+          this.beginBuffering();
           hls.startLoad();
         } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR && this.recoverAttempts < 3) {
           this.recoverAttempts++;
+          this.beginBuffering();
           hls.recoverMediaError();
         } else {
           this.failPlayback(data.details || 'playback error');
@@ -192,9 +208,48 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     });
   }
 
+  // Mid-playback stall: hold the spinner off briefly so quick seeks/microstalls
+  // don't flash an overlay over a frame that's about to advance anyway.
+  private beginBuffering() {
+    if (this.bufferingTimer || this.buffering()) return;
+    this.bufferingTimer = setTimeout(() => {
+      this.bufferingTimer = null;
+      if (this.started()) this.buffering.set(true);
+    }, 350);
+  }
+
+  private clearBuffering() {
+    if (this.bufferingTimer) {
+      clearTimeout(this.bufferingTimer);
+      this.bufferingTimer = null;
+    }
+    if (this.buffering()) this.buffering.set(false);
+  }
+
+  onWaiting() {
+    if (this.started()) this.beginBuffering();
+  }
+
+  onPlaying() {
+    this.clearBuffering();
+  }
+
+  onCanPlay() {
+    this.clearBuffering();
+  }
+
+  onSeeking() {
+    if (this.started()) this.beginBuffering();
+  }
+
+  onSeeked() {
+    this.clearBuffering();
+  }
+
   private failPlayback(detail: string) {
     this.destroyHls();
     this.attachedUrl = null; // allow a retry to re-attach the same master
+    this.clearBuffering();
 
     // Server 1's stream resolved but won't play (e.g. dead segments). The same
     // title often lives on the other cloudnestra front, so transparently
