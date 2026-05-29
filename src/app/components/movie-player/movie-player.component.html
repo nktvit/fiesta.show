@@ -5,6 +5,10 @@
       class="block w-full h-full"
       controls
       playsinline
+      (loadedmetadata)="onMetadataLoaded(videoEl)"
+      (timeupdate)="onTimeUpdate(videoEl)"
+      (pause)="onPlaybackPaused(videoEl)"
+      (ended)="onPlaybackEnded()"
     >
       @for (t of subtitleTracks(); track t.src) {
         <track kind="subtitles" [src]="t.src" [attr.srclang]="t.lang" [attr.label]="t.label" />

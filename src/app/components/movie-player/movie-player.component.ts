@@ -49,8 +49,11 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   private attachedUrl: string | null = null;
   private loadToken = 0;
   private recoverAttempts = 0;
+  private pendingResumeTime: number | null = null;
+  private lastProgressSaveAt = 0;
 
   private static readonly UNAVAILABLE = 'This title isn’t available to stream right now';
+  private static readonly PROGRESS_PREFIX = 'fiesta:playback-progress:';
 
   constructor() {
     // Attach the stream once both the resolved master URL and the <video> exist.
@@ -83,6 +86,8 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     this.subtitleTracks.set([]);
     this.started.set(false);
     this.recoverAttempts = 0;
+    this.pendingResumeTime = this.readSavedProgress();
+    this.lastProgressSaveAt = 0;
 
     // Subtitles are independent of stream resolution — fetch in parallel,
     // best-effort, and never let a failure here block playback.
@@ -125,6 +130,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     // source can't be loaded (e.g. the upstream file is gone).
     if (video.canPlayType('application/vnd.apple.mpegurl')) {
       video.src = master;
+      this.restoreProgress(video);
       video.addEventListener('error', () => this.failPlayback('native: media error'), { once: true });
       return;
     }
@@ -135,6 +141,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
       this.hls = hls;
       hls.loadSource(master);
       hls.attachMedia(video);
+      hls.on(Hls.Events.MANIFEST_PARSED, () => this.restoreProgress(video));
       hls.on(Hls.Events.ERROR, (_evt, data) => {
         if (!data.fatal) return;
         // Try to recover transient fatal errors before giving up; only surface an
@@ -151,6 +158,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
       });
     } else {
       video.src = master; // last-resort fallback
+      this.restoreProgress(video);
       video.addEventListener('error', () => this.failPlayback('unsupported: media error'), { once: true });
     }
   }
@@ -200,8 +208,114 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   startPlayback() {
     const video = this.videoEl()?.nativeElement;
     if (!video) return;
+    this.restoreProgress(video);
     this.started.set(true);
     void video.play().catch(() => {});
+  }
+
+  onMetadataLoaded(video: HTMLVideoElement) {
+    this.restoreProgress(video);
+  }
+
+  onTimeUpdate(video: HTMLVideoElement) {
+    if (Date.now() - this.lastProgressSaveAt < 5000) return;
+    this.saveProgress(video);
+  }
+
+  onPlaybackPaused(video: HTMLVideoElement) {
+    this.saveProgress(video);
+  }
+
+  onPlaybackEnded() {
+    this.clearSavedProgress();
+  }
+
+  private restoreProgress(video: HTMLVideoElement) {
+    const time = this.pendingResumeTime;
+    if (!time || time < 5) return;
+
+    const duration = Number.isFinite(video.duration) ? video.duration : 0;
+    if (duration > 0 && time >= duration - 10) {
+      this.clearSavedProgress();
+      this.pendingResumeTime = null;
+      return;
+    }
+
+    try {
+      video.currentTime = time;
+      if (video.readyState > 0) {
+        this.pendingResumeTime = null;
+      }
+    } catch {
+      // Some browsers reject seeking before metadata is ready; loadedmetadata will retry.
+    }
+  }
+
+  private saveProgress(video: HTMLVideoElement) {
+    if (video.ended || !Number.isFinite(video.currentTime) || video.currentTime < 5) return;
+
+    const duration = Number.isFinite(video.duration) ? video.duration : null;
+    if (duration && video.currentTime >= duration - 10) {
+      this.clearSavedProgress();
+      return;
+    }
+
+    const key = this.progressKey();
+    if (!key) return;
+
+    const data = {
+      id: this.imdbId(),
+      type: this.type() === 'tv' ? 'tv' : 'movie',
+      season: this.season(),
+      episode: this.episode(),
+      time: Math.floor(video.currentTime),
+      duration: duration ? Math.floor(duration) : null,
+      updatedAt: Date.now(),
+    };
+
+    try {
+      window.localStorage.setItem(key, JSON.stringify(data));
+      this.lastProgressSaveAt = Date.now();
+    } catch {}
+  }
+
+  private readSavedProgress(): number | null {
+    const key = this.progressKey();
+    if (!key) return null;
+
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (!raw) return null;
+      const data = JSON.parse(raw) as { time?: unknown; updatedAt?: unknown };
+      const updatedAt = typeof data.updatedAt === 'number' ? data.updatedAt : 0;
+      if (updatedAt && Date.now() - updatedAt > 1000 * 60 * 60 * 24 * 90) {
+        window.localStorage.removeItem(key);
+        return null;
+      }
+      return typeof data.time === 'number' && Number.isFinite(data.time) ? data.time : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private clearSavedProgress() {
+    const key = this.progressKey();
+    if (!key) return;
+
+    try {
+      window.localStorage.removeItem(key);
+    } catch {}
+  }
+
+  private progressKey(): string | null {
+    const id = this.imdbId();
+    if (!id || typeof window === 'undefined') return null;
+
+    const type = this.type() === 'tv' ? 'tv' : 'movie';
+    if (type === 'tv') {
+      return `${MoviePlayerComponent.PROGRESS_PREFIX}${id}:tv:s${this.season() ?? 1}:e${this.episode() ?? 1}`;
+    }
+    return `${MoviePlayerComponent.PROGRESS_PREFIX}${id}:movie`;
   }
 
   private destroyHls() {
