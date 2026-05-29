@@ -36,6 +36,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   readonly errorMsg = signal<string | null>(null);
   readonly masterUrl = signal<string | null>(null);
   readonly started = signal(false);
+  readonly resumeTime = signal<number | null>(null);
 
   // preview-only debug: show whether segments load direct vs via the proxy
   readonly env = signal<string | null>(null);
@@ -92,7 +93,9 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     if (!keepStarted) this.started.set(false);
     this.recoverAttempts = 0;
     if (!srv) this.escalated = false; // fresh, unforced load — reset escalation state
-    this.pendingResumeTime = this.readSavedProgress();
+    const savedProgress = this.readSavedProgress();
+    this.resumeTime.set(!keepStarted ? savedProgress : null);
+    this.pendingResumeTime = keepStarted ? savedProgress : null;
     this.lastProgressSaveAt = 0;
 
     // Subtitles are independent of stream resolution — fetch in parallel,
@@ -232,6 +235,41 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     this.restoreProgress(video);
     this.started.set(true);
     void video.play().catch(() => {});
+  }
+
+  continueFromSavedProgress() {
+    this.pendingResumeTime = this.resumeTime();
+    this.resumeTime.set(null);
+    this.startPlayback();
+  }
+
+  restartPlayback() {
+    this.pendingResumeTime = null;
+    this.resumeTime.set(null);
+    this.clearSavedProgress();
+
+    const video = this.videoEl()?.nativeElement;
+    if (video) {
+      try {
+        video.currentTime = 0;
+      } catch {}
+    }
+
+    this.startPlayback();
+  }
+
+  resumeTimeLabel(): string {
+    const time = this.resumeTime();
+    if (!time) return '';
+
+    const hours = Math.floor(time / 3600);
+    const minutes = Math.floor((time % 3600) / 60);
+    const seconds = Math.floor(time % 60);
+
+    if (hours > 0) {
+      return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    }
+    return `${minutes}:${String(seconds).padStart(2, '0')}`;
   }
 
   onMetadataLoaded(video: HTMLVideoElement) {

@@ -56,7 +56,7 @@ describe('MoviePlayerComponent', () => {
     }));
   });
 
-  it('restores TV episode progress from an episode-specific key', () => {
+  it('waits for user confirmation before restoring TV episode progress', () => {
     window.localStorage.setItem(`${progressPrefix}tt0944947:tv:s2:e3`, JSON.stringify({
       time: 615,
       updatedAt: Date.now(),
@@ -75,6 +75,12 @@ describe('MoviePlayerComponent', () => {
       ended: false,
     } as HTMLVideoElement;
 
+    component.onMetadataLoaded(video);
+
+    expect(component.resumeTime()).toBe(615);
+    expect(video.currentTime).toBe(0);
+
+    component.continueFromSavedProgress();
     component.onMetadataLoaded(video);
 
     expect(video.currentTime).toBe(615);
