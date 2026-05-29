@@ -26,15 +26,17 @@ function makeDispatcher() {
 
 // Fetch with the cloudnestra Referer. Playlists always go through the rotating
 // proxy (retrying fresh IPs on 403/5xx); segments try direct, then proxy on 403.
+// Returns { res, viaProxy } so the handler can report the path taken.
 async function fetchUpstream(target) {
   const headers = { 'User-Agent': UA, Accept: '*/*', Referer: STREAM_REFERER, Origin: CLOUDNESTRA };
   const isPlaylist = /\.m3u8($|\?)/i.test(target);
 
   if (!isPlaylist) {
     const direct = await fetch(target, { headers, redirect: 'follow' });
-    if (direct.status !== 403) return direct;
+    if (direct.status !== 403) return { res: direct, viaProxy: false };
   }
-  return fetchViaProxy(target, headers);
+  const res = await fetchViaProxy(target, headers);
+  return { res, viaProxy: true };
 }
 
 async function fetchViaProxy(target, headers) {
@@ -113,13 +115,17 @@ module.exports = async function handler(req, res) {
     return res.status(400).send('bad u param');
   }
 
-  let upstream;
+  let upstream, viaProxy;
   try {
-    upstream = await fetchUpstream(target);
+    ({ res: upstream, viaProxy } = await fetchUpstream(target));
   } catch (e) {
     console.error('hls upstream error:', e);
     return res.status(502).send('upstream fetch failed');
   }
+
+  // Debug: report which path was used (read by the preview-only player overlay).
+  res.setHeader('X-Fiesta-Source', viaProxy ? 'proxy' : 'direct');
+  res.setHeader('Access-Control-Expose-Headers', 'X-Fiesta-Source');
 
   const targetPath = new URL(target).pathname;
   const ct = (upstream.headers.get('content-type') || '').toLowerCase();

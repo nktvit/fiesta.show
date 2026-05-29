@@ -131,6 +131,7 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({
       master: '/api/hls?u=' + b64urlEncode(master),
       upstream: master,
+      env: process.env.VERCEL_ENV || 'development',
     });
   } catch (e) {
     console.error('stream resolve error:', e);

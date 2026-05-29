@@ -1,6 +1,7 @@
 import {
   Component,
   ElementRef,
+  computed,
   effect,
   input,
   output,
@@ -33,6 +34,11 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   readonly errorMsg = signal<string | null>(null);
   readonly masterUrl = signal<string | null>(null);
 
+  // preview-only debug: show whether segments load direct vs via the proxy
+  readonly env = signal<string | null>(null);
+  readonly isPreview = computed(() => this.env() === 'preview');
+  readonly segmentSource = signal<string | null>(null);
+
   private hls: Hls | null = null;
   private attachedUrl: string | null = null;
   private loadToken = 0;
@@ -64,6 +70,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     const token = ++this.loadToken;
     this.errorMsg.set(null);
     this.loading.set(true);
+    this.segmentSource.set(null);
 
     try {
       const type = this.type() === 'tv' ? 'tv' : 'movie';
@@ -81,7 +88,9 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
       if (!res.ok) throw new Error(data?.error || `resolve failed (${res.status})`);
       if (!data?.master) throw new Error('no stream returned');
 
+      this.env.set(data.env ?? null);
       this.masterUrl.set(data.master);
+      if (data.env === 'preview') void this.probeSegmentSource(data.master, token);
     } catch (err) {
       if (token !== this.loadToken) return;
       this.masterUrl.set(null);
@@ -114,6 +123,24 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     } else {
       video.src = master; // last-resort fallback
     }
+  }
+
+  // Preview debug: fetch one real segment and read the X-Fiesta-Source header the
+  // worker stamps, to confirm whether segments load direct or via the proxy.
+  private async probeSegmentSource(master: string, token: number) {
+    try {
+      const firstUri = (text: string) =>
+        text.split('\n').map((l) => l.trim()).find((l) => l && !l.startsWith('#'));
+      const masterTxt = await (await fetch(master)).text();
+      const variant = firstUri(masterTxt);
+      if (!variant) return;
+      const mediaTxt = await (await fetch(variant)).text();
+      const seg = firstUri(mediaTxt);
+      if (!seg) return;
+      const r = await fetch(seg, { headers: { Range: 'bytes=0-0' } });
+      if (token !== this.loadToken) return;
+      this.segmentSource.set(r.headers.get('X-Fiesta-Source'));
+    } catch {}
   }
 
   private destroyHls() {
