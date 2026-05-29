@@ -4,9 +4,21 @@
       #videoEl
       class="block w-full h-full"
       controls
-      autoplay
       playsinline
     ></video>
+  }
+
+  @if (masterUrl() && !started()) {
+    <button
+      type="button"
+      (click)="startPlayback()"
+      aria-label="Play"
+      class="group absolute inset-0 z-10 flex items-center justify-center bg-black/40 transition-colors hover:bg-black/25"
+    >
+      <span class="flex h-16 w-16 items-center justify-center rounded-full bg-white/90 text-black shadow-lg ring-1 ring-black/10 transition-transform group-hover:scale-105">
+        <svg class="ml-1 h-7 w-7" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z" /></svg>
+      </span>
+    </button>
   }
 
   @if (loading()) {

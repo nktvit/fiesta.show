@@ -33,6 +33,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   readonly loading = signal(false);
   readonly errorMsg = signal<string | null>(null);
   readonly masterUrl = signal<string | null>(null);
+  readonly started = signal(false);
 
   // preview-only debug: show whether segments load direct vs via the proxy
   readonly env = signal<string | null>(null);
@@ -71,6 +72,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     this.errorMsg.set(null);
     this.loading.set(true);
     this.segmentSource.set(null);
+    this.started.set(false);
 
     try {
       const type = this.type() === 'tv' ? 'tv' : 'movie';
@@ -134,6 +136,13 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
       if (token !== this.loadToken) return;
       this.segmentSource.set(r.headers.get('X-Fiesta-Source'));
     } catch {}
+  }
+
+  startPlayback() {
+    const video = this.videoEl()?.nativeElement;
+    if (!video) return;
+    this.started.set(true);
+    void video.play().catch(() => {});
   }
 
   private destroyHls() {
