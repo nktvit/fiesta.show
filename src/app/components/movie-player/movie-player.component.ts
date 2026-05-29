@@ -125,19 +125,12 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     }
   }
 
-  // Preview debug: fetch one real segment and read the X-Fiesta-Source header the
-  // worker stamps, to confirm whether segments load direct or via the proxy.
+  // Preview debug: read the X-Fiesta-Source header stamped on the master playlist
+  // ('relay' = home residential relay, 'proxy'/'direct' = Webshare fallback path).
+  // The master is a tiny playlist, so this costs ~nothing.
   private async probeSegmentSource(master: string, token: number) {
     try {
-      const firstUri = (text: string) =>
-        text.split('\n').map((l) => l.trim()).find((l) => l && !l.startsWith('#'));
-      const masterTxt = await (await fetch(master)).text();
-      const variant = firstUri(masterTxt);
-      if (!variant) return;
-      const mediaTxt = await (await fetch(variant)).text();
-      const seg = firstUri(mediaTxt);
-      if (!seg) return;
-      const r = await fetch(seg, { headers: { Range: 'bytes=0-0' } });
+      const r = await fetch(master);
       if (token !== this.loadToken) return;
       this.segmentSource.set(r.headers.get('X-Fiesta-Source'));
     } catch {}

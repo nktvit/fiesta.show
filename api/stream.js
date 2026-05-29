@@ -23,6 +23,27 @@ const MIRROR_HOST = 'cloudnestra.com'; // {vN} host placeholders resolve to this
 // gets a fresh IP, e.g. http://user-CC-rotate:pass@p.webshare.io:80
 const PROXY_MAX_ATTEMPTS = parseInt(process.env.STREAM_PROXY_RETRIES || '10', 10);
 
+// Preferred path: a residential-IP relay (home machine behind a tunnel) does the
+// cloudnestra fetches with an un-blocked IP and serves segments on its own
+// unmetered bandwidth. When configured we just ask it to resolve; it returns a
+// master URL pointing at its own /hls. Webshare below is the fallback.
+const RELAY_URL = (process.env.STREAM_RELAY_URL || '').replace(/\/$/, '');
+const RELAY_SECRET = process.env.STREAM_RELAY_SECRET || '';
+
+async function resolveViaRelay({ type, id, season, episode }) {
+  const params = new URLSearchParams({ type, id });
+  if (type === 'tv' && season && episode) {
+    params.set('s', season);
+    params.set('e', episode);
+  }
+  const r = await fetch(RELAY_URL + '/resolve?' + params.toString(), {
+    headers: { Authorization: 'Bearer ' + RELAY_SECRET },
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok || !data.master) throw new Error(data.error || 'relay resolve failed (' + r.status + ')');
+  return { master: data.master, upstream: data.upstream };
+}
+
 // Fresh ProxyAgent per attempt => new upstream connection => the `rotate` endpoint
 // hands out a new residential IP.
 function makeDispatcher() {
@@ -120,19 +141,20 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: 'Invalid IMDB ID. Expected format: tt1234567' });
   }
 
-  let embedUrl = VIDSRC_ORIGIN + '/embed/' + type + '/' + id;
-  if (type === 'tv' && season && episode) embedUrl += '/' + season + '-' + episode;
-
   try {
-    const master = await resolveMasterWithRetry(embedUrl);
+    let payload;
+    if (RELAY_URL && RELAY_SECRET) {
+      payload = await resolveViaRelay({ type, id, season, episode });
+    } else {
+      let embedUrl = VIDSRC_ORIGIN + '/embed/' + type + '/' + id;
+      if (type === 'tv' && season && episode) embedUrl += '/' + season + '-' + episode;
+      const master = await resolveMasterWithRetry(embedUrl);
+      // Relative URL: the browser resolves it against its own origin, so it works
+      // identically behind the dev proxy (:4200) and in production (fiesta.show).
+      payload = { master: '/api/hls?u=' + b64urlEncode(master), upstream: master };
+    }
     res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=60');
-    // Relative URL: the browser resolves it against its own origin, so it works
-    // identically behind the dev proxy (:4200) and in production (fiesta.show).
-    return res.status(200).json({
-      master: '/api/hls?u=' + b64urlEncode(master),
-      upstream: master,
-      env: process.env.VERCEL_ENV || 'development',
-    });
+    return res.status(200).json({ ...payload, env: process.env.VERCEL_ENV || 'development' });
   } catch (e) {
     console.error('stream resolve error:', e);
     return res.status(502).json({ error: String((e && e.message) || e) });

@@ -30,10 +30,10 @@
   }
 
   @if (isPreview() && masterUrl()) {
-    <div class="absolute top-2 left-2 z-20 flex items-center gap-1.5 rounded-md bg-black/75 px-2 py-1 font-mono text-[10px] leading-none text-white/90 ring-1 ring-white/10">
+    <div class="absolute top-2 right-2 z-20 flex items-center gap-1.5 rounded-md bg-black/75 px-2 py-1 font-mono text-[10px] leading-none text-white/90 ring-1 ring-white/10">
       <span class="rounded bg-emerald-500/90 px-1 py-0.5 font-semibold uppercase tracking-wide text-black">{{ env() }}</span>
-      <span class="text-white/60">segments:</span>
-      <span [class]="segmentSource() === 'proxy' ? 'text-amber-400 font-semibold' : segmentSource() === 'direct' ? 'text-sky-400 font-semibold' : 'text-white/40'">{{ segmentSource() ?? '…' }}</span>
+      <span class="text-white/60">source:</span>
+      <span [class]="segmentSource() === 'relay' ? 'text-emerald-400 font-semibold' : segmentSource() === 'proxy' ? 'text-amber-400 font-semibold' : segmentSource() === 'direct' ? 'text-sky-400 font-semibold' : 'text-white/40'">{{ segmentSource() ?? '…' }}</span>
     </div>
   }
 </div>

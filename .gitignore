@@ -49,4 +49,5 @@ Thumbs.db
 /.claude/worktrees/**
 /tools/fiesta-proxy/.playwright-mcp/**
 /tools/fiesta-proxy/node_modules/**
-/tools/fiesta-proxy/.playwright-mcp/**
+/.agents/**
+/.claude/**
