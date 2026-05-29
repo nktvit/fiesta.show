@@ -48,20 +48,22 @@
       class="group absolute inset-0 z-20 flex items-center justify-center outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-inset"
     >
       <span
-        class="relative flex h-28 w-28 sm:h-32 sm:w-32 items-center justify-center backdrop-blur-md
-               bg-[radial-gradient(circle,rgba(125,125,125,0.5)_0%,rgba(125,125,125,0.44)_52%,transparent_70%)]
-               [mask-image:radial-gradient(circle,#000_58%,transparent_72%)]
-               [-webkit-mask-image:radial-gradient(circle,#000_58%,transparent_72%)]
+        class="relative flex h-28 w-28 sm:h-32 sm:w-32 items-center justify-center rounded-full
+               bg-black/50 backdrop-blur-xl border border-white/10 shadow-2xl
                transition-transform duration-200 ease-out
                group-hover:scale-105 group-active:scale-95"
       >
         <svg
-          class="ml-1.5 h-12 w-12 sm:h-14 sm:w-14 text-white drop-shadow-md"
+          class="ml-1 h-11 w-11 sm:h-12 sm:w-12 text-white"
           viewBox="0 0 24 24"
-          fill="currentColor"
+          fill="white"
+          stroke="white"
+          stroke-width="2.5"
+          stroke-linejoin="round"
+          stroke-linecap="round"
           aria-hidden="true"
         >
-          <path d="M8 5v14l11-7z" />
+          <polygon points="6 3 20 12 6 21 6 3" />
         </svg>
       </span>
     </button>
