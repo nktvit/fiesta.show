@@ -16,6 +16,14 @@
     "api/omdb.js": {
       "memory": 1024,
       "maxDuration": 15
+    },
+    "api/stream.js": {
+      "memory": 1024,
+      "maxDuration": 30
+    },
+    "api/hls.js": {
+      "memory": 1024,
+      "maxDuration": 30
     }
   },
   "buildCommand": "npm run build",

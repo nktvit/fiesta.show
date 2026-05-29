@@ -1,4 +1,14 @@
 {
+  "/api/stream": {
+    "target": "http://localhost:3999",
+    "secure": false,
+    "changeOrigin": true
+  },
+  "/api/hls": {
+    "target": "http://localhost:3999",
+    "secure": false,
+    "changeOrigin": true
+  },
   "/api/suggestions": {
     "target": "https://www.omdbapi.com",
     "secure": true,

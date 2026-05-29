@@ -43,8 +43,10 @@ src/environments
 .DS_Store
 Thumbs.db
 /.env
+**/.env.local
 .vercel
 /.playwright-mcp/**
 /.claude/worktrees/**
-/tools/fiesta-proxy/.wrangler/**
+/tools/fiesta-proxy/.playwright-mcp/**
 /tools/fiesta-proxy/node_modules/**
+/tools/fiesta-proxy/.playwright-mcp/**
