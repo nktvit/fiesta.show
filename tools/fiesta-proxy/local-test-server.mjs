@@ -21,6 +21,7 @@ if (fs.existsSync(envFile)) {
 }
 
 const stream = require(path.join(ROOT, 'api/stream.js'));
+const subs = require(path.join(ROOT, 'api/subs.js'));
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
@@ -33,6 +34,7 @@ const server = http.createServer(async (req, res) => {
 
   try {
     if (url.pathname === '/api/stream') return await stream(req, res);
+    if (url.pathname === '/api/subs') return await subs(req, res);
     res.statusCode = 404; res.end('not found');
   } catch (e) {
     res.statusCode = 500; res.end('handler threw: ' + (e && e.stack || e));

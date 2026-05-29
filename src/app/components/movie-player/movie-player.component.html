@@ -5,7 +5,11 @@
       class="block w-full h-full"
       controls
       playsinline
-    ></video>
+    >
+      @for (t of subtitleTracks(); track t.src) {
+        <track kind="subtitles" [src]="t.src" [attr.srclang]="t.lang" [attr.label]="t.label" />
+      }
+    </video>
   }
 
   <!-- Backdrop / episode-still cover shown until playback starts -->

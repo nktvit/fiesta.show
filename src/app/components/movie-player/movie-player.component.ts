@@ -42,6 +42,9 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   readonly isPreview = computed(() => this.env() === 'preview');
   readonly segmentSource = signal<string | null>(null);
 
+  // external subtitle tracks (best per language) from /api/subs
+  readonly subtitleTracks = signal<{ lang: string; label: string; src: string }[]>([]);
+
   private hls: Hls | null = null;
   private attachedUrl: string | null = null;
   private loadToken = 0;
@@ -77,8 +80,13 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     this.errorMsg.set(null);
     this.loading.set(true);
     this.segmentSource.set(null);
+    this.subtitleTracks.set([]);
     this.started.set(false);
     this.recoverAttempts = 0;
+
+    // Subtitles are independent of stream resolution — fetch in parallel,
+    // best-effort, and never let a failure here block playback.
+    void this.loadSubtitles(token);
 
     try {
       const type = this.type() === 'tv' ? 'tv' : 'movie';
@@ -156,6 +164,26 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   retry() {
     this.attachedUrl = null;
     void this.loadStream();
+  }
+
+  private async loadSubtitles(token: number) {
+    try {
+      const type = this.type() === 'tv' ? 'tv' : 'movie';
+      const params = new URLSearchParams({ type, id: this.imdbId() });
+      const s = this.season();
+      const e = this.episode();
+      if (type === 'tv' && s && e) {
+        params.set('s', String(s));
+        params.set('e', String(e));
+      }
+      const res = await fetch(`/api/subs?${params.toString()}`);
+      if (token !== this.loadToken) return;
+      const data = await res.json().catch(() => ({}));
+      if (token !== this.loadToken) return;
+      this.subtitleTracks.set(Array.isArray(data?.tracks) ? data.tracks : []);
+    } catch {
+      if (token === this.loadToken) this.subtitleTracks.set([]);
+    }
   }
 
   // Preview debug: read the X-Fiesta-Source header stamped on the master playlist

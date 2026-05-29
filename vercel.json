@@ -20,6 +20,10 @@
     "api/stream.js": {
       "memory": 1024,
       "maxDuration": 30
+    },
+    "api/subs.js": {
+      "memory": 1024,
+      "maxDuration": 15
     }
   },
   "buildCommand": "npm run build",
