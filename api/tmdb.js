@@ -51,10 +51,11 @@ module.exports = async function handler(req, res) {
     upcoming: '/movie/upcoming',
   };
 
-  function mapMovie(item) {
+  function mapMovie(item, mediaType) {
     return {
       imdbID: '',
       tmdbId: item.id,
+      mediaType: mediaType || (item.first_air_date || (item.name && !item.title) ? 'tv' : 'movie'),
       Title: item.title || item.name || '',
       Poster: item.poster_path
         ? 'https://image.tmdb.org/t/p/w342' + item.poster_path
@@ -73,6 +74,18 @@ module.exports = async function handler(req, res) {
 
   try {
     if (list === 'movie' && id) {
+      if (req.query.type === 'tv') {
+        var tvResponse = await fetch(TMDB_BASE + '/tv/' + id + '/external_ids?api_key=' + apiKey);
+        var tvData = await tvResponse.json();
+        if (tvData.imdb_id) {
+          return res.status(200).json({ imdbID: tvData.imdb_id });
+        }
+
+        var movieFallbackResponse = await fetch(TMDB_BASE + '/movie/' + id + '?api_key=' + apiKey);
+        var movieFallbackData = await movieFallbackResponse.json();
+        return res.status(200).json({ imdbID: movieFallbackData.imdb_id || '' });
+      }
+
       // Try as movie first
       var response = await fetch(TMDB_BASE + '/movie/' + id + '?api_key=' + apiKey);
       var data = await response.json();
@@ -144,7 +157,7 @@ module.exports = async function handler(req, res) {
       }
       var movies = data.results
         .filter(function(item) { return item.vote_count > 50; })
-        .map(mapMovie);
+        .map(function(item) { return mapMovie(item, mediaType); });
       return res.status(200).json({ movies: movies });
     }
 
@@ -164,7 +177,7 @@ module.exports = async function handler(req, res) {
       }
       var movies = data.results
         .filter(function(item) { return item.original_language !== 'ru'; })
-        .map(mapMovie);
+        .map(function(item) { return mapMovie(item, 'movie'); });
       return res.status(200).json({ movies: movies, totalPages: data.total_pages || 0 });
     }
 
@@ -182,7 +195,9 @@ module.exports = async function handler(req, res) {
 
     var movies = data.results
       .filter(function(item) { return item.original_language !== 'ru' && item.vote_count > 100; })
-      .map(mapMovie);
+      .map(function(item) {
+        return mapMovie(item, list === 'trending_tv' || list === 'popular_tv' ? 'tv' : 'movie');
+      });
     return res.status(200).json({ movies: movies, totalPages: data.total_pages || 0 });
   } catch (error) {
     console.error('TMDB API error:', error);

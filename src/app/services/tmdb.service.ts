@@ -180,7 +180,7 @@ export class TmdbService {
     return this.http.get<any>(url).pipe(
       map(res => (res.results || [])
         .filter((item: any) => item.vote_count > 50)
-        .map((item: any) => this.mapMovie(item))),
+        .map((item: any) => this.mapMovie(item, mediaType))),
       catchError(() => of([]))
     );
   }
