@@ -90,6 +90,8 @@ module.exports = async function handler(req, res) {
   const buf = Buffer.from(await upstream.arrayBuffer());
   const looksTs = /\.(ts|html)($|\?)/i.test(targetPath);
   res.setHeader('Content-Type', looksTs ? 'video/mp2t' : ct || 'application/octet-stream');
-  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  // s-maxage lets Vercel's edge CDN cache segments across users (not just the
+  // browser). The (token, segment) URL is immutable, so a long TTL is safe.
+  res.setHeader('Cache-Control', 'public, max-age=31536000, s-maxage=31536000, immutable');
   return res.status(upstream.status).send(buf);
 };
