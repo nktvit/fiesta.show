@@ -85,4 +85,25 @@ describe('MoviePlayerComponent', () => {
 
     expect(video.currentTime).toBe(615);
   });
+
+  it('marks the player paused only after playback has started', () => {
+    const video = {
+      currentTime: 20,
+      duration: 120,
+      ended: false,
+    } as HTMLVideoElement;
+
+    component.onPlaybackPaused(video);
+    expect(component.paused()).toBeFalse();
+
+    component.onPlaybackStarted();
+    component.onPlaybackPaused(video);
+    expect(component.paused()).toBeTrue();
+
+    component.onPlaybackStarted();
+    expect(component.paused()).toBeFalse();
+
+    component.onPlaybackPaused({ ...video, ended: true } as HTMLVideoElement);
+    expect(component.paused()).toBeFalse();
+  });
 });

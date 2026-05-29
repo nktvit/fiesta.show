@@ -2,11 +2,13 @@
   @if (masterUrl()) {
     <video
       #videoEl
-      class="block w-full h-full"
+      class="block w-full h-full transition-[filter] duration-300 ease-out"
+      [class.player-paused]="started() && paused()"
       controls
       playsinline
       (loadedmetadata)="onMetadataLoaded(videoEl)"
       (timeupdate)="onTimeUpdate(videoEl)"
+      (play)="onPlaybackStarted()"
       (pause)="onPlaybackPaused(videoEl)"
       (ended)="onPlaybackEnded()"
     >

@@ -20,3 +20,7 @@
 iframe {
   border: none;
 }
+
+video.player-paused {
+  filter: grayscale(1);
+}

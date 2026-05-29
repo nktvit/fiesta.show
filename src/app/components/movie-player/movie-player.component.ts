@@ -37,6 +37,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   readonly masterUrl = signal<string | null>(null);
   readonly started = signal(false);
   readonly resumeTime = signal<number | null>(null);
+  readonly paused = signal(false);
 
   // preview-only debug: show whether segments load direct vs via the proxy
   readonly env = signal<string | null>(null);
@@ -90,7 +91,10 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     this.loading.set(true);
     this.segmentSource.set(null);
     this.subtitleTracks.set([]);
-    if (!keepStarted) this.started.set(false);
+    if (!keepStarted) {
+      this.started.set(false);
+      this.paused.set(false);
+    }
     this.recoverAttempts = 0;
     if (!srv) this.escalated = false; // fresh, unforced load — reset escalation state
     const savedProgress = this.readSavedProgress();
@@ -234,6 +238,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     if (!video) return;
     this.restoreProgress(video);
     this.started.set(true);
+    this.paused.set(false);
     void video.play().catch(() => {});
   }
 
@@ -281,12 +286,21 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     this.saveProgress(video);
   }
 
+  onPlaybackStarted() {
+    this.started.set(true);
+    this.paused.set(false);
+  }
+
   onPlaybackPaused(video: HTMLVideoElement) {
     this.saveProgress(video);
+    if (this.started() && !video.ended) {
+      this.paused.set(true);
+    }
   }
 
   onPlaybackEnded() {
     this.clearSavedProgress();
+    this.paused.set(false);
   }
 
   private restoreProgress(video: HTMLVideoElement) {
