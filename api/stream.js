@@ -23,25 +23,21 @@ const MIRROR_HOST = 'cloudnestra.com'; // {vN} host placeholders resolve to this
 // gets a fresh IP, e.g. http://user-CC-rotate:pass@p.webshare.io:80
 const PROXY_MAX_ATTEMPTS = parseInt(process.env.STREAM_PROXY_RETRIES || '10', 10);
 
-// Preferred path: a residential-IP relay (home machine behind a tunnel) does the
-// cloudnestra fetches with an un-blocked IP and serves segments on its own
-// unmetered bandwidth. When configured we just ask it to resolve; it returns a
-// master URL pointing at its own /hls. Webshare below is the fallback.
+// Resolution (embed -> rcp -> prorcp -> m3u8) hits cloudnestra's per-IP Turnstile
+// challenge, which only IP ROTATION reliably beats -> done here via Webshare (tiny,
+// ~66KB). Playback bytes (playlists + segments) are the real egress and carry no
+// Turnstile, just a Referer -> served by a residential relay on unmetered home
+// bandwidth. So we resolve via Webshare, then point playback at the relay's /hls
+// with a signed token the relay verifies.
 const RELAY_URL = (process.env.STREAM_RELAY_URL || '').replace(/\/$/, '');
-const RELAY_SECRET = process.env.STREAM_RELAY_SECRET || '';
+const RELAY_SIGNING_KEY = process.env.STREAM_RELAY_SIGNING_KEY || '';
 
-async function resolveViaRelay({ type, id, season, episode }) {
-  const params = new URLSearchParams({ type, id });
-  if (type === 'tv' && season && episode) {
-    params.set('s', season);
-    params.set('e', episode);
-  }
-  const r = await fetch(RELAY_URL + '/resolve?' + params.toString(), {
-    headers: { Authorization: 'Bearer ' + RELAY_SECRET },
-  });
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok || !data.master) throw new Error(data.error || 'relay resolve failed (' + r.status + ')');
-  return { master: data.master, upstream: data.upstream };
+// Same token scheme as relay.mjs: `${exp}.${base64url(hmacSHA256(exp, key))}`.
+function mintRelayToken(ttl = 21600) {
+  const { createHmac } = require('crypto');
+  const exp = Math.floor(Date.now() / 1000) + ttl;
+  const sig = createHmac('sha256', RELAY_SIGNING_KEY).update(String(exp)).digest('base64url');
+  return exp + '.' + sig;
 }
 
 // Fresh ProxyAgent per attempt => new upstream connection => the `rotate` endpoint
@@ -142,19 +138,22 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    let payload;
-    if (RELAY_URL && RELAY_SECRET) {
-      payload = await resolveViaRelay({ type, id, season, episode });
+    let embedUrl = VIDSRC_ORIGIN + '/embed/' + type + '/' + id;
+    if (type === 'tv' && season && episode) embedUrl += '/' + season + '-' + episode;
+    const master = await resolveMasterWithRetry(embedUrl);
+
+    let playUrl;
+    if (RELAY_URL && RELAY_SIGNING_KEY) {
+      // Stream playback off the residential relay (unmetered); only the resolve
+      // above touched Webshare. Token is verified by relay.mjs.
+      playUrl = RELAY_URL + '/hls?u=' + b64urlEncode(master) + '&t=' + mintRelayToken();
     } else {
-      let embedUrl = VIDSRC_ORIGIN + '/embed/' + type + '/' + id;
-      if (type === 'tv' && season && episode) embedUrl += '/' + season + '-' + episode;
-      const master = await resolveMasterWithRetry(embedUrl);
-      // Relative URL: the browser resolves it against its own origin, so it works
-      // identically behind the dev proxy (:4200) and in production (fiesta.show).
-      payload = { master: '/api/hls?u=' + b64urlEncode(master), upstream: master };
+      // Fallback: serve through Vercel's own /api/hls (Webshare-backed). Relative
+      // URL resolves against the browser's origin (dev proxy / prod alike).
+      playUrl = '/api/hls?u=' + b64urlEncode(master);
     }
     res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=60');
-    return res.status(200).json({ ...payload, env: process.env.VERCEL_ENV || 'development' });
+    return res.status(200).json({ master: playUrl, upstream: master, env: process.env.VERCEL_ENV || 'development' });
   } catch (e) {
     console.error('stream resolve error:', e);
     return res.status(502).json({ error: String((e && e.message) || e) });
