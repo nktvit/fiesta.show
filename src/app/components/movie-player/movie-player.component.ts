@@ -45,6 +45,9 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   private hls: Hls | null = null;
   private attachedUrl: string | null = null;
   private loadToken = 0;
+  private recoverAttempts = 0;
+
+  private static readonly UNAVAILABLE = 'This title isn’t available to stream right now';
 
   constructor() {
     // Attach the stream once both the resolved master URL and the <video> exist.
@@ -75,6 +78,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     this.loading.set(true);
     this.segmentSource.set(null);
     this.started.set(false);
+    this.recoverAttempts = 0;
 
     try {
       const type = this.type() === 'tv' ? 'tv' : 'movie';
@@ -109,9 +113,11 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     this.attachedUrl = master;
     this.destroyHls();
 
-    // Safari (and iOS) play HLS natively.
+    // Safari (and iOS) play HLS natively. Surface a friendly message if the
+    // source can't be loaded (e.g. the upstream file is gone).
     if (video.canPlayType('application/vnd.apple.mpegurl')) {
       video.src = master;
+      video.addEventListener('error', () => this.failPlayback('native: media error'), { once: true });
       return;
     }
 
@@ -122,11 +128,34 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
       hls.loadSource(master);
       hls.attachMedia(video);
       hls.on(Hls.Events.ERROR, (_evt, data) => {
-        if (data.fatal) this.errorMsg.set(`playback error: ${data.details}`);
+        if (!data.fatal) return;
+        // Try to recover transient fatal errors before giving up; only surface an
+        // error once recovery is exhausted (or the failure is unrecoverable).
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR && this.recoverAttempts < 3) {
+          this.recoverAttempts++;
+          hls.startLoad();
+        } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR && this.recoverAttempts < 3) {
+          this.recoverAttempts++;
+          hls.recoverMediaError();
+        } else {
+          this.failPlayback(data.details || 'playback error');
+        }
       });
     } else {
       video.src = master; // last-resort fallback
+      video.addEventListener('error', () => this.failPlayback('unsupported: media error'), { once: true });
     }
+  }
+
+  private failPlayback(detail: string) {
+    this.destroyHls();
+    this.attachedUrl = null; // allow a retry to re-attach the same master
+    this.errorMsg.set(detail);
+  }
+
+  retry() {
+    this.attachedUrl = null;
+    void this.loadStream();
   }
 
   // Preview debug: read the X-Fiesta-Source header stamped on the master playlist
