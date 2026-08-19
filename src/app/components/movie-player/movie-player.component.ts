@@ -47,7 +47,10 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   readonly isPreview = computed(() => this.env() === 'preview');
   readonly segmentSource = signal<string | null>(null);
 
-  // external subtitle tracks (best per language) from /api/subs
+  // external subtitle tracks (best per language) from /api/subs. Revealed to
+  // the template incrementally (see revealSubtitleTracks) rather than all at
+  // once — one <track src> per language firing simultaneously is a burst
+  // OpenSubtitles' legacy download host rate-limits hard.
   readonly subtitleTracks = signal<{ lang: string; label: string; src: string; isDefault: boolean }[]>([]);
 
   // which cloudnestra front actually served the current stream (1=vidsrc, 2=vsembed)
@@ -63,6 +66,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   private escalated = false;
   private pendingResumeTime: number | null = null;
   private lastProgressSaveAt = 0;
+  private subtitleRevealTimers: ReturnType<typeof setTimeout>[] = [];
 
   private static readonly UNAVAILABLE = 'This title isn’t available to stream right now';
   private static readonly PROGRESS_PREFIX = 'fiesta:playback-progress:';
@@ -96,6 +100,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   ngOnDestroy() {
     this.destroyHls();
     if (this.bufferingTimer) clearTimeout(this.bufferingTimer);
+    this.clearSubtitleRevealTimers();
   }
 
   private async loadStream(srv?: 1 | 2, keepStarted = false) {
@@ -109,6 +114,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     this.errorMsg.set(null);
     this.segmentSource.set(null);
     this.subtitleTracks.set([]);
+    this.clearSubtitleRevealTimers();
     if (!keepStarted) {
       // Fresh load: full-screen loader covers the stage.
       this.loading.set(true);
@@ -296,10 +302,35 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
       const data = await res.json().catch(() => ({}));
       if (token !== this.loadToken) return;
       const tracks = Array.isArray(data?.tracks) ? data.tracks : [];
-      this.subtitleTracks.set(this.markPreferredSubtitle(tracks));
+      this.revealSubtitleTracks(token, this.markPreferredSubtitle(tracks));
     } catch {
       if (token === this.loadToken) this.subtitleTracks.set([]);
     }
+  }
+
+  // Render one <track src> at a time instead of all at once: a page's worth
+  // of tracks firing simultaneously is exactly the burst that gets rate-
+  // limited by OpenSubtitles (see api/subs.js). The preferred/restored track
+  // (if any) goes out first so the viewer's pick is unaffected by the stagger.
+  private revealSubtitleTracks(
+    token: number,
+    tracks: { lang: string; label: string; src: string; isDefault: boolean }[],
+  ) {
+    this.clearSubtitleRevealTimers();
+    const ordered = [...tracks].sort((a, b) => (a.isDefault === b.isDefault ? 0 : a.isDefault ? -1 : 1));
+    const STAGGER_MS = 400;
+    ordered.forEach((track, i) => {
+      const timer = setTimeout(() => {
+        if (token !== this.loadToken) return;
+        this.subtitleTracks.update((current) => [...current, track]);
+      }, i * STAGGER_MS);
+      this.subtitleRevealTimers.push(timer);
+    });
+  }
+
+  private clearSubtitleRevealTimers() {
+    for (const timer of this.subtitleRevealTimers) clearTimeout(timer);
+    this.subtitleRevealTimers = [];
   }
 
   // Mark the track matching the viewer's last-picked language (and variant,
