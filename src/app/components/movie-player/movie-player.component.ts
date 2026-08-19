@@ -352,23 +352,47 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
       const t = list[i];
       t.mode = t.language === pref.lang && t.label === pref.label ? 'showing' : 'disabled';
     }
+    // Chromium can independently auto-select a track matching the browser's
+    // locale via its own "honor user preferences" algorithm, racing with the
+    // assignment above — collapse back down to a single showing track.
+    this.enforceSingleShowing(video);
+  }
+
+  // Browsers don't guarantee only one subtitle/captions track is ever
+  // 'showing' when tracks are toggled via script — multiple can end up
+  // simultaneously active (observed: Chromium auto-selecting a track
+  // matching its locale independently of ours). Collapse to one, preferring
+  // whichever matches the saved preference if it's among the showing set.
+  private enforceSingleShowing(video: HTMLVideoElement): TextTrack | null {
+    const list = video.textTracks;
+    const showingIdx: number[] = [];
+    for (let i = 0; i < list.length; i++) {
+      if (list[i].mode === 'showing') showingIdx.push(i);
+    }
+    if (showingIdx.length === 0) return null;
+
+    let keepIdx = showingIdx[0];
+    const pref = this.readSubtitlePref();
+    if (pref) {
+      const match = showingIdx.find((i) => list[i].language === pref.lang && list[i].label === pref.label);
+      if (match !== undefined) keepIdx = match;
+    }
+    for (const i of showingIdx) {
+      if (i !== keepIdx) list[i].mode = 'disabled';
+    }
+    return list[keepIdx];
   }
 
   // Native <video> controls fire this on the track list whenever the viewer
-  // toggles captions or switches language/variant. Lazily wire up a real src
-  // for whatever just got picked (if it wasn't already loaded) and persist
-  // the choice — or its absence — as the preference for future playback.
+  // toggles captions or switches language/variant (and whenever a browser's
+  // own automatic track selection kicks in). Lazily wire up a real src for
+  // whatever ends up showing (if it wasn't already loaded) and persist the
+  // choice — or its absence — as the preference for future playback.
   private wireSubtitlePersistence(video: HTMLVideoElement) {
     video.textTracks.onchange = () => {
-      let showing: TextTrack | null = null;
-      for (let i = 0; i < video.textTracks.length; i++) {
-        if (video.textTracks[i].mode === 'showing') {
-          showing = video.textTracks[i];
-          break;
-        }
-      }
+      const showing = this.enforceSingleShowing(video);
       if (showing) {
-        const key = `${showing.language}::${showing.label}`;
+        const key = this.subtitleKey({ lang: showing.language, label: showing.label });
         if (!this.loadedSubtitleKeys().has(key)) {
           const shownTrack = showing;
           this.loadedSubtitleKeys.update((keys) => new Set(keys).add(key));
