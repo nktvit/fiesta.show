@@ -48,7 +48,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   readonly segmentSource = signal<string | null>(null);
 
   // external subtitle tracks (best per language) from /api/subs
-  readonly subtitleTracks = signal<{ lang: string; label: string; src: string }[]>([]);
+  readonly subtitleTracks = signal<{ lang: string; label: string; src: string; isDefault: boolean }[]>([]);
 
   // which cloudnestra front actually served the current stream (1=vidsrc, 2=vsembed)
   readonly activeServer = signal<number>(1);
@@ -66,6 +66,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
 
   private static readonly UNAVAILABLE = 'This title isn’t available to stream right now';
   private static readonly PROGRESS_PREFIX = 'fiesta:playback-progress:';
+  private static readonly SUBTITLE_PREF_KEY = 'fiesta:subtitle-pref';
 
   constructor() {
     // Attach the stream once both the resolved master URL and the <video> exist.
@@ -152,6 +153,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     if (this.attachedUrl === master) return;
     this.attachedUrl = master;
     this.destroyHls();
+    this.wireSubtitlePersistence(video);
 
     // Prefer hls.js wherever MSE is available — including desktop Safari — so we
     // drive ABR/quality and error recovery ourselves. Safari's native HLS would
@@ -281,10 +283,66 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
       if (token !== this.loadToken) return;
       const data = await res.json().catch(() => ({}));
       if (token !== this.loadToken) return;
-      this.subtitleTracks.set(Array.isArray(data?.tracks) ? data.tracks : []);
+      const tracks = Array.isArray(data?.tracks) ? data.tracks : [];
+      this.subtitleTracks.set(this.markPreferredSubtitle(tracks));
     } catch {
       if (token === this.loadToken) this.subtitleTracks.set([]);
     }
+  }
+
+  // Mark the track matching the viewer's last-picked language (and variant,
+  // when the same label exists) so the browser shows it by default via the
+  // native <track default> attribute — no imperative textTrack wiring needed.
+  private markPreferredSubtitle(
+    tracks: { lang: string; label: string; src: string }[],
+  ): { lang: string; label: string; src: string; isDefault: boolean }[] {
+    const pref = this.readSubtitlePref();
+    let preferredIndex = -1;
+    if (pref) {
+      preferredIndex = tracks.findIndex((t) => t.lang === pref.lang && t.label === pref.label);
+      if (preferredIndex === -1) preferredIndex = tracks.findIndex((t) => t.lang === pref.lang);
+    }
+    return tracks.map((t, i) => ({ ...t, isDefault: i === preferredIndex }));
+  }
+
+  // Native <video> controls fire this on the track list whenever the viewer
+  // toggles captions or switches language/variant — persist whatever ends up
+  // showing (or the absence of one) as the preference for future playback.
+  private wireSubtitlePersistence(video: HTMLVideoElement) {
+    video.textTracks.onchange = () => {
+      let showing: TextTrack | null = null;
+      for (let i = 0; i < video.textTracks.length; i++) {
+        if (video.textTracks[i].mode === 'showing') {
+          showing = video.textTracks[i];
+          break;
+        }
+      }
+      this.saveSubtitlePref(showing ? { lang: showing.language, label: showing.label } : null);
+    };
+  }
+
+  private readSubtitlePref(): { lang: string; label: string } | null {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = window.localStorage.getItem(MoviePlayerComponent.SUBTITLE_PREF_KEY);
+      if (!raw) return null;
+      const data = JSON.parse(raw) as { lang?: unknown; label?: unknown };
+      if (typeof data.lang !== 'string' || typeof data.label !== 'string') return null;
+      return { lang: data.lang, label: data.label };
+    } catch {
+      return null;
+    }
+  }
+
+  private saveSubtitlePref(pref: { lang: string; label: string } | null) {
+    if (typeof window === 'undefined') return;
+    try {
+      if (!pref) {
+        window.localStorage.removeItem(MoviePlayerComponent.SUBTITLE_PREF_KEY);
+      } else {
+        window.localStorage.setItem(MoviePlayerComponent.SUBTITLE_PREF_KEY, JSON.stringify(pref));
+      }
+    } catch {}
   }
 
   // Preview debug: read the X-Fiesta-Source header stamped on the master playlist
