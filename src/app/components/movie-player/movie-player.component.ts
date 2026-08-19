@@ -47,8 +47,13 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   readonly isPreview = computed(() => this.env() === 'preview');
   readonly segmentSource = signal<string | null>(null);
 
-  // external subtitle tracks (best per language) from /api/subs
+  // external subtitle tracks (best per language) from /api/subs, listed for
+  // the native captions menu. Only loadedSubtitleKeys members get a real
+  // [src] (see trackSrc) — fetching every language's VTT at once is a burst
+  // OpenSubtitles' legacy download host rate-limits hard, and the viewer
+  // only ever watches one language at a time anyway.
   readonly subtitleTracks = signal<{ lang: string; label: string; src: string; isDefault: boolean }[]>([]);
+  readonly loadedSubtitleKeys = signal<Set<string>>(new Set());
 
   // which cloudnestra front actually served the current stream (1=vidsrc, 2=vsembed)
   readonly activeServer = signal<number>(1);
@@ -109,6 +114,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     this.errorMsg.set(null);
     this.segmentSource.set(null);
     this.subtitleTracks.set([]);
+    this.loadedSubtitleKeys.set(new Set());
     if (!keepStarted) {
       // Fresh load: full-screen loader covers the stage.
       this.loading.set(true);
@@ -296,10 +302,26 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
       const data = await res.json().catch(() => ({}));
       if (token !== this.loadToken) return;
       const tracks = Array.isArray(data?.tracks) ? data.tracks : [];
-      this.subtitleTracks.set(this.markPreferredSubtitle(tracks));
+      const marked = this.markPreferredSubtitle(tracks);
+      this.subtitleTracks.set(marked);
+      const preferred = marked.find((t) => t.isDefault);
+      this.loadedSubtitleKeys.set(preferred ? new Set([this.subtitleKey(preferred)]) : new Set());
     } catch {
       if (token === this.loadToken) this.subtitleTracks.set([]);
     }
+  }
+
+  private subtitleKey(t: { lang: string; label: string }): string {
+    return `${t.lang}::${t.label}`;
+  }
+
+  // Only the preferred/restored track (or one the viewer explicitly picks —
+  // see wireSubtitlePersistence) gets a real src; every other language sits
+  // in the native captions menu unloaded until chosen. Fetching every
+  // language's VTT at once is a burst OpenSubtitles' legacy host rate-limits
+  // hard, and the viewer only ever watches one at a time.
+  trackSrc(t: { lang: string; label: string; src: string }): string | null {
+    return this.loadedSubtitleKeys().has(this.subtitleKey(t)) ? t.src : null;
   }
 
   // Mark the track matching the viewer's last-picked language (and variant,
@@ -333,8 +355,9 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   }
 
   // Native <video> controls fire this on the track list whenever the viewer
-  // toggles captions or switches language/variant — persist whatever ends up
-  // showing (or the absence of one) as the preference for future playback.
+  // toggles captions or switches language/variant. Lazily wire up a real src
+  // for whatever just got picked (if it wasn't already loaded) and persist
+  // the choice — or its absence — as the preference for future playback.
   private wireSubtitlePersistence(video: HTMLVideoElement) {
     video.textTracks.onchange = () => {
       let showing: TextTrack | null = null;
@@ -342,6 +365,18 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
         if (video.textTracks[i].mode === 'showing') {
           showing = video.textTracks[i];
           break;
+        }
+      }
+      if (showing) {
+        const key = `${showing.language}::${showing.label}`;
+        if (!this.loadedSubtitleKeys().has(key)) {
+          const shownTrack = showing;
+          this.loadedSubtitleKeys.update((keys) => new Set(keys).add(key));
+          // Angular assigns the real src on the next change-detection pass,
+          // which resets the track's cues and can drop its mode — reassert.
+          queueMicrotask(() => {
+            shownTrack.mode = 'showing';
+          });
         }
       }
       this.saveSubtitlePref(showing ? { lang: showing.language, label: showing.label } : null);
