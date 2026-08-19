@@ -11,7 +11,6 @@ import {PosterComponent} from "../../components/poster/poster.component";
 import {LoggerService} from "../../services/logger.service";
 import {TmdbService} from "../../services/tmdb.service";
 import {IMovie} from "../../interfaces/movie.interface";
-import {AdguardPromptComponent} from "../../components/adguard-prompt/adguard-prompt.component";
 import {environment} from "../../../environments/environment";
 import {Title, Meta} from '@angular/platform-browser';
 
@@ -25,7 +24,7 @@ interface EpisodeInfo {
 
 @Component({
   selector: 'app-movie-page',
-  imports: [NavbarComponent, BackButtonComponent, NgClass, MoviePlayerComponent, PosterComponent, AdguardPromptComponent],
+  imports: [NavbarComponent, BackButtonComponent, NgClass, MoviePlayerComponent, PosterComponent],
   templateUrl: './movie-page.component.html',
   styleUrl: './movie-page.component.css'
 })
