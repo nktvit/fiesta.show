@@ -11,6 +11,11 @@
       (play)="onPlaybackStarted()"
       (pause)="onPlaybackPaused(videoEl)"
       (ended)="onPlaybackEnded()"
+      (waiting)="onWaiting()"
+      (playing)="onPlaying()"
+      (canplay)="onCanPlay()"
+      (seeking)="onSeeking()"
+      (seeked)="onSeeked()"
     >
       @for (t of subtitleTracks(); track t.src) {
         <track kind="subtitles" [src]="t.src" [attr.srclang]="t.lang" [attr.label]="t.label" />
@@ -28,6 +33,19 @@
         class="h-full w-full object-cover"
       />
       <div class="absolute inset-0 bg-gradient-to-t from-black/75 via-black/30 to-black/45"></div>
+    </div>
+  }
+
+  <!-- Mid-playback buffering: the video holds the last decoded frame; spinner
+       floats over it without blocking the native controls. -->
+  @if (started() && buffering() && !errorMsg()) {
+    <div class="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+      <div class="flex h-16 w-16 sm:h-20 sm:w-20 items-center justify-center rounded-full bg-black/55 backdrop-blur-md ring-1 ring-white/10 shadow-2xl">
+        <svg class="h-7 w-7 sm:h-8 sm:w-8 animate-spin text-white" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+        </svg>
+      </div>
     </div>
   }
 
