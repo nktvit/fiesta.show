@@ -72,6 +72,29 @@ function sourceLabel(s) {
 // How many English variants to surface so the viewer can pick one that's in sync.
 const EN_VARIANTS = 5;
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// OpenSubtitles' legacy hosts rate-limit hard under concurrent load (shared
+// serverless egress IPs make this worse) and often fail transiently rather
+// than being actually down — a couple of short retries clears most of it.
+async function fetchWithRetry(url, isRetryable) {
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await sleep(300 * attempt);
+    try {
+      const r = await fetch(url, { headers: { 'User-Agent': UA }, redirect: 'follow' });
+      if (r.ok) return r;
+      lastErr = new Error('status ' + r.status);
+      if (!isRetryable(r.status)) break;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr;
+}
+
+const TRANSIENT_STATUS = (status) => status === 429 || status === 502 || status === 503;
+
 async function handleList(req, res) {
   const type = req.query.type === 'tv' ? 'tv' : 'movie';
   const id = req.query.id;
@@ -92,8 +115,7 @@ async function handleList(req, res) {
 
   let list = [];
   try {
-    const r = await fetch(url, { headers: { 'User-Agent': UA }, redirect: 'follow' });
-    if (!r.ok) throw new Error('search status ' + r.status);
+    const r = await fetchWithRetry(url, TRANSIENT_STATUS);
     const json = await r.json();
     if (Array.isArray(json)) list = json;
   } catch (e) {
@@ -166,35 +188,14 @@ async function handleList(req, res) {
   return res.status(200).json({ tracks });
 }
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-// OpenSubtitles' legacy download host rate-limits hard when a page's tracks
-// all fetch at once (shared serverless egress IPs make this worse). Most
-// failures are transient — a couple of short retries clears them.
-async function fetchSubFile(file) {
-  const url = DL_BASE + '/' + file + '.gz';
-  let lastErr;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    if (attempt > 0) await sleep(300 * attempt);
-    try {
-      const r = await fetch(url, { headers: { 'User-Agent': UA }, redirect: 'follow' });
-      if (r.ok) return Buffer.from(await r.arrayBuffer());
-      lastErr = new Error('download status ' + r.status);
-      if (r.status !== 429 && r.status !== 502 && r.status !== 503) break; // not transient, don't retry
-    } catch (e) {
-      lastErr = e;
-    }
-  }
-  throw lastErr;
-}
-
 async function handleVtt(req, res) {
   const file = req.query.file;
   if (!file || !/^\d+$/.test(file)) {
     return res.status(400).json({ error: 'invalid file id' });
   }
   try {
-    const buf = await fetchSubFile(file);
+    const r = await fetchWithRetry(DL_BASE + '/' + file + '.gz', TRANSIENT_STATUS);
+    const buf = Buffer.from(await r.arrayBuffer());
     const srt = decodeBuf(gunzipSync(buf), req.query.enc);
     const vtt = srtToVtt(srt);
     res.setHeader('Content-Type', 'text/vtt; charset=utf-8');
