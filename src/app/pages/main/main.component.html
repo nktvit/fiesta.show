@@ -1,6 +1,6 @@
 <main class="bg-[#0a0a0a] flex-grow text-white overflow-x-hidden">
   <!-- Navbar — transparent, overlaid on hero -->
-  <app-navbar class="fixed top-8 left-0 right-0 z-50" [showSearchBox]="true" [transparent]="true"></app-navbar>
+  <app-navbar #navbar class="fixed left-0 right-0 z-50 transition-[top] duration-300" [class.top-8]="!navbar.scrolled" [class.top-0]="navbar.scrolled" [showSearchBox]="true" [transparent]="true"></app-navbar>
 
   <!-- ═══════════════════════════════════════════ -->
   <!-- HERO BANNER                                 -->
