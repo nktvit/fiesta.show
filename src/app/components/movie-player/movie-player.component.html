@@ -18,7 +18,7 @@
       (seeked)="onSeeked()"
     >
       @for (t of subtitleTracks(); track t.src) {
-        <track kind="subtitles" [src]="t.src" [attr.srclang]="t.lang" [attr.label]="t.label" [default]="t.isDefault" />
+        <track kind="subtitles" [attr.src]="trackSrc(t)" [attr.srclang]="t.lang" [attr.label]="t.label" [default]="t.isDefault" />
       }
     </video>
   }
