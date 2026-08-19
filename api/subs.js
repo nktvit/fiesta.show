@@ -150,7 +150,13 @@ async function handleList(req, res) {
       });
     }
   }
+  // Cap non-English languages: with title's search results spanning 20-35
+  // languages, rendering a <track> per one makes the browser fetch every VTT
+  // at once — a burst OpenSubtitles' legacy download API rate-limits hard.
+  const OTHER_LANG_LIMIT = 12;
   const others = [...byLang.values()]
+    .sort((a, b) => b._dl - a._dl)
+    .slice(0, OTHER_LANG_LIMIT)
     .sort((a, b) => a.label.localeCompare(b.label))
     .map(({ _dl, ...t }) => t);
 
@@ -160,15 +166,35 @@ async function handleList(req, res) {
   return res.status(200).json({ tracks });
 }
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// OpenSubtitles' legacy download host rate-limits hard when a page's tracks
+// all fetch at once (shared serverless egress IPs make this worse). Most
+// failures are transient — a couple of short retries clears them.
+async function fetchSubFile(file) {
+  const url = DL_BASE + '/' + file + '.gz';
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await sleep(300 * attempt);
+    try {
+      const r = await fetch(url, { headers: { 'User-Agent': UA }, redirect: 'follow' });
+      if (r.ok) return Buffer.from(await r.arrayBuffer());
+      lastErr = new Error('download status ' + r.status);
+      if (r.status !== 429 && r.status !== 502 && r.status !== 503) break; // not transient, don't retry
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr;
+}
+
 async function handleVtt(req, res) {
   const file = req.query.file;
   if (!file || !/^\d+$/.test(file)) {
     return res.status(400).json({ error: 'invalid file id' });
   }
   try {
-    const r = await fetch(DL_BASE + '/' + file + '.gz', { headers: { 'User-Agent': UA }, redirect: 'follow' });
-    if (!r.ok) throw new Error('download status ' + r.status);
-    const buf = Buffer.from(await r.arrayBuffer());
+    const buf = await fetchSubFile(file);
     const srt = decodeBuf(gunzipSync(buf), req.query.enc);
     const vtt = srtToVtt(srt);
     res.setHeader('Content-Type', 'text/vtt; charset=utf-8');
@@ -176,6 +202,7 @@ async function handleVtt(req, res) {
     return res.status(200).send(vtt);
   } catch (e) {
     console.error('subs vtt error:', e);
+    res.setHeader('Cache-Control', 'no-store');
     return res.status(502).json({ error: String((e && e.message) || e) });
   }
 }
