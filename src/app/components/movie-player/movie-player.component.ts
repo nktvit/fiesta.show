@@ -75,6 +75,18 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
       const ref = this.videoEl();
       if (url && ref) void this.attach(ref.nativeElement, url);
     });
+
+    // Re-apply the saved subtitle preference whenever the track list changes
+    // (episode switch, retry, server escalation). The <track default>
+    // attribute alone isn't reliable here — some browsers stop honoring it
+    // on dynamically-swapped tracks once the viewer has touched captions
+    // once — so we also force textTrack.mode imperatively.
+    effect(() => {
+      const tracks = this.subtitleTracks();
+      const ref = this.videoEl();
+      if (!ref || tracks.length === 0) return;
+      this.applySubtitlePreference(ref.nativeElement);
+    });
   }
 
   ngOnChanges(_changes: SimpleChanges) {
@@ -291,8 +303,9 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   }
 
   // Mark the track matching the viewer's last-picked language (and variant,
-  // when the same label exists) so the browser shows it by default via the
-  // native <track default> attribute — no imperative textTrack wiring needed.
+  // when the same label exists) with the native <track default> attribute —
+  // a harmless first-paint hint; applySubtitlePreference() below is what
+  // actually and reliably enforces it once the tracks are in the DOM.
   private markPreferredSubtitle(
     tracks: { lang: string; label: string; src: string }[],
   ): { lang: string; label: string; src: string; isDefault: boolean }[] {
@@ -303,6 +316,20 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
       if (preferredIndex === -1) preferredIndex = tracks.findIndex((t) => t.lang === pref.lang);
     }
     return tracks.map((t, i) => ({ ...t, isDefault: i === preferredIndex }));
+  }
+
+  // Force the saved preference onto the current textTrack list. Runs whenever
+  // subtitleTracks() changes (episode switch, retry, server escalation) —
+  // browsers don't reliably re-apply <track default> on a swapped track list
+  // once the viewer has touched captions once, so this is the source of truth.
+  private applySubtitlePreference(video: HTMLVideoElement) {
+    const pref = this.readSubtitlePref();
+    if (!pref) return;
+    const list = video.textTracks;
+    for (let i = 0; i < list.length; i++) {
+      const t = list[i];
+      t.mode = t.language === pref.lang && t.label === pref.label ? 'showing' : 'disabled';
+    }
   }
 
   // Native <video> controls fire this on the track list whenever the viewer
