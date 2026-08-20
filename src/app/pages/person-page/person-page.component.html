@@ -49,17 +49,25 @@
             }
           </div>
 
-          @if (person.biography) {
+          @if (bioParagraphs.length > 0) {
             <div class="mt-6">
               <p class="mb-2 text-base font-bold text-white">Biography</p>
-              <p class="text-sm leading-relaxed text-gray-300 md:text-base" [class.line-clamp-4]="!isFullBio">
-                {{ person.biography }}
-              </p>
-              <button
-                class="mt-2 text-sm font-medium text-indigo-400 transition-colors duration-200 hover:text-indigo-300"
-                (click)="toggleBio()">
-                {{ isFullBio ? 'Show Less' : 'Read More' }}
-              </button>
+              <div class="space-y-3 text-sm leading-relaxed text-gray-300 md:text-base">
+                @if (isFullBio) {
+                  @for (paragraph of bioParagraphs; track $index) {
+                    <p>{{ paragraph }}</p>
+                  }
+                } @else {
+                  <p class="line-clamp-4">{{ bioParagraphs[0] }}</p>
+                }
+              </div>
+              @if (bioParagraphs.length > 1 || bioParagraphs[0].length > 300) {
+                <button
+                  class="mt-2 text-sm font-medium text-indigo-400 transition-colors duration-200 hover:text-indigo-300"
+                  (click)="toggleBio()">
+                  {{ isFullBio ? 'Show Less' : 'Read More' }}
+                </button>
+              }
             </div>
           }
         </div>
