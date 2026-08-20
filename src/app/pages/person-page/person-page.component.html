@@ -1,0 +1,87 @@
+<main class="bg-[#0a0a0a] min-h-screen text-white overflow-x-hidden">
+  <app-navbar [showSearchBox]="true" [transparent]="true"></app-navbar>
+
+  @if (isLoading) {
+    <div class="flex min-h-screen items-center justify-center">
+      <div class="flex flex-col items-center gap-4">
+        <div class="h-10 w-10 animate-spin rounded-full border-[3px] border-indigo-500 border-t-transparent"></div>
+        <span class="text-sm text-gray-500 uppercase tracking-widest">Loading</span>
+      </div>
+    </div>
+  }
+
+  @if (!isLoading && person) {
+    <div class="fade-in mx-auto w-full max-w-5xl px-4 pb-16 pt-24 md:px-8 md:pt-28">
+      <div class="mb-6">
+        <app-back-button></app-back-button>
+      </div>
+
+      <div class="flex flex-col gap-6 sm:flex-row md:gap-8">
+        <div class="mx-auto w-40 flex-shrink-0 sm:mx-0 sm:w-48">
+          <div class="aspect-[2/3] overflow-hidden rounded-xl bg-gray-800 shadow-2xl shadow-black/80">
+            @if (person.profilePath) {
+              <img [src]="person.profilePath" [alt]="person.name" class="h-full w-full object-cover">
+            } @else {
+              <div class="flex h-full w-full items-center justify-center text-gray-600">
+                <svg class="h-16 w-16" fill="currentColor" viewBox="0 0 24 24"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z"/></svg>
+              </div>
+            }
+          </div>
+        </div>
+
+        <div class="min-w-0 flex-grow">
+          <h1 class="text-center text-3xl font-black tracking-tight text-white sm:text-left md:text-4xl">{{ person.name }}</h1>
+
+          <div class="mt-3 flex flex-wrap justify-center gap-x-4 gap-y-1 text-sm text-gray-400 sm:justify-start">
+            @if (person.knownForDepartment) {
+              <span>{{ person.knownForDepartment }}</span>
+            }
+            @if (person.birthday) {
+              <span>
+                Born {{ person.birthday }}
+                @if (age !== null) {
+                  <span>(age {{ age }})</span>
+                }
+              </span>
+            }
+            @if (person.placeOfBirth) {
+              <span>{{ person.placeOfBirth }}</span>
+            }
+          </div>
+
+          @if (person.biography) {
+            <div class="mt-6">
+              <p class="mb-2 text-base font-bold text-white">Biography</p>
+              <p class="text-sm leading-relaxed text-gray-300 md:text-base" [class.line-clamp-4]="!isFullBio">
+                {{ person.biography }}
+              </p>
+              <button
+                class="mt-2 text-sm font-medium text-indigo-400 transition-colors duration-200 hover:text-indigo-300"
+                (click)="toggleBio()">
+                {{ isFullBio ? 'Show Less' : 'Read More' }}
+              </button>
+            </div>
+          }
+        </div>
+      </div>
+
+      @if (person.credits.length > 0) {
+        <section class="mt-10">
+          <h2 class="mb-4 text-lg font-bold text-white md:text-xl">Known For</h2>
+          <div class="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 md:gap-4 lg:grid-cols-6">
+            @for (credit of person.credits; track credit.tmdbId) {
+              <app-poster [movie]="credit"></app-poster>
+            }
+          </div>
+        </section>
+      }
+    </div>
+  }
+
+  @if (!isLoading && notFound) {
+    <div class="flex min-h-[50vh] flex-col items-center justify-center gap-4 px-6">
+      <p class="text-sm text-red-400">Unable to find this person.</p>
+      <app-back-button></app-back-button>
+    </div>
+  }
+</main>

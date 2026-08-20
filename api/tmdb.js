@@ -27,6 +27,8 @@ module.exports = async function handler(req, res) {
     tv_episodes: 's-maxage=86400, stale-while-revalidate=3600',
     find: 's-maxage=604800, stale-while-revalidate=86400',
     videos: 's-maxage=86400, stale-while-revalidate=3600',
+    credits: 's-maxage=604800, stale-while-revalidate=86400',
+    person: 's-maxage=604800, stale-while-revalidate=86400',
   };
 
   var listParam = req.query.list;
@@ -159,6 +161,67 @@ module.exports = async function handler(req, res) {
         .filter(function(item) { return item.vote_count > 50; })
         .map(function(item) { return mapMovie(item, mediaType); });
       return res.status(200).json({ movies: movies });
+    }
+
+    if (list === 'credits' && id) {
+      var mediaType = req.query.type === 'tv' ? 'tv' : 'movie';
+      var response = await fetch(TMDB_BASE + '/' + mediaType + '/' + id + '/credits?api_key=' + apiKey + '&language=en-US');
+      var data = await response.json();
+      var mapPerson = function(p) {
+        return {
+          id: p.id,
+          name: p.name,
+          profilePath: p.profile_path ? 'https://image.tmdb.org/t/p/w185' + p.profile_path : null,
+        };
+      };
+      var cast = (data.cast || []).slice(0, 12).map(function(p) {
+        var mapped = mapPerson(p);
+        mapped.character = p.character || '';
+        return mapped;
+      });
+      var directors = (data.crew || [])
+        .filter(function(p) { return p.job === 'Director'; })
+        .map(mapPerson);
+      return res.status(200).json({ cast: cast, directors: directors });
+    }
+
+    if (list === 'person' && id) {
+      var personResponse = await fetch(TMDB_BASE + '/person/' + id + '?api_key=' + apiKey + '&language=en-US');
+      var personData = await personResponse.json();
+      if (!personData || !personData.id) {
+        return res.status(404).json({ error: 'Person not found' });
+      }
+
+      var creditsResponse = await fetch(TMDB_BASE + '/person/' + id + '/combined_credits?api_key=' + apiKey + '&language=en-US');
+      var creditsData = await creditsResponse.json();
+
+      var seen = {};
+      var credits = (creditsData.cast || []).concat(creditsData.crew || [])
+        .filter(function(c) {
+          if (!c.poster_path) return false;
+          var key = c.media_type + '_' + c.id;
+          if (seen[key]) return false;
+          seen[key] = true;
+          return true;
+        })
+        .sort(function(a, b) {
+          var da = a.release_date || a.first_air_date || '';
+          var db = b.release_date || b.first_air_date || '';
+          return db.localeCompare(da);
+        })
+        .map(function(c) { return mapMovie(c, c.media_type); });
+
+      return res.status(200).json({
+        id: personData.id,
+        name: personData.name || '',
+        biography: personData.biography || '',
+        profilePath: personData.profile_path ? 'https://image.tmdb.org/t/p/w342' + personData.profile_path : null,
+        birthday: personData.birthday || null,
+        deathday: personData.deathday || null,
+        placeOfBirth: personData.place_of_birth || null,
+        knownForDepartment: personData.known_for_department || null,
+        credits: credits,
+      });
     }
 
     if (list === 'genres') {

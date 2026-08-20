@@ -17,6 +17,31 @@ export interface TmdbFindResult {
   releaseDate: string | null;
 }
 
+export interface CastMember {
+  id: number;
+  name: string;
+  character: string;
+  profilePath: string | null;
+}
+
+export interface CrewMember {
+  id: number;
+  name: string;
+  profilePath: string | null;
+}
+
+export interface PersonDetails {
+  id: number;
+  name: string;
+  biography: string;
+  profilePath: string | null;
+  birthday: string | null;
+  deathday: string | null;
+  placeOfBirth: string | null;
+  knownForDepartment: string | null;
+  credits: IMovie[];
+}
+
 @Injectable({ providedIn: 'root' })
 export class TmdbService {
   private http = inject(HttpClient);
@@ -182,6 +207,86 @@ export class TmdbService {
         .filter((item: any) => item.vote_count > 50)
         .map((item: any) => this.mapMovie(item, mediaType))),
       catchError(() => of([]))
+    );
+  }
+
+  getCredits(tmdbId: number, type: string = 'movie'): Observable<{ cast: CastMember[]; directors: CrewMember[] }> {
+    const mediaType = type === 'tv' ? 'tv' : 'movie';
+    const empty = { cast: [] as CastMember[], directors: [] as CrewMember[] };
+
+    if (environment.production) {
+      return this.http.get<any>(`/api/tmdb?list=credits&id=${tmdbId}&type=${mediaType}`).pipe(
+        map(res => ({ cast: res.cast || [], directors: res.directors || [] })),
+        catchError(() => of(empty))
+      );
+    }
+
+    const apiKey = (environment as any).TMDB_API_KEY;
+    return this.http.get<any>(
+      `https://api.themoviedb.org/3/${mediaType}/${tmdbId}/credits?api_key=${apiKey}&language=en-US`
+    ).pipe(
+      map(res => {
+        const mapPerson = (p: any) => ({
+          id: p.id,
+          name: p.name,
+          profilePath: p.profile_path ? `${TMDB_IMAGE_BASE}${p.profile_path}` : null,
+        });
+        const cast = (res.cast || []).slice(0, 12).map((p: any) => ({ ...mapPerson(p), character: p.character || '' }));
+        const directors = (res.crew || []).filter((p: any) => p.job === 'Director').map(mapPerson);
+        return { cast, directors };
+      }),
+      catchError(() => of(empty))
+    );
+  }
+
+  getPerson(personId: number): Observable<PersonDetails | null> {
+    if (environment.production) {
+      return this.http.get<any>(`/api/tmdb?list=person&id=${personId}`).pipe(
+        map(res => (res && res.id ? (res as PersonDetails) : null)),
+        catchError(() => of(null))
+      );
+    }
+
+    const apiKey = (environment as any).TMDB_API_KEY;
+    return this.http.get<any>(
+      `https://api.themoviedb.org/3/person/${personId}?api_key=${apiKey}&language=en-US`
+    ).pipe(
+      switchMap(person => {
+        if (!person || !person.id) return of(null);
+        return this.http.get<any>(
+          `https://api.themoviedb.org/3/person/${personId}/combined_credits?api_key=${apiKey}&language=en-US`
+        ).pipe(
+          map(creditsData => {
+            const seen = new Set<string>();
+            const credits: IMovie[] = [...(creditsData.cast || []), ...(creditsData.crew || [])]
+              .filter((c: any) => {
+                if (!c.poster_path) return false;
+                const key = `${c.media_type}_${c.id}`;
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+              })
+              .sort((a: any, b: any) =>
+                (b.release_date || b.first_air_date || '').localeCompare(a.release_date || a.first_air_date || '')
+              )
+              .map((c: any) => this.mapMovie(c, c.media_type));
+
+            const details: PersonDetails = {
+              id: person.id,
+              name: person.name || '',
+              biography: person.biography || '',
+              profilePath: person.profile_path ? `${TMDB_IMAGE_BASE}${person.profile_path}` : null,
+              birthday: person.birthday || null,
+              deathday: person.deathday || null,
+              placeOfBirth: person.place_of_birth || null,
+              knownForDepartment: person.known_for_department || null,
+              credits,
+            };
+            return details;
+          })
+        );
+      }),
+      catchError(() => of(null))
     );
   }
 
