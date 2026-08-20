@@ -29,6 +29,7 @@ module.exports = async function handler(req, res) {
     videos: 's-maxage=86400, stale-while-revalidate=3600',
     credits: 's-maxage=604800, stale-while-revalidate=86400',
     person: 's-maxage=604800, stale-while-revalidate=86400',
+    search_person: 's-maxage=3600, stale-while-revalidate=600',
   };
 
   var listParam = req.query.list;
@@ -222,6 +223,26 @@ module.exports = async function handler(req, res) {
         knownForDepartment: personData.known_for_department || null,
         credits: credits,
       });
+    }
+
+    if (list === 'search_person') {
+      var query = req.query.query || '';
+      if (!query) return res.status(200).json({ people: [] });
+      var response = await fetch(TMDB_BASE + '/search/person?api_key=' + apiKey + '&language=en-US&query=' + encodeURIComponent(query) + '&page=1');
+      var data = await response.json();
+      var people = (data.results || [])
+        .filter(function(p) { return p.known_for_department === 'Acting' || p.known_for_department === 'Directing'; })
+        .sort(function(a, b) { return (b.popularity || 0) - (a.popularity || 0); })
+        .slice(0, 8)
+        .map(function(p) {
+          return {
+            id: p.id,
+            name: p.name,
+            profilePath: p.profile_path ? 'https://image.tmdb.org/t/p/w185' + p.profile_path : null,
+            knownForDepartment: p.known_for_department || null,
+          };
+        });
+      return res.status(200).json({ people: people });
     }
 
     if (list === 'genres') {

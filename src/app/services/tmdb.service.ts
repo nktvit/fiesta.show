@@ -30,6 +30,13 @@ export interface CrewMember {
   profilePath: string | null;
 }
 
+export interface PersonSearchResult {
+  id: number;
+  name: string;
+  profilePath: string | null;
+  knownForDepartment: string | null;
+}
+
 export interface PersonDetails {
   id: number;
   name: string;
@@ -287,6 +294,35 @@ export class TmdbService {
         );
       }),
       catchError(() => of(null))
+    );
+  }
+
+  searchPeople(query: string): Observable<PersonSearchResult[]> {
+    const term = query.trim();
+    if (term.length < 2) return of([]);
+
+    if (environment.production) {
+      return this.http.get<any>(`/api/tmdb?list=search_person&query=${encodeURIComponent(term)}`).pipe(
+        map(res => res.people || []),
+        catchError(() => of([]))
+      );
+    }
+
+    const apiKey = (environment as any).TMDB_API_KEY;
+    return this.http.get<any>(
+      `https://api.themoviedb.org/3/search/person?api_key=${apiKey}&language=en-US&query=${encodeURIComponent(term)}&page=1`
+    ).pipe(
+      map(res => (res.results || [])
+        .filter((p: any) => p.known_for_department === 'Acting' || p.known_for_department === 'Directing')
+        .sort((a: any, b: any) => (b.popularity || 0) - (a.popularity || 0))
+        .slice(0, 8)
+        .map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          profilePath: p.profile_path ? `${TMDB_IMAGE_BASE}${p.profile_path}` : null,
+          knownForDepartment: p.known_for_department || null,
+        }))),
+      catchError(() => of([]))
     );
   }
 

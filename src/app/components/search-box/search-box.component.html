@@ -64,8 +64,8 @@
                 (mousedown)="selectSuggestion(suggestion)"
                 [ngClass]="{'bg-blue-50 dark:bg-gray-700': i === selectedSuggestionIndex}"
                 class="suggestion-item flex items-center p-3 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer transition-colors">
-                <!-- Poster thumbnail -->
-                <div class="flex-shrink-0 w-10 h-14 mr-3 rounded overflow-hidden">
+                <!-- Poster / avatar thumbnail -->
+                <div class="flex-shrink-0 w-10 h-14 mr-3 overflow-hidden" [ngClass]="suggestion.kind === 'person' ? 'rounded-full self-center' : 'rounded'">
                   @if (suggestion.poster) {
                     <img [src]="suggestion.poster" [alt]="suggestion.title" class="w-full h-full object-cover bg-gray-200 dark:bg-gray-700"
                       (error)="suggestion.poster = null"
@@ -79,7 +79,11 @@
                 <!-- Title and year -->
                 <div class="flex-grow min-w-0">
                   <div class="font-medium text-gray-800 dark:text-white truncate">{{ suggestion.title }}</div>
-                  <div class="text-xs text-gray-500 dark:text-gray-400">{{ suggestion.year }} · {{ suggestion.type | titlecase }}</div>
+                  @if (suggestion.kind === 'person') {
+                    <div class="text-xs text-gray-500 dark:text-gray-400">{{ suggestion.year || 'Actor / Director' }}</div>
+                  } @else {
+                    <div class="text-xs text-gray-500 dark:text-gray-400">{{ suggestion.year }} · {{ suggestion.type | titlecase }}</div>
+                  }
                 </div>
               </li>
             }

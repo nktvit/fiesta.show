@@ -70,7 +70,7 @@
           <h2 class="mb-4 text-lg font-bold text-white md:text-xl">Known For</h2>
           <div class="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 md:gap-4 lg:grid-cols-6">
             @for (credit of person.credits; track credit.tmdbId) {
-              <app-poster [movie]="credit"></app-poster>
+              <app-poster [movie]="credit" [displayTitle]="true"></app-poster>
             }
           </div>
         </section>

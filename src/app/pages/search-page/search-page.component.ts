@@ -2,8 +2,9 @@ import { Component, inject } from '@angular/core';
 import { Title, Meta } from '@angular/platform-browser';
 import { PosterComponent } from '../../components/poster/poster.component';
 import { MovieService } from '../../services/movie.service';
+import { PersonSearchResult, TmdbService } from '../../services/tmdb.service';
 import { NavbarComponent } from '../../components/navbar/navbar.component';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { NotfoundComponent } from '../../components/notfound/notfound.component';
 import { IMovie } from "../../interfaces/movie.interface";
 import { LoggerService } from "../../services/logger.service";
@@ -11,12 +12,13 @@ import { InfiniteScrollDirective } from '../../directives/infinite-scroll.direct
 
 @Component({
   selector: 'app-search-page',
-  imports: [PosterComponent, NavbarComponent, NotfoundComponent, InfiniteScrollDirective],
+  imports: [PosterComponent, NavbarComponent, NotfoundComponent, InfiniteScrollDirective, RouterLink],
   templateUrl: './search-page.component.html',
   styleUrl: './search-page.component.css'
 })
 export class SearchPageComponent {
   movies: IMovie[] = [];
+  people: PersonSearchResult[] = [];
   totalResults = 0;
   currentPage = 1;
   hasMore = false;
@@ -24,6 +26,7 @@ export class SearchPageComponent {
   isLoadingMore = false;
 
   private movieService = inject(MovieService);
+  private tmdbService = inject(TmdbService);
   private route = inject(ActivatedRoute);
   private logger = inject(LoggerService);
   private titleService = inject(Title);
@@ -36,9 +39,13 @@ export class SearchPageComponent {
         this.titleService.setTitle(`Search "${query}" | Stream Fiesta`);
         this.metaService.updateTag({ name: 'description', content: `Search results for "${query}" — watch free on Stream Fiesta.` });
         this.movies = [];
+        this.people = [];
         this.currentPage = 1;
         this.hasMore = false;
         this.fetchMovies(query, 1, false);
+        this.tmdbService.searchPeople(query).subscribe(people => {
+          this.people = people;
+        });
       }
     });
   }

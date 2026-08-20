@@ -1,9 +1,10 @@
 import { Component, inject, OnDestroy } from '@angular/core';
 import { MovieService } from '../../services/movie.service';
+import { TmdbService, PersonSearchResult } from '../../services/tmdb.service';
 import { NgClass, TitleCasePipe } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { LoggerService } from "../../services/logger.service";
-import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
+import { Subject, debounceTime, distinctUntilChanged, takeUntil, firstValueFrom } from 'rxjs';
 import { environment } from '../../../environments/environment';
 
 interface SearchSuggestion {
@@ -12,6 +13,7 @@ interface SearchSuggestion {
   year: string;
   type: string;
   poster: string | null;
+  kind?: 'title' | 'person';
 }
 
 @Component({
@@ -36,12 +38,14 @@ export class SearchBoxComponent implements OnDestroy {
   isLoadingMore = false;
   private suggestionsPage = 1;
   private totalSuggestions = 0;
+  private titleSuggestionsCount = 0;
   private lastSuggestionTerm = '';
   private searchTerms = new Subject<string>();
   private destroy$ = new Subject<void>();
   protected selectedSuggestionIndex = -1;
 
   private movieService = inject(MovieService);
+  private tmdbService = inject(TmdbService);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private logger = inject(LoggerService);
@@ -112,21 +116,27 @@ export class SearchBoxComponent implements OnDestroy {
       this.isLoadingSuggestions = true;
       this.suggestionsPage = 1;
       this.totalSuggestions = 0;
+      this.titleSuggestionsCount = 0;
     } else {
       this.isLoadingMore = true;
     }
 
     try {
-      let newSuggestions: SearchSuggestion[] = [];
+      let titleSuggestions: SearchSuggestion[] = [];
       let total = 0;
+
+      const peoplePromise: Promise<PersonSearchResult[]> = page === 1
+        ? firstValueFrom(this.tmdbService.searchPeople(term)).catch(() => [])
+        : Promise.resolve([]);
 
       if (environment.production) {
         const response = await fetch(`/api/suggestions?q=${encodeURIComponent(term)}&page=${page}`);
         const data = await response.json();
         if (data.suggestions) {
-          newSuggestions = data.suggestions.map((s: SearchSuggestion) => ({
+          titleSuggestions = data.suggestions.map((s: SearchSuggestion) => ({
             ...s,
-            poster: s.poster ? this.toThumbnail(s.poster) : null
+            poster: s.poster ? this.toThumbnail(s.poster) : null,
+            kind: 'title' as const,
           }));
           total = data.totalResults || data.suggestions.length;
         }
@@ -136,22 +146,35 @@ export class SearchBoxComponent implements OnDestroy {
         );
         const data = await response.json();
         if (data.Response === 'True') {
-          newSuggestions = data.Search.map((item: any) => ({
+          titleSuggestions = data.Search.map((item: any) => ({
             id: item.imdbID,
             title: item.Title,
             year: item.Year,
             type: item.Type,
-            poster: item.Poster !== 'N/A' ? this.toThumbnail(item.Poster) : null
+            poster: item.Poster !== 'N/A' ? this.toThumbnail(item.Poster) : null,
+            kind: 'title' as const,
           }));
           total = +data.totalResults;
         }
       }
 
+      const people = await peoplePromise;
+      const peopleSuggestions: SearchSuggestion[] = people.slice(0, 4).map(p => ({
+        id: String(p.id),
+        title: p.name,
+        year: p.knownForDepartment || '',
+        type: 'person',
+        poster: p.profilePath,
+        kind: 'person' as const,
+      }));
+
       if (page === 1) {
-        this.suggestions = newSuggestions;
+        this.suggestions = [...peopleSuggestions, ...titleSuggestions];
         this.totalSuggestions = total;
+        this.titleSuggestionsCount = titleSuggestions.length;
       } else {
-        this.suggestions = [...this.suggestions, ...newSuggestions];
+        this.suggestions = [...this.suggestions, ...titleSuggestions];
+        this.titleSuggestionsCount += titleSuggestions.length;
       }
       this.lastSuggestionTerm = term;
       this.suggestionsPage = page;
@@ -170,7 +193,7 @@ export class SearchBoxComponent implements OnDestroy {
   }
 
   get hasMoreSuggestions(): boolean {
-    return this.suggestions.length < this.totalSuggestions;
+    return this.titleSuggestionsCount < this.totalSuggestions;
   }
 
   onSuggestionsScroll(event: Event) {
@@ -194,11 +217,12 @@ export class SearchBoxComponent implements OnDestroy {
   }
 
   selectSuggestion(suggestion: SearchSuggestion) {
-    // It finds proper suggestion
-    // with correct naming
-    // so we can just redirect
     this.hideSuggestions();
-    this.router.navigate(['/movie', suggestion.id]);
+    if (suggestion.kind === 'person') {
+      this.router.navigate(['/person', suggestion.id]);
+    } else {
+      this.router.navigate(['/movie', suggestion.id]);
+    }
   }
 
   hideSuggestions() {
