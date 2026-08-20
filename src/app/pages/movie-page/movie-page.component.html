@@ -1,176 +1,228 @@
-<main class="flex flex-grow flex-col bg-gray-50 dark:bg-gray-900">
-  <app-navbar [showSearchBox]="true"></app-navbar>
+<main class="bg-[#0a0a0a] min-h-screen text-white overflow-x-hidden">
+  <app-navbar [showSearchBox]="true" [transparent]="true"></app-navbar>
 
-  <div class="mx-auto w-full max-w-5xl px-4 md:px-6">
-    <div class="my-4 md:my-6">
-      <app-back-button></app-back-button>
-    </div>
-
-    <!-- Loading State -->
-    @if (isLoading) {
-      <div class="flex min-h-[60vh] items-center justify-center">
-        <div class="flex flex-col items-center gap-4">
-          <div class="h-10 w-10 animate-spin rounded-full border-[3px] border-indigo-500 border-t-transparent"></div>
-          <span class="text-sm text-gray-400">Loading...</span>
-        </div>
+  <!-- Loading State -->
+  @if (isLoading) {
+    <div class="flex min-h-screen items-center justify-center">
+      <div class="flex flex-col items-center gap-4">
+        <div class="h-10 w-10 animate-spin rounded-full border-[3px] border-indigo-500 border-t-transparent"></div>
+        <span class="text-sm text-gray-500 uppercase tracking-widest">Loading</span>
       </div>
-    }
+    </div>
+  }
 
-    <!-- Content -->
-    @if (!isLoading && !invalidResponse) {
-    <div class="fade-in">
-      <div class="grid grid-cols-1 gap-8 md:grid-cols-12">
-        <div class="md:col-span-4 lg:col-span-3">
-          <div class="mx-auto w-full max-w-[280px] md:sticky md:top-4">
-            <app-poster class="block overflow-hidden rounded-lg shadow-xl dark:shadow-white/10"
-            [movie]="movieDetails"></app-poster>
+  @if (!isLoading && !invalidResponse) {
+  <div class="fade-in">
+
+    <!-- ── HERO ─────────────────────────────────────────────────────── -->
+    <section class="relative w-full">
+
+      <!-- Backdrop: landscape crop — shorter on mobile, taller on desktop -->
+      <div class="relative w-full h-[40vh] md:h-[52vh] overflow-hidden">
+        @if (backdropUrl) {
+          <img [src]="backdropUrl" [alt]="movieDetails.Title"
+            class="w-full h-full object-cover object-top">
+        } @else if (movieDetails.Poster && movieDetails.Poster !== 'N/A') {
+          <img [src]="movieDetails.Poster" [alt]="movieDetails.Title"
+            class="w-full h-full object-cover object-center blur-sm scale-110 opacity-30">
+        }
+        <!-- Left gradient -->
+        <div class="absolute inset-0 bg-gradient-to-r from-[#0a0a0a] via-[#0a0a0a]/50 to-transparent"></div>
+        <!-- Bottom gradient -->
+        <div class="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/20 to-transparent"></div>
+        <!-- Solid bottom strip -->
+        <div class="absolute bottom-0 left-0 right-0 h-28 bg-gradient-to-t from-[#0a0a0a] to-transparent"></div>
+      </div>
+
+      <!-- Back button over hero -->
+      <div class="absolute top-[72px] left-4 md:left-6 lg:left-10 z-20">
+        <app-back-button></app-back-button>
+      </div>
+
+    </section>
+    <!-- ── END HERO ──────────────────────────────────────────────────── -->
+
+    <!-- ── CONTENT ───────────────────────────────────────────────────── -->
+    <div class="relative z-10 mx-auto w-full max-w-5xl px-4 md:px-8">
+
+      <!-- Mobile: full-width info, no overlap, starts below hero -->
+      <!-- Desktop: two-column with poster overlapping hero via -mt-40 -->
+      <div class="flex flex-col md:flex-row gap-6 md:gap-8 pt-5 md:pt-0 md:-mt-40">
+
+        <!-- Left: sticky poster (desktop only) -->
+        <div class="hidden md:block flex-shrink-0 w-44 lg:w-52">
+          <div class="md:sticky md:top-24">
+            <app-poster class="block overflow-hidden rounded-lg shadow-2xl shadow-black/80"
+              [movie]="movieDetails"></app-poster>
             @if (trailerKey) {
-              <button
-                (click)="openTrailer()"
-                class="mt-3 w-full inline-flex items-center justify-center gap-2 rounded-lg bg-gray-900 dark:bg-white px-4 py-2.5 text-sm font-semibold text-white dark:text-gray-900 hover:bg-gray-700 dark:hover:bg-gray-200 transition-colors">
+              <button (click)="openTrailer()"
+                class="mt-3 w-full inline-flex items-center justify-center gap-2 rounded-md bg-white/10 backdrop-blur-sm px-4 py-2.5 text-sm font-semibold text-white hover:bg-white/20 transition-all duration-200 active:scale-95">
                 <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
                 Watch Trailer
               </button>
             }
           </div>
         </div>
-        <!-- Details Column -->
-        <div class="md:col-span-8 lg:col-span-9">
-          <!-- Title Section -->
-          <h1 class="text-3xl font-bold text-gray-900 md:text-4xl dark:text-white">
+
+        <!-- Info column: full width on mobile, flex-grow on desktop -->
+        <div class="flex-grow min-w-0">
+
+          <!-- Type badge -->
+          @if (type === 'tv') {
+            <span class="inline-block px-2 py-0.5 bg-indigo-600 text-white text-[10px] font-bold uppercase tracking-widest rounded mb-3">
+              TV Series
+            </span>
+          } @else {
+            <span class="inline-block px-2 py-0.5 bg-purple-700 text-white text-[10px] font-bold uppercase tracking-widest rounded mb-3">
+              Film
+            </span>
+          }
+
+          <!-- Title -->
+          <h1 class="text-3xl md:text-5xl font-black tracking-tight leading-tight text-white">
             {{ movieDetails.Title }}
             @if (movieDetails.Year && movieDetails.Year !== 'N/A') {
-              <span class="text-gray-600 dark:text-gray-400">({{ movieDetails.Year }})</span>
+              <span class="text-gray-500 font-normal text-xl md:text-2xl ml-1">({{ movieDetails.Year }})</span>
             }
           </h1>
-          <!-- Metadata Section -->
-          <div class="mt-3 space-x-2 text-sm text-gray-500 dark:text-gray-400">
+
+          <!-- Metadata row -->
+          <div class="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm text-gray-400">
             @if (movieDetails.Rated && movieDetails.Rated !== 'N/A') {
-              <span>{{ movieDetails.Rated }}</span>
-              <span class="text-gray-300 dark:text-gray-600">•</span>
+              <span class="border border-gray-700 rounded px-1.5 py-0.5 text-[11px] font-medium text-gray-400">{{ movieDetails.Rated }}</span>
             }
             @if (movieDetails.Runtime && movieDetails.Runtime !== 'N/A') {
               <span>{{ movieDetails.Runtime }}</span>
-              <span class="text-gray-300 dark:text-gray-600">•</span>
             }
             @if (movieDetails.totalSeasons && movieDetails.totalSeasons !== 'N/A') {
-              <span>{{ movieDetails.totalSeasons }} seasons</span>
-              <span class="text-gray-300 dark:text-gray-600">•</span>
+              <span class="text-gray-600">•</span>
+              <span>{{ movieDetails.totalSeasons }} Seasons</span>
             }
             @if (movieDetails.Genre && movieDetails.Genre !== 'N/A') {
-              <span>{{ movieDetails.Genre }}</span>
+              <span class="text-gray-600">•</span>
+              <span class="text-gray-300">{{ movieDetails.Genre }}</span>
             }
           </div>
-          <!-- Ratings Section -->
+
+          <!-- Ratings -->
           <div class="mt-4 flex flex-wrap gap-2">
-            <!-- IMDB -->
             @if (movieDetails.imdbRating && movieDetails.imdbRating !== 'N/A') {
               <a [href]="'https://www.imdb.com/title/' + imdbId + '/'" target="_blank" rel="noopener noreferrer"
                 [title]="movieDetails.imdbVotes && movieDetails.imdbVotes !== 'N/A' ? movieDetails.imdbVotes + ' votes' : ''"
-                class="inline-flex items-center rounded-full bg-yellow-500 px-3 py-1.5 text-xs font-semibold text-black hover:bg-yellow-400 transition-colors cursor-pointer">
-                IMDb {{ movieDetails.imdbRating }}
+                class="inline-flex items-center gap-1 rounded-full bg-yellow-500 px-3 py-1.5 text-xs font-bold text-black hover:brightness-110 transition-all duration-200 cursor-pointer">
+                <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
+                IMDb <span class="font-black text-sm">{{ movieDetails.imdbRating }}</span>
               </a>
             }
-            <!-- Platform Ratings (Including Rotten Tomatoes) -->
             @for (rating of movieDetails.Ratings; track rating) {
-              <!-- Rotten Tomatoes -->
               @if (rating.Source === 'Rotten Tomatoes' && rating.Value !== 'N/A') {
                 <a [href]="'https://www.rottentomatoes.com/search?search=' + movieDetails.Title" target="_blank" rel="noopener noreferrer"
-                  class="inline-flex items-center rounded-full bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-500 transition-colors cursor-pointer">
-                  {{ rating.Source }} {{ rating.Value }}
+                  class="inline-flex items-center rounded-full bg-red-600 px-3 py-1.5 text-xs font-bold text-white hover:brightness-110 transition-all duration-200 cursor-pointer">
+                  RT {{ rating.Value }}
                 </a>
               }
-              <!-- Metacritic -->
               @if (rating.Source === 'Metacritic' && rating.Value !== 'N/A') {
                 <a [href]="'https://www.metacritic.com/search/' + movieDetails.Title + '/'" target="_blank" rel="noopener noreferrer"
-                  class="inline-flex items-center rounded-full bg-black border-2 border-[#ffd016] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#030303] transition-colors cursor-pointer">
-                  {{ rating.Source }} {{ rating.Value }}
+                  class="inline-flex items-center rounded-full bg-black border-2 border-[#ffd016] px-3 py-1.5 text-xs font-bold text-white hover:brightness-110 transition-all duration-200 cursor-pointer">
+                  MC {{ rating.Value }}
                 </a>
               }
-              <!-- TMDB -->
               @if (rating.Source === 'TMDB' && rating.Value !== 'N/A') {
                 <a [href]="'https://www.themoviedb.org/' + type + '/' + tmdbId" target="_blank" rel="noopener noreferrer"
-                  class="inline-flex items-center rounded-full bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500 transition-colors cursor-pointer">
-                  {{ rating.Source }} {{ rating.Value }}
+                  class="inline-flex items-center rounded-full bg-blue-600 px-3 py-1.5 text-xs font-bold text-white hover:brightness-110 transition-all duration-200 cursor-pointer">
+                  TMDB {{ rating.Value }}
                 </a>
               }
-              <!-- Other Platforms -->
               @if (rating.Source !== 'Rotten Tomatoes' && rating.Source !== 'Metacritic' && rating.Source !== 'Internet Movie Database' && rating.Source !== 'TMDB' && rating.Value !== 'N/A') {
-                <span
-                  class="inline-flex items-center rounded-full bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white">
+                <span class="inline-flex items-center rounded-full bg-gray-700/80 px-3 py-1.5 text-xs font-bold text-white">
                   {{ rating.Source }} {{ rating.Value }}
                 </span>
               }
             }
-            <!-- Metacritic fallback from Metascore field -->
             @if (showMetascoreFallback) {
               <a [href]="'https://www.metacritic.com/search/' + movieDetails.Title + '/'" target="_blank" rel="noopener noreferrer"
-                class="inline-flex items-center rounded-full bg-black border-2 border-[#ffd016] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#030303] transition-colors cursor-pointer">
-                Metacritic {{ movieDetails.Metascore }}/100
+                class="inline-flex items-center rounded-full bg-black border-2 border-[#ffd016] px-3 py-1.5 text-xs font-bold text-white hover:brightness-110 transition-all duration-200 cursor-pointer">
+                MC {{ movieDetails.Metascore }}/100
               </a>
             }
           </div>
-          <!-- Plot Section -->
+
+          <!-- Mobile trailer button -->
+          @if (trailerKey) {
+            <button (click)="openTrailer()"
+              class="md:hidden mt-4 inline-flex items-center gap-2 rounded-md bg-white/10 backdrop-blur-sm px-4 py-2.5 text-sm font-semibold text-white hover:bg-white/20 transition-all duration-200 active:scale-95">
+              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+              Watch Trailer
+            </button>
+          }
+
+          <!-- Plot -->
           @if (adjustedPlot) {
             <div class="mt-8">
-              <h2 class="text-xl font-semibold text-gray-900 dark:text-white">Plot</h2>
-              <p class="mt-2 text-gray-700 dark:text-gray-300" [ngClass]="{'line-clamp-3': shouldClamp}">
+              <p class="text-base font-bold text-white mb-2">Plot</p>
+              <p class="text-gray-300 leading-relaxed text-sm md:text-base"
+                [ngClass]="{'line-clamp-3': shouldClamp}">
                 {{ adjustedPlot }}
               </p>
               @if (isPlotLong) {
-                <button
-                  class="mt-2 text-sm font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                <button class="mt-2 text-sm font-medium text-indigo-400 hover:text-indigo-300 transition-colors duration-200"
                   (click)="togglePlot()">
                   {{ isFullPlot ? 'Show Less' : 'Read More' }}
                 </button>
               }
             </div>
           }
-          <!-- Details Section -->
+
+          <!-- Details -->
           @if (movieDetailsArray.length > 0) {
-            <div class="mt-8">
-              <h2 class="text-xl font-semibold text-gray-900 dark:text-white">Details</h2>
-              <dl class="mt-4 space-y-3">
+            <div class="mt-8 mb-4">
+              <p class="text-base font-bold text-white mb-4">Details</p>
+              <dl class="space-y-3">
                 @for (detail of movieDetailsArray; track detail) {
                   @if (detail.show && detail.value && detail.value !== 'N/A') {
-                    <div class="flex flex-col gap-1">
-                      <dt class="text-sm font-medium text-gray-900 dark:text-white">{{ detail.label }}</dt>
-                      <dd class="text-gray-700 dark:text-gray-300">{{ detail.value }}</dd>
+                    <div class="flex flex-col sm:flex-row sm:gap-4">
+                      <dt class="text-[10px] uppercase tracking-widest text-gray-500 font-bold w-28 flex-shrink-0 pt-0.5">
+                        {{ detail.label }}
+                      </dt>
+                      <dd class="text-gray-300 text-sm leading-relaxed">{{ detail.value }}</dd>
                     </div>
                   }
                 }
               </dl>
             </div>
           }
-        </div>
-      </div>
-      <!-- Episode Picker & Player (series only) -->
+
+        </div><!-- /info column -->
+      </div><!-- /two-column row -->
+
+      <!-- ── TV PLAYER ──────────────────────────────────────────────── -->
       @if (type === 'tv' && totalSeasons > 0 && imdbId && !invalidResponse) {
-        <div class="mt-10 md:mt-16 lg:mt-24 mb-6 md:mb-10 lg:mb-16 rounded-xl bg-white dark:bg-gray-800/60 shadow-lg" style="clip-path: inset(0 round 0.75rem)">
+        <div class="mt-10 rounded-xl overflow-hidden bg-[#111111] border border-white/5 shadow-2xl">
+
           <!-- Player -->
           <div class="bg-black">
             <app-movie-player [imdbId]="imdbId" [type]="type" [season]="season" [episode]="episode" [poster]="playerPoster" [server]="server" (serverChange)="onServerChange($event)"></app-movie-player>
           </div>
 
-          <!-- Now playing bar -->
-          <div class="flex flex-wrap items-center justify-between gap-3 px-5 py-3 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700/50">
+          <!-- Now Playing bar -->
+          <div class="flex flex-wrap items-center justify-between gap-3 px-5 py-3 border-b border-white/5">
             <div class="flex items-center gap-3">
-              <span class="text-xs font-semibold uppercase tracking-wider text-indigo-500 dark:text-indigo-400">Now Playing</span>
-              <span class="text-sm font-medium text-gray-900 dark:text-white">
-                Season {{ season }}, Episode {{ episode }}
+              <span class="text-xs font-bold uppercase tracking-wider text-indigo-400">Now Playing</span>
+              <span class="text-sm font-medium text-white">
+                S{{ season }} E{{ episode }}
                 @if (episodes.length > 0 && episode && episode <= episodes.length) {
-                  <span class="text-gray-500 dark:text-gray-400">&mdash; {{ episodes[episode - 1].title }}</span>
+                  <span class="text-gray-500"> — {{ episodes[episode - 1].title }}</span>
                 }
               </span>
             </div>
             <div class="flex items-center gap-1.5">
               <button (click)="prevEpisode()" [disabled]="episode === 1"
-                class="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-indigo-100 hover:text-indigo-600 dark:hover:bg-indigo-900/40 dark:hover:text-indigo-400 disabled:opacity-25 disabled:cursor-not-allowed transition-colors">
+                class="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium bg-white/5 text-gray-300 hover:bg-indigo-600/30 hover:text-indigo-300 disabled:opacity-25 disabled:cursor-not-allowed transition-all duration-200">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
                 Prev
               </button>
               <button (click)="nextEpisode()" [disabled]="episodes.length > 0 && episode !== null && episode >= episodes.length"
-                class="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-indigo-100 hover:text-indigo-600 dark:hover:bg-indigo-900/40 dark:hover:text-indigo-400 disabled:opacity-25 disabled:cursor-not-allowed transition-colors">
+                class="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium bg-white/5 text-gray-300 hover:bg-indigo-600/30 hover:text-indigo-300 disabled:opacity-25 disabled:cursor-not-allowed transition-all duration-200">
                 Next
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
               </button>
@@ -178,14 +230,14 @@
           </div>
 
           <!-- Season tabs -->
-          <div class="px-5 py-3 border-b border-gray-200 dark:border-gray-700/50">
-            <div class="flex flex-nowrap items-center gap-1.5 overflow-x-auto pb-1">
+          <div class="px-5 py-3 border-b border-white/5">
+            <div class="flex flex-nowrap items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
               @for (s of seasonNumbers; track s) {
                 <button (click)="onSeasonChange(s)"
-                  class="flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors"
+                  class="flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all duration-200"
                   [ngClass]="s === season
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'bg-gray-100 dark:bg-gray-700/60 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'">
+                    ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-900/50'
+                    : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'">
                   {{ seasonNames.get(s) || 'Season ' + s }}
                 </button>
               }
@@ -194,29 +246,24 @@
 
           <!-- Episode list -->
           @if (loadingEpisodes) {
-            <div class="flex items-center justify-center py-8">
+            <div class="flex items-center justify-center py-10">
               <div class="h-5 w-5 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent"></div>
             </div>
           } @else if (episodes.length > 0 && episodes[0].still) {
-            <!-- Horizontal scroll with thumbnails -->
+            <!-- Thumbnail scroll -->
             <div class="flex gap-3 overflow-x-auto px-5 py-4 scrollbar-hide">
               @for (ep of episodes; track ep.number) {
                 <button (click)="goToEpisode(season!, ep.number)"
-                  class="flex-shrink-0 w-48 rounded-lg overflow-hidden text-left transition-all"
+                  class="flex-shrink-0 w-48 rounded-lg overflow-hidden text-left transition-all duration-200"
                   [ngClass]="ep.number === episode
-                    ? 'ring-2 ring-indigo-500 shadow-lg'
-                    : 'hover:shadow-md hover:scale-[1.02]'">
-                  <!-- Thumbnail -->
+                    ? 'ring-2 ring-indigo-500 shadow-lg shadow-indigo-900/40'
+                    : 'opacity-70 hover:opacity-100 hover:scale-[1.02]'">
                   <div class="relative">
-                    <img [src]="ep.still" [alt]="ep.title" class="w-full h-28 object-cover bg-gray-200 dark:bg-gray-700">
-                    <!-- Episode number overlay -->
+                    <img [src]="ep.still" [alt]="ep.title" class="w-full h-28 object-cover bg-gray-900">
                     <span class="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold"
-                      [ngClass]="ep.number === episode
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-black/60 text-white'">
+                      [ngClass]="ep.number === episode ? 'bg-indigo-600 text-white' : 'bg-black/70 text-white'">
                       {{ ep.number }}
                     </span>
-                    <!-- Playing indicator overlay -->
                     @if (ep.number === episode) {
                       <div class="absolute inset-0 bg-indigo-600/20 flex items-center justify-center">
                         <span class="flex items-center gap-0.5">
@@ -226,57 +273,47 @@
                         </span>
                       </div>
                     }
-                    <!-- Rating overlay -->
                     @if (ep.rating) {
-                      <span class="absolute top-1.5 right-1.5 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-black/60 text-[10px] font-medium text-yellow-400">
+                      <span class="absolute top-1.5 right-1.5 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-black/70 text-[10px] font-medium text-yellow-400">
                         <svg class="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
                         {{ ep.rating }}
                       </span>
                     }
                   </div>
-                  <!-- Info -->
-                  <div class="px-2.5 py-2 bg-white dark:bg-gray-800">
+                  <div class="px-2.5 py-2 bg-[#181818]">
                     <p class="text-xs font-medium truncate"
-                      [ngClass]="ep.number === episode
-                        ? 'text-indigo-600 dark:text-indigo-400'
-                        : 'text-gray-900 dark:text-white'">
+                      [ngClass]="ep.number === episode ? 'text-indigo-400' : 'text-white'">
                       {{ ep.title }}
                     </p>
                     @if (ep.airDate) {
-                      <p class="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">{{ ep.airDate }}</p>
+                      <p class="text-[10px] text-gray-600 mt-0.5">{{ ep.airDate }}</p>
                     }
                   </div>
                 </button>
               }
             </div>
           } @else {
-            <!-- Vertical list fallback (no thumbnails) -->
+            <!-- Vertical list fallback -->
             <div class="max-h-72 overflow-y-auto">
               @for (ep of episodes; track ep.number) {
                 <button (click)="goToEpisode(season!, ep.number)"
-                  class="w-full flex items-center gap-4 px-5 py-3 text-left transition-colors border-b border-gray-100 dark:border-gray-700/30 last:border-0"
-                  [ngClass]="ep.number === episode
-                    ? 'bg-indigo-50 dark:bg-indigo-900/20'
-                    : 'hover:bg-gray-50 dark:hover:bg-gray-800/40'">
+                  class="w-full flex items-center gap-4 px-5 py-3 text-left transition-all duration-200 border-b border-white/5 last:border-0"
+                  [ngClass]="ep.number === episode ? 'bg-indigo-600/10' : 'hover:bg-white/5'">
                   <span class="flex-shrink-0 w-8 h-8 rounded-md flex items-center justify-center text-xs font-bold"
-                    [ngClass]="ep.number === episode
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'">
+                    [ngClass]="ep.number === episode ? 'bg-indigo-600 text-white' : 'bg-white/5 text-gray-500'">
                     {{ ep.number }}
                   </span>
                   <div class="flex-grow min-w-0">
                     <p class="text-sm font-medium truncate"
-                      [ngClass]="ep.number === episode
-                        ? 'text-indigo-700 dark:text-indigo-300'
-                        : 'text-gray-900 dark:text-white'">
+                      [ngClass]="ep.number === episode ? 'text-indigo-300' : 'text-white'">
                       {{ ep.title }}
                     </p>
                     @if (ep.airDate) {
-                      <p class="text-xs text-gray-400 dark:text-gray-500">{{ ep.airDate }}</p>
+                      <p class="text-xs text-gray-600">{{ ep.airDate }}</p>
                     }
                   </div>
                   @if (ep.rating) {
-                    <span class="flex-shrink-0 inline-flex items-center gap-1 text-xs font-medium text-yellow-600 dark:text-yellow-400">
+                    <span class="flex-shrink-0 inline-flex items-center gap-1 text-xs font-medium text-yellow-500">
                       <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
                       {{ ep.rating }}
                     </span>
@@ -292,53 +329,57 @@
               }
             </div>
           }
+
         </div>
       }
 
-      <!-- Movie Player (non-series) -->
+      <!-- ── MOVIE PLAYER ───────────────────────────────────────────── -->
       @if (type !== 'tv' && imdbId && !invalidResponse) {
         <div class="mt-10 md:mt-16 lg:mt-24 mb-6 md:mb-10 lg:mb-16 rounded-xl shadow-lg bg-black" style="clip-path: inset(0 round 0.75rem)">
           <app-movie-player [imdbId]="imdbId" [type]="type" [season]="season" [episode]="episode" [poster]="playerPoster" [server]="server" (serverChange)="onServerChange($event)"></app-movie-player>
         </div>
       }
+
+      <!-- ── RECOMMENDATIONS ────────────────────────────────────────── -->
+      @if (recommendations.length > 0) {
+        <section class="mt-12 mb-10">
+          <h2 class="text-lg md:text-xl font-bold text-white mb-3">You Might Also Like</h2>
+          <div class="flex gap-2 md:gap-3 overflow-x-auto pb-4 -mx-4 md:-mx-8 px-4 md:px-8 scrollbar-hide">
+            @for (movie of recommendations; track movie.tmdbId ?? movie.imdbID) {
+              <div class="w-[120px] sm:w-[140px] md:w-[160px] flex-shrink-0 transition-transform duration-200 hover:scale-105">
+                <app-poster [movie]="movie" [displayTitle]="true" class="rounded-lg overflow-hidden"></app-poster>
+              </div>
+            }
+          </div>
+        </section>
+      }
+
+    </div><!-- /max-w-5xl -->
+  </div><!-- /fade-in -->
+  }
+
+  <!-- Error State -->
+  @if (invalidResponse) {
+    <div class="flex min-h-[50vh] flex-col items-center justify-center gap-4 px-6">
+      <p class="text-red-400 text-sm">Unable to fetch movie details. Please try again later.</p>
+      <app-back-button></app-back-button>
     </div>
-    }
-
-    <!-- You might also like -->
-    @if (recommendations.length > 0) {
-      <section class="mt-10 md:mt-14 mb-8">
-        <h2 class="text-xl md:text-2xl font-bold text-gray-900 dark:text-white mb-4">You Might Also Like</h2>
-        <div class="flex gap-2 md:gap-3 overflow-x-auto pb-4 -mx-4 md:-mx-6 px-4 md:px-6 scrollbar-hide">
-          @for (movie of recommendations; track movie.tmdbId ?? movie.imdbID) {
-            <div class="w-[120px] sm:w-[140px] md:w-[160px] flex-shrink-0 transition-transform duration-200 hover:scale-105">
-              <app-poster [movie]="movie" [displayTitle]="true" class="rounded-lg overflow-hidden"></app-poster>
-            </div>
-          }
-        </div>
-      </section>
-    }
-
-    <!-- Error State -->
-    @if (invalidResponse) {
-      <div class="mt-8 rounded-lg bg-red-50 p-4 dark:bg-red-900/10">
-        <p class="text-red-700 dark:text-red-400">Unable to fetch movie details. Please try again later.</p>
-      </div>
-    }
-  </div>
+  }
 
   <!-- Trailer Modal -->
   @if (showTrailer && trailerUrl) {
-    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm" (click)="closeTrailer()">
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md"
+      (click)="closeTrailer()">
       <div class="relative w-full max-w-4xl mx-4" (click)="$event.stopPropagation()">
-        <button
-          (click)="closeTrailer()"
-          class="absolute -top-10 right-0 text-white/70 hover:text-white transition-colors text-sm font-medium flex items-center gap-1">
+        <button (click)="closeTrailer()"
+          class="absolute -top-10 right-0 text-white/60 hover:text-white transition-colors duration-200 text-sm font-medium flex items-center gap-1.5">
           Close
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
         </button>
         <div class="rounded-xl overflow-hidden shadow-2xl">
-          <iframe
-            [src]="trailerUrl"
+          <iframe [src]="trailerUrl"
             class="w-full"
             style="aspect-ratio: 16 / 9;"
             allow="autoplay; encrypted-media"
@@ -348,4 +389,5 @@
       </div>
     </div>
   }
+
 </main>

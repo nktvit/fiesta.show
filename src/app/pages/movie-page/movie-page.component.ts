@@ -176,6 +176,7 @@ export class MoviePageComponent implements OnDestroy {
         this.isLoading = false;
         this.loadRecommendations();
         this.loadTrailer();
+        this.loadBackdrop();
       })
     ).subscribe();
   }
@@ -369,6 +370,14 @@ export class MoviePageComponent implements OnDestroy {
             this.trailerKey = key;
           });
         }
+      });
+    }
+  }
+
+  private loadBackdrop() {
+    if (this.imdbId) {
+      this.tmdbService.findByImdbId(this.imdbId).subscribe(result => {
+        this.backdropUrl = result?.backdrop ?? null;
       });
     }
   }
