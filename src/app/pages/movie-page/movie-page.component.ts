@@ -1,7 +1,7 @@
 import {Component, inject, PLATFORM_ID, OnDestroy} from '@angular/core';
 import {isPlatformBrowser, NgClass} from '@angular/common';
 import {MovieService} from '../../services/movie.service';
-import {ActivatedRoute, Router} from '@angular/router';
+import {ActivatedRoute, Router, RouterLink} from '@angular/router';
 import {DomSanitizer, SafeResourceUrl} from '@angular/platform-browser';
 import {NavbarComponent} from '../../components/navbar/navbar.component';
 import {BackButtonComponent} from '../../components/back-button/back-button.component';
@@ -9,7 +9,7 @@ import {MoviePlayerComponent} from "../../components/movie-player/movie-player.c
 import {catchError, of, switchMap, tap} from "rxjs";
 import {PosterComponent} from "../../components/poster/poster.component";
 import {LoggerService} from "../../services/logger.service";
-import {TmdbService} from "../../services/tmdb.service";
+import {TmdbService, CastMember, CrewMember} from "../../services/tmdb.service";
 import {IMovie} from "../../interfaces/movie.interface";
 import {environment} from "../../../environments/environment";
 import {Title, Meta} from '@angular/platform-browser';
@@ -24,7 +24,7 @@ interface EpisodeInfo {
 
 @Component({
   selector: 'app-movie-page',
-  imports: [NavbarComponent, BackButtonComponent, NgClass, MoviePlayerComponent, PosterComponent],
+  imports: [NavbarComponent, BackButtonComponent, NgClass, MoviePlayerComponent, PosterComponent, RouterLink],
   templateUrl: './movie-page.component.html',
   styleUrl: './movie-page.component.css'
 })
@@ -56,6 +56,8 @@ export class MoviePageComponent implements OnDestroy {
   private originalRouteId: string = '';
   protected tmdbId: number | null = null;
   protected backdropUrl: string | null = null;
+  protected cast: CastMember[] = [];
+  protected directors: CrewMember[] = [];
 
   private movieService = inject(MovieService);
   private tmdbService = inject(TmdbService);
@@ -101,6 +103,8 @@ export class MoviePageComponent implements OnDestroy {
         this.showTrailer = false;
         this.tmdbId = null;
         this.backdropUrl = null;
+        this.cast = [];
+        this.directors = [];
         this.originalRouteId = id;
         window.scrollTo({ top: 0 });
 
@@ -177,6 +181,7 @@ export class MoviePageComponent implements OnDestroy {
         this.loadRecommendations();
         this.loadTrailer();
         this.loadBackdrop();
+        this.loadCredits();
       })
     ).subscribe();
   }
@@ -368,6 +373,28 @@ export class MoviePageComponent implements OnDestroy {
         if (id) {
           this.tmdbService.getTrailerKey(id, this.type).subscribe(key => {
             this.trailerKey = key;
+          });
+        }
+      });
+    }
+  }
+
+  private loadCredits() {
+    const resolvedId = this.tmdbId
+      || +(this.route.snapshot.queryParams['tmdb'] || 0)
+      || (/^\d+$/.test(this.originalRouteId) ? +this.originalRouteId : 0);
+
+    if (resolvedId) {
+      this.tmdbService.getCredits(resolvedId, this.type).subscribe(({cast, directors}) => {
+        this.cast = cast;
+        this.directors = directors;
+      });
+    } else if (this.imdbId) {
+      this.tmdbService.findTmdbId(this.imdbId).subscribe(id => {
+        if (id) {
+          this.tmdbService.getCredits(id, this.type).subscribe(({cast, directors}) => {
+            this.cast = cast;
+            this.directors = directors;
           });
         }
       });
