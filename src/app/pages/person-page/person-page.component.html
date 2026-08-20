@@ -49,17 +49,25 @@
             }
           </div>
 
-          @if (person.biography) {
+          @if (bioParagraphs.length > 0) {
             <div class="mt-6">
               <p class="mb-2 text-base font-bold text-white">Biography</p>
-              <p class="text-sm leading-relaxed text-gray-300 md:text-base" [class.line-clamp-4]="!isFullBio">
-                {{ person.biography }}
-              </p>
-              <button
-                class="mt-2 text-sm font-medium text-indigo-400 transition-colors duration-200 hover:text-indigo-300"
-                (click)="toggleBio()">
-                {{ isFullBio ? 'Show Less' : 'Read More' }}
-              </button>
+              <div class="space-y-3 text-sm leading-relaxed text-gray-300 md:text-base">
+                @if (isFullBio) {
+                  @for (paragraph of bioParagraphs; track $index) {
+                    <p>{{ paragraph }}</p>
+                  }
+                } @else {
+                  <p class="line-clamp-4">{{ bioParagraphs[0] }}</p>
+                }
+              </div>
+              @if (bioParagraphs.length > 1 || bioParagraphs[0].length > 300) {
+                <button
+                  class="mt-2 text-sm font-medium text-indigo-400 transition-colors duration-200 hover:text-indigo-300"
+                  (click)="toggleBio()">
+                  {{ isFullBio ? 'Show Less' : 'Read More' }}
+                </button>
+              }
             </div>
           }
         </div>
@@ -70,7 +78,7 @@
           <h2 class="mb-4 text-lg font-bold text-white md:text-xl">Known For</h2>
           <div class="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 md:gap-4 lg:grid-cols-6">
             @for (credit of person.credits; track credit.tmdbId) {
-              <app-poster [movie]="credit"></app-poster>
+              <app-poster [movie]="credit" [displayTitle]="true"></app-poster>
             }
           </div>
         </section>

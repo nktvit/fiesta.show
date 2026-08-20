@@ -9,6 +9,28 @@
       </div>
     }
 
+    @if (people.length > 0) {
+      <div class="px-8 pt-4">
+        <p class="text-sm font-bold text-white mb-3">People</p>
+        <div class="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
+          @for (person of people; track person.id) {
+            <a [routerLink]="['/person', person.id]" class="group flex w-16 flex-shrink-0 flex-col items-center text-center">
+              <div class="h-16 w-16 overflow-hidden rounded-full bg-gray-800 ring-1 ring-white/10 transition-all duration-200 group-hover:ring-indigo-500">
+                @if (person.profilePath) {
+                  <img [src]="person.profilePath" [alt]="person.name" class="h-full w-full object-cover">
+                } @else {
+                  <div class="flex h-full w-full items-center justify-center text-gray-600">
+                    <svg class="h-6 w-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z"/></svg>
+                  </div>
+                }
+              </div>
+              <span class="mt-1.5 line-clamp-2 text-[11px] leading-tight text-gray-300">{{ person.name }}</span>
+            </a>
+          }
+        </div>
+      </div>
+    }
+
     @if (!isLoading) {
       @if (movies.length > 0) {
         <p class="px-8 pt-2 pb-1 text-sm text-gray-400">{{ totalResults }} results found</p>

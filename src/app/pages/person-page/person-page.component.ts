@@ -65,6 +65,15 @@ export class PersonPageComponent {
     this.isFullBio = !this.isFullBio;
   }
 
+  get bioParagraphs(): string[] {
+    const bio = this.person?.biography;
+    if (!bio) return [];
+    return bio
+      .split(/\n{2,}/)
+      .map(p => p.trim())
+      .filter(Boolean);
+  }
+
   get age(): number | null {
     if (!this.person?.birthday) return null;
     const end = this.person.deathday ? new Date(this.person.deathday) : new Date();
