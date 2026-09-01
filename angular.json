@@ -28,6 +28,11 @@
                 "glob": "**/*",
                 "input": "src/assets/filters",
                 "output": "/assets/filters"
+              },
+              {
+                "glob": "**/*",
+                "input": "tv/dist",
+                "output": "/lite"
               }
             ],
             "styles": [
