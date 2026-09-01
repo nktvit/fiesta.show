@@ -1,9 +1,0 @@
-.angular
-src/environments
-node_modules
-tv/node_modules
-dist
-tv/dist
-.playwright-mcp
-.claude
-.agents

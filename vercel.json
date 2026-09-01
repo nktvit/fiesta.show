@@ -27,15 +27,8 @@
     }
   },
   "buildCommand": "npm run build",
-  "headers": [
-    {
-      "source": "/((?!.*\\.[a-zA-Z0-9]{1,5}$).*)",
-      "headers": [{ "key": "Vary", "value": "User-Agent" }]
-    }
-  ],
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/$1" },
-    { "source": "/lite/(.*)", "destination": "/lite/$1" },
-    { "source": "/(.*)", "destination": "/index.html" }
+{ "source": "/(.*)", "destination": "/index.html" }
   ]
 }
