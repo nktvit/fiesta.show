@@ -48,6 +48,7 @@ Thumbs.db
 **/.env.local
 .vercel
 /.playwright-mcp/**
+/.playwright-cli/**
 /.claude/worktrees/**
 /tools/fiesta-proxy/.playwright-mcp/**
 /tools/fiesta-proxy/node_modules/**

@@ -58,6 +58,12 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   // which cloudnestra front actually served the current stream (1=vidsrc, 2=vsembed)
   readonly activeServer = signal<number>(1);
 
+  // measured loudness (LUFS) of the current title's audio, read from the
+  // master playlist's YT-EXT-ABSOLUTE-LOUDNESS tag — these sources run
+  // consistently quiet (observed -24 to -28 LUFS vs. the ~-16 LUFS most
+  // streaming platforms target), so we correct it; see applyLoudnessGain.
+  readonly loudnessLUFS = signal<number | null>(null);
+
   private hls: Hls | null = null;
   private attachedUrl: string | null = null;
   private loadToken = 0;
@@ -69,9 +75,18 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   private pendingResumeTime: number | null = null;
   private lastProgressSaveAt = 0;
 
+  // Web Audio loudness-normalization graph — created once per component
+  // lifetime (createMediaElementSource can only be called once per <video>
+  // element, ever) and reused across retries/server escalation.
+  private audioCtx: AudioContext | null = null;
+  private gainNode: GainNode | null = null;
+
   private static readonly UNAVAILABLE = 'This title isn’t available to stream right now';
   private static readonly PROGRESS_PREFIX = 'fiesta:playback-progress:';
   private static readonly SUBTITLE_PREF_KEY = 'fiesta:subtitle-pref';
+  private static readonly TARGET_LUFS = -16; // common streaming-platform loudness target
+  private static readonly MAX_BOOST_DB = 15; // don't over-amplify on an unusual/wrong reading
+  private static readonly MIN_BOOST_DB = -6;
 
   constructor() {
     // Attach the stream once both the resolved master URL and the <video> exist.
@@ -101,6 +116,11 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   ngOnDestroy() {
     this.destroyHls();
     if (this.bufferingTimer) clearTimeout(this.bufferingTimer);
+    if (this.audioCtx) {
+      void this.audioCtx.close().catch(() => {});
+      this.audioCtx = null;
+      this.gainNode = null;
+    }
   }
 
   private async loadStream(srv?: 1 | 2, keepStarted = false) {
@@ -158,6 +178,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
       this.activeServer.set(data.server ?? srv ?? 1);
       this.masterUrl.set(data.master);
       if (data.env === 'preview') void this.probeSegmentSource(data.master, token);
+      void this.probeLoudness(data.master, token);
     } catch (err) {
       if (token !== this.loadToken) return;
       this.masterUrl.set(null);
@@ -179,6 +200,12 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     // can't tune. Native HLS is the fallback only when MSE is absent (iOS Safari).
     const Hls = (await import('hls.js')).default;
     if (Hls.isSupported()) {
+      // MSE-fed video (this branch) is same-origin from the element's point of
+      // view — safe to tap for Web Audio. The native-HLS fallback below fetches
+      // cross-origin directly without crossorigin="anonymous" set, so tapping it
+      // the same way would silently zero out the audio; left alone there.
+      this.ensureAudioGraph(video);
+
       // The relay passes the source through, so bandwidth has headroom — bias ABR
       // toward higher quality instead of hls.js's conservative defaults, which
       // otherwise park on a low variant (smooth but soft) and never climb back up.
@@ -442,12 +469,72 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     } catch {}
   }
 
+  // Reads YT-EXT-ABSOLUTE-LOUDNESS off the master playlist (a small,
+  // separate fetch — hls.js does its own internal fetch of the same file,
+  // but it doesn't surface custom attributes, and this is cheap enough not
+  // to bother sharing). Best-effort: on any failure we just skip the boost
+  // rather than block or degrade playback.
+  private async probeLoudness(master: string, token: number) {
+    try {
+      const res = await fetch(master);
+      if (token !== this.loadToken) return;
+      const text = await res.text();
+      if (token !== this.loadToken) return;
+      const match = text.match(/YT-EXT-ABSOLUTE-LOUDNESS=(-?[\d.]+)/);
+      const lufs = match ? parseFloat(match[1]) : null;
+      this.loudnessLUFS.set(lufs);
+      this.applyLoudnessGain(lufs);
+    } catch {}
+  }
+
+  // Lazily creates the Web Audio graph the first time hls.js/MSE playback
+  // attaches. createMediaElementSource can only ever be called once per
+  // <video> element, so this must stay guarded and get reused across
+  // retries/server escalation within the same component instance.
+  private ensureAudioGraph(video: HTMLVideoElement) {
+    if (this.audioCtx) return;
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return; // unsupported browser — just skip normalization
+    try {
+      const ctx: AudioContext = new AudioCtx();
+      const source = ctx.createMediaElementSource(video);
+      const gain = ctx.createGain();
+      const compressor = ctx.createDynamicsCompressor(); // peak limiter, guards against clipping from the boost
+      source.connect(gain).connect(compressor).connect(ctx.destination);
+      this.audioCtx = ctx;
+      this.gainNode = gain;
+      this.applyLoudnessGain(this.loudnessLUFS()); // in case the loudness probe already resolved
+    } catch {
+      this.audioCtx = null;
+      this.gainNode = null;
+    }
+  }
+
+  private applyLoudnessGain(measuredLUFS: number | null) {
+    if (!this.audioCtx || !this.gainNode || measuredLUFS === null) return;
+    const boostDb = Math.max(
+      MoviePlayerComponent.MIN_BOOST_DB,
+      Math.min(MoviePlayerComponent.TARGET_LUFS - measuredLUFS, MoviePlayerComponent.MAX_BOOST_DB),
+    );
+    const linearGain = Math.pow(10, boostDb / 20);
+    this.gainNode.gain.setTargetAtTime(linearGain, this.audioCtx.currentTime, 0.15); // ramped, avoids a click
+  }
+
+  // AudioContext starts (or gets suspended back to) "suspended" until a user
+  // gesture resumes it — startPlayback() is always a click/tap, so it qualifies.
+  private resumeAudioContext() {
+    if (this.audioCtx && this.audioCtx.state === 'suspended') {
+      void this.audioCtx.resume().catch(() => {});
+    }
+  }
+
   startPlayback() {
     const video = this.videoEl()?.nativeElement;
     if (!video) return;
     this.restoreProgress(video);
     this.started.set(true);
     this.paused.set(false);
+    this.resumeAudioContext(); // AudioContext starts suspended until a user gesture; this counts
     void video.play().catch(() => {});
   }
 
