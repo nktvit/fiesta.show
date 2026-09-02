@@ -1,0 +1,31 @@
+{
+  "name": "fiesta-tv-lite",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Minimal browse/search/play client for pre-2018 smart TV browsers (Chromium ~47, no Proxy/ES2015 classes/CSS Grid). Built and downleveled separately from the main Angular app; served only to matching User-Agents. See README.md.",
+  "scripts": {
+    "build": "webpack --mode production",
+    "dev": "webpack serve --mode development"
+  },
+  "dependencies": {
+    "react": "^17.0.2",
+    "react-dom": "^17.0.2"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.26.0",
+    "@babel/preset-env": "^7.26.0",
+    "@babel/preset-react": "^7.26.3",
+    "@babel/preset-typescript": "^7.26.0",
+    "babel-loader": "^9.2.1",
+    "core-js": "^3.39.0",
+    "css-loader": "^7.1.2",
+    "html-webpack-plugin": "^5.6.3",
+    "mini-css-extract-plugin": "^2.9.2",
+    "terser-webpack-plugin": "^5.3.10",
+    "typescript": "^5.7.2",
+    "webpack": "^5.97.1",
+    "webpack-cli": "^5.1.4",
+    "@types/react": "^17.0.83",
+    "@types/react-dom": "^17.0.26"
+  }
+}
