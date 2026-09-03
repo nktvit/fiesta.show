@@ -17,13 +17,19 @@ export default async function middleware(request) {
   // Angular is CSR-only, so link-preview crawlers (iMessage, Slack, Discord,
   // Facebook, ...) never run the JS that fills in the real title/poster via
   // Title/Meta — they only ever see index.html's static generic tags. This
-  // only fires on a fresh server hit to a movie/show page (SPA in-app
+  // only fires on a fresh server hit to a movie/show/person page (SPA in-app
   // navigation never re-requests index.html), so it doesn't touch normal
   // client-side routing.
   if (request.method === 'GET') {
     const movieMatch = url.pathname.match(/^\/movie\/([^/]+)\/?$/);
     if (movieMatch) {
-      const rendered = await renderMovieMeta(url, movieMatch[1]);
+      const rendered = await renderPageMeta(url, () => fetchMovieMeta(url, movieMatch[1]));
+      if (rendered) return rendered;
+    }
+
+    const personMatch = url.pathname.match(/^\/person\/([^/]+)\/?$/);
+    if (personMatch) {
+      const rendered = await renderPageMeta(url, () => fetchPersonMeta(url, personMatch[1]));
       if (rendered) return rendered;
     }
   }
@@ -31,9 +37,9 @@ export default async function middleware(request) {
   return next();
 }
 
-async function renderMovieMeta(url, rawId) {
+async function renderPageMeta(url, fetchMeta) {
   try {
-    const meta = await fetchMovieMeta(url, rawId);
+    const meta = await fetchMeta();
     if (!meta) return null;
 
     const htmlRes = await fetch(new URL('/index.html', url.origin));
@@ -54,28 +60,37 @@ async function renderMovieMeta(url, rawId) {
 }
 
 async function fetchMovieMeta(url, rawId) {
-  if (/^tt\d+$/.test(rawId)) {
-    const res = await fetch(new URL('/api/movie?id=' + rawId, url.origin));
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (data.Response === 'False' || !data.Title || data.Title === 'N/A') return null;
+  const details = /^tt\d+$/.test(rawId)
+    ? await fetchOmdbDetails(url, rawId)
+    : /^\d+$/.test(rawId)
+      ? await fetchTmdbDetails(rawId, url.searchParams.get('type'))
+      : null;
+  if (!details) return null;
 
-    return {
-      title: data.Title,
-      year: data.Year && data.Year !== 'N/A' ? data.Year : null,
-      plot: data.Plot && data.Plot !== 'N/A' ? data.Plot : null,
-      image: data._backdrop || (data.Poster && data.Poster !== 'N/A' ? data.Poster : null),
-    };
-  }
+  const yearSuffix = details.year ? ` (${details.year})` : '';
+  const title = `${details.title}${yearSuffix} — Stream Free | Stream Fiesta`;
+  const description = details.plot
+    ? `Watch ${details.title}${yearSuffix} online for free. ${details.plot.substring(0, 120)}...`
+    : `Watch ${details.title}${yearSuffix} online for free on Stream Fiesta. No subscription, no sign-up.`;
 
-  if (/^\d+$/.test(rawId)) {
-    return fetchTmdbMeta(rawId, url.searchParams.get('type'));
-  }
-
-  return null;
+  return { title, description, image: details.image };
 }
 
-async function fetchTmdbMeta(tmdbId, typeHint) {
+async function fetchOmdbDetails(url, rawId) {
+  const res = await fetch(new URL('/api/movie?id=' + rawId, url.origin));
+  if (!res.ok) return null;
+  const data = await res.json();
+  if (data.Response === 'False' || !data.Title || data.Title === 'N/A') return null;
+
+  return {
+    title: data.Title,
+    year: data.Year && data.Year !== 'N/A' ? data.Year : null,
+    plot: data.Plot && data.Plot !== 'N/A' ? data.Plot : null,
+    image: data._backdrop || (data.Poster && data.Poster !== 'N/A' ? data.Poster : null),
+  };
+}
+
+async function fetchTmdbDetails(tmdbId, typeHint) {
   const apiKey = process.env.TMDB_API_KEY;
   if (!apiKey) return null;
 
@@ -100,6 +115,22 @@ async function fetchTmdbMeta(tmdbId, typeHint) {
   return null;
 }
 
+async function fetchPersonMeta(url, rawId) {
+  if (!/^\d+$/.test(rawId)) return null;
+
+  const res = await fetch(new URL('/api/tmdb?list=person&id=' + rawId, url.origin));
+  if (!res.ok) return null;
+  const data = await res.json();
+  if (!data || !data.name) return null;
+
+  const title = `${data.name} — Movies & TV Shows | Stream Fiesta`;
+  const description = data.biography
+    ? `${data.biography.substring(0, 150)}...`
+    : `Browse movies and TV shows featuring ${data.name} on Stream Fiesta.`;
+
+  return { title, description, image: data.profilePath || null };
+}
+
 function escapeHtml(str) {
   return String(str)
     .replace(/&/g, '&amp;')
@@ -109,16 +140,11 @@ function escapeHtml(str) {
 }
 
 function injectMeta(html, meta, url) {
-  const yearSuffix = meta.year ? ` (${meta.year})` : '';
-  const pageTitle = `${meta.title}${yearSuffix} — Stream Free | Stream Fiesta`;
-  const rawDesc = meta.plot
-    ? `Watch ${meta.title}${yearSuffix} online for free. ${meta.plot.substring(0, 120)}...`
-    : `Watch ${meta.title}${yearSuffix} online for free on Stream Fiesta. No subscription, no sign-up.`;
   const image = meta.image || 'https://fiesta.show/assets/og-image.png';
   const pageUrl = url.origin + url.pathname;
 
-  const t = escapeHtml(pageTitle);
-  const d = escapeHtml(rawDesc);
+  const t = escapeHtml(meta.title);
+  const d = escapeHtml(meta.description);
   const img = escapeHtml(image);
   const u = escapeHtml(pageUrl);
 
@@ -128,10 +154,12 @@ function injectMeta(html, meta, url) {
   html = html.replace(/<meta property="og:description" content="[^"]*">/, `<meta property="og:description" content="${d}">`);
   html = html.replace(/<meta property="og:url" content="[^"]*">/, `<meta property="og:url" content="${u}">`);
   html = html.replace(/<meta property="og:image" content="[^"]*">/, `<meta property="og:image" content="${img}">`);
-  // Declared dimensions on the generic fallback image don't hold for a
-  // per-title poster/backdrop — drop them so crawlers measure the real image.
-  html = html.replace(/\s*<meta property="og:image:width" content="[^"]*">\n?/, '\n');
-  html = html.replace(/\s*<meta property="og:image:height" content="[^"]*">\n?/, '\n');
+  if (meta.image) {
+    // Declared dimensions on the generic fallback image don't hold for a
+    // per-title poster/backdrop — drop them so crawlers measure the real image.
+    html = html.replace(/\s*<meta property="og:image:width" content="[^"]*">\n?/, '\n');
+    html = html.replace(/\s*<meta property="og:image:height" content="[^"]*">\n?/, '\n');
+  }
   html = html.replace(/<meta name="twitter:title" content="[^"]*">/, `<meta name="twitter:title" content="${t}">`);
   html = html.replace(/<meta name="twitter:description" content="[^"]*">/, `<meta name="twitter:description" content="${d}">`);
   html = html.replace(/<meta name="twitter:image" content="[^"]*">/, `<meta name="twitter:image" content="${img}">`);
