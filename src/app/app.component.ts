@@ -1,8 +1,9 @@
 import { Component, inject } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
+import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
+import { filter } from 'rxjs';
 import { NavigationService } from './services/navigation.service';
 import { FooterComponent } from './components/footer/footer.component';
-import { injectSpeedInsights } from '@vercel/speed-insights';
+import { computeRoute, injectSpeedInsights } from '@vercel/speed-insights';
 
 @Component({
   selector: 'app-root',
@@ -13,9 +14,30 @@ import { injectSpeedInsights } from '@vercel/speed-insights';
 })
 export class AppComponent {
   private nav = inject(NavigationService);
+  private router = inject(Router);
 
   ngOnInit() {
     this.nav.init();
-    injectSpeedInsights();
+
+    // Angular is a client-routed SPA, so without this every Speed Insights
+    // vital would be attributed to whichever route happened to be loaded
+    // first — setRoute() re-tags each navigation with its own (normalized)
+    // route instead.
+    const speedInsights = injectSpeedInsights();
+    this.router.events.pipe(filter((e): e is NavigationEnd => e instanceof NavigationEnd)).subscribe((event) => {
+      const pathname = event.urlAfterRedirects.split(/[?#]/)[0];
+      speedInsights?.setRoute(computeRoute(pathname, this.routeParams()));
+    });
+  }
+
+  private routeParams(): Record<string, string> {
+    const params: Record<string, string> = {};
+    let route = this.router.routerState.snapshot.root;
+    while (route) {
+      Object.assign(params, route.params);
+      if (!route.firstChild) break;
+      route = route.firstChild;
+    }
+    return params;
   }
 }
