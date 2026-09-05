@@ -168,6 +168,9 @@ function injectMeta(html, meta, url) {
 }
 
 export const config = {
+  // Edge is deprecated for Routing Middleware in favor of Fluid Compute; the
+  // handful of fetch()/env var calls here run just as well on Node.js.
+  runtime: 'nodejs',
   // Everything except the lite app's own assets and the /api/* functions —
   // both already serve the right thing regardless of User-Agent.
   matcher: ['/((?!lite/|api/).*)'],
