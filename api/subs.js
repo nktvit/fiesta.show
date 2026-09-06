@@ -93,7 +93,12 @@ async function fetchWithRetry(url, isRetryable) {
   throw lastErr;
 }
 
-const TRANSIENT_STATUS = (status) => status === 429 || status === 502 || status === 503;
+// 403 included: OpenSubtitles' legacy host intermittently rejects a request
+// with 403 for no discernible reason (confirmed by immediately retrying the
+// exact same search and getting a full result) rather than actually blocking
+// it — treating it as permanent means one unlucky attempt silently reports
+// "no subtitles" for a movie that has plenty.
+const TRANSIENT_STATUS = (status) => status === 403 || status === 429 || status === 502 || status === 503;
 
 async function handleList(req, res) {
   const type = req.query.type === 'tv' ? 'tv' : 'movie';
