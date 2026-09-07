@@ -13,6 +13,8 @@ import {
 } from '@angular/core';
 import type Hls from 'hls.js';
 
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 @Component({
   selector: 'app-movie-player',
   imports: [],
@@ -48,12 +50,18 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   readonly segmentSource = signal<string | null>(null);
 
   // external subtitle tracks (best per language) from /api/subs, listed for
-  // the native captions menu. Only loadedSubtitleKeys members get a real
-  // [src] (see trackSrc) — fetching every language's VTT at once is a burst
-  // OpenSubtitles' legacy download host rate-limits hard, and the viewer
-  // only ever watches one language at a time anyway.
+  // the native captions menu. None get the raw network URL as their [src] —
+  // see trackSrc/vttCache: a <track> whose src is assigned dynamically after
+  // it already exists in the DOM can silently never fetch (observed: reliable
+  // for a blob: URL, not for a plain network URL — assign only once fetched).
+  // The default/preferred track is fetched before this list is even rendered
+  // (see loadSubtitles); every other language is fetched afterward in the
+  // background, one at a time (see preloadRemainingSubtitles) — OpenSubtitles'
+  // legacy download host rate-limits a burst of simultaneous requests hard.
   readonly subtitleTracks = signal<{ lang: string; label: string; src: string; isDefault: boolean }[]>([]);
-  readonly loadedSubtitleKeys = signal<Set<string>>(new Set());
+  // subtitleKey -> blob: URL of the already-fetched VTT text — the only
+  // source of truth for whether a track has real, loadable content.
+  readonly vttCache = signal<Map<string, string>>(new Map());
 
   // which cloudnestra front actually served the current stream (1=vidsrc, 2=vsembed)
   readonly activeServer = signal<number>(1);
@@ -72,6 +80,14 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   private static readonly UNAVAILABLE = 'This title isn’t available to stream right now';
   private static readonly PROGRESS_PREFIX = 'fiesta:playback-progress:';
   private static readonly SUBTITLE_PREF_KEY = 'fiesta:subtitle-pref';
+  // Gap between the start of one background subtitle prefetch and the next —
+  // keeps our own preloading well clear of OpenSubtitles' burst rate limit.
+  // This host is genuinely fragile under volume (observed: their download
+  // host, dl.opensubtitles.org, started 502ing every request from this
+  // project's Vercel egress IP under sustained testing, while the same file
+  // fetched from an unrelated IP succeeded immediately — an IP-level
+  // rate-limit/block, not a per-request fluke), so this errs conservative.
+  private static readonly PRELOAD_GAP_MS = 800;
 
   constructor() {
     // Attach the stream once both the resolved master URL and the <video> exist.
@@ -101,6 +117,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   ngOnDestroy() {
     this.destroyHls();
     if (this.bufferingTimer) clearTimeout(this.bufferingTimer);
+    this.clearVttCache();
   }
 
   private async loadStream(srv?: 1 | 2, keepStarted = false) {
@@ -114,7 +131,10 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     this.errorMsg.set(null);
     this.segmentSource.set(null);
     this.subtitleTracks.set([]);
-    this.loadedSubtitleKeys.set(new Set());
+    // Critical for series: a stale cache entry surviving an episode switch
+    // would collide on the same lang::label key and silently show the wrong
+    // episode's subtitles, since the key carries no episode identity.
+    this.clearVttCache();
     if (!keepStarted) {
       // Fresh load: full-screen loader covers the stage.
       this.loading.set(true);
@@ -303,9 +323,23 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
       if (token !== this.loadToken) return;
       const tracks = Array.isArray(data?.tracks) ? data.tracks : [];
       const marked = this.markPreferredSubtitle(tracks);
-      this.subtitleTracks.set(marked);
       const preferred = marked.find((t) => t.isDefault);
-      this.loadedSubtitleKeys.set(preferred ? new Set([this.subtitleKey(preferred)]) : new Set());
+
+      // Fetch the default/restored track BEFORE the <track> list even
+      // renders. A <track> element born with its real (blob:) src loads
+      // reliably; one whose src is assigned after the fact — as this always
+      // was for the default, via the native [default]/mode="showing" path —
+      // can silently never fetch. Confirmed by direct repro: toggling mode
+      // and even re-touching the *same* network src attribute did nothing;
+      // only ever assigning a track a src it didn't already have (blob or
+      // otherwise) reliably kicks off a load.
+      if (preferred) {
+        await this.prefetchTrack(token, preferred);
+        if (token !== this.loadToken) return;
+      }
+
+      this.subtitleTracks.set(marked);
+      void this.preloadRemainingSubtitles(token, marked);
     } catch {
       if (token === this.loadToken) this.subtitleTracks.set([]);
     }
@@ -315,13 +349,65 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     return `${t.lang}::${t.label}`;
   }
 
-  // Only the preferred/restored track (or one the viewer explicitly picks —
-  // see wireSubtitlePersistence) gets a real src; every other language sits
-  // in the native captions menu unloaded until chosen. Fetching every
-  // language's VTT at once is a burst OpenSubtitles' legacy host rate-limits
-  // hard, and the viewer only ever watches one at a time.
-  trackSrc(t: { lang: string; label: string; src: string }): string | null {
-    return this.loadedSubtitleKeys().has(this.subtitleKey(t)) ? t.src : null;
+  // A track only ever gets a real src once its VTT text has actually been
+  // fetched and cached as a blob: URL (see prefetchTrack) — never the raw
+  // network URL directly (see the loadSubtitles/subtitleTracks comment for
+  // why). Unloaded tracks still list in the native captions menu with no src.
+  trackSrc(t: { lang: string; label: string }): string | null {
+    return this.vttCache().get(this.subtitleKey(t)) ?? null;
+  }
+
+  // Fetch every non-default language's VTT text in the background — one at a
+  // time, spaced out (see PRELOAD_GAP_MS) — so OpenSubtitles' legacy download
+  // host never sees a burst, caching each as a blob: URL so switching to it
+  // later is instant. Best-effort throughout: a fetch failure just leaves
+  // that track to load on demand when/if the viewer picks it (see
+  // wireSubtitlePersistence), never blocks or degrades playback.
+  private async preloadRemainingSubtitles(
+    token: number,
+    tracks: { lang: string; label: string; src: string; isDefault: boolean }[],
+  ) {
+    if (!this.canPreloadSubtitles()) return;
+    for (const t of tracks) {
+      if (t.isDefault) continue; // already fetched up front in loadSubtitles
+      await sleep(MoviePlayerComponent.PRELOAD_GAP_MS);
+      if (token !== this.loadToken) return; // superseded — episode/retry/server switch
+      await this.prefetchTrack(token, t);
+    }
+  }
+
+  private async prefetchTrack(token: number, t: { lang: string; label: string; src: string }) {
+    const key = this.subtitleKey(t);
+    if (this.vttCache().has(key)) return; // already fetched (e.g. the viewer beat the preload queue to it)
+    try {
+      const res = await fetch(t.src);
+      if (token !== this.loadToken || !res.ok) return;
+      const text = await res.text();
+      if (token !== this.loadToken) return;
+      const url = URL.createObjectURL(new Blob([text], { type: 'text/vtt' }));
+      this.vttCache.update((cache) => new Map(cache).set(key, url));
+    } catch {
+      // best-effort — this track just stays unloaded until retried
+    }
+  }
+
+  // Data-saver or a genuinely slow connection: skip background preloading
+  // and leave every non-default track on the existing load-on-demand path.
+  // Subtitle files are tiny (tens of KB), so this is a light-touch guard, not
+  // real bandwidth probing — the Network Information API isn't universally
+  // supported (notably Safari/Firefox), and preloading is the safe default
+  // when we simply can't tell.
+  private canPreloadSubtitles(): boolean {
+    const conn = (navigator as any)?.connection;
+    if (!conn) return true;
+    if (conn.saveData) return false;
+    if (typeof conn.effectiveType === 'string' && /2g/.test(conn.effectiveType)) return false;
+    return true;
+  }
+
+  private clearVttCache() {
+    for (const url of this.vttCache().values()) URL.revokeObjectURL(url);
+    this.vttCache.set(new Map());
   }
 
   // Mark the track matching the viewer's last-picked language (and variant,
@@ -347,15 +433,32 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   private applySubtitlePreference(video: HTMLVideoElement) {
     const pref = this.readSubtitlePref();
     if (!pref) return;
-    const list = video.textTracks;
-    for (let i = 0; i < list.length; i++) {
-      const t = list[i];
-      t.mode = t.language === pref.lang && t.label === pref.label ? 'showing' : 'disabled';
-    }
-    // Chromium can independently auto-select a track matching the browser's
-    // locale via its own "honor user preferences" algorithm, racing with the
-    // assignment above — collapse back down to a single showing track.
-    this.enforceSingleShowing(video);
+    const key = this.subtitleKey(pref);
+    const apply = () => {
+      const cached = this.vttCache().get(key);
+      const list = video.textTracks;
+      for (let i = 0; i < list.length; i++) {
+        const t = list[i];
+        const isMatch = t.language === pref.lang && t.label === pref.label;
+        if (isMatch && cached) {
+          // Assign directly rather than trust the reactive [attr.src]
+          // binding to have already committed (see assignTrackSrc).
+          this.assignTrackSrc(video, key, cached, t);
+        } else {
+          t.mode = isMatch ? 'showing' : 'disabled';
+        }
+      }
+      // Chromium can independently auto-select a track matching the browser's
+      // locale via its own "honor user preferences" algorithm, racing with the
+      // assignment above — collapse back down to a single showing track.
+      this.enforceSingleShowing(video);
+    };
+    apply();
+    // This runs off a subtitleTracks() effect, which can fire before the
+    // freshly (re)rendered <track> elements have actually committed to the
+    // DOM — video.textTracks would then be empty/stale and the assignment
+    // above a silent no-op. Re-apply once the current render has settled.
+    queueMicrotask(apply);
   }
 
   // Browsers don't guarantee only one subtitle/captions track is ever
@@ -385,26 +488,47 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
 
   // Native <video> controls fire this on the track list whenever the viewer
   // toggles captions or switches language/variant (and whenever a browser's
-  // own automatic track selection kicks in). Lazily wire up a real src for
-  // whatever ends up showing (if it wasn't already loaded) and persist the
-  // choice — or its absence — as the preference for future playback.
+  // own automatic track selection kicks in). If the background preload queue
+  // hasn't reached this track yet, fetch it now — ahead of the queue, since
+  // this one's urgent — and persist the choice (or its absence) for future
+  // playback.
   private wireSubtitlePersistence(video: HTMLVideoElement) {
     video.textTracks.onchange = () => {
       const showing = this.enforceSingleShowing(video);
       if (showing) {
         const key = this.subtitleKey({ lang: showing.language, label: showing.label });
-        if (!this.loadedSubtitleKeys().has(key)) {
-          const shownTrack = showing;
-          this.loadedSubtitleKeys.update((keys) => new Set(keys).add(key));
-          // Angular assigns the real src on the next change-detection pass,
-          // which resets the track's cues and can drop its mode — reassert.
-          queueMicrotask(() => {
-            shownTrack.mode = 'showing';
-          });
+        const shownTrack = showing;
+        const cached = this.vttCache().get(key);
+        if (cached) {
+          this.assignTrackSrc(video, key, cached, shownTrack);
+        } else {
+          const token = this.loadToken;
+          const track = this.subtitleTracks().find((t) => this.subtitleKey(t) === key);
+          if (track) {
+            void this.prefetchTrack(token, track).then(() => {
+              if (token !== this.loadToken) return;
+              const url = this.vttCache().get(key);
+              if (url) this.assignTrackSrc(video, key, url, shownTrack);
+            });
+          }
         }
       }
       this.saveSubtitlePref(showing ? { lang: showing.language, label: showing.label } : null);
     };
+  }
+
+  // Assigns a <track> element's src directly via the DOM rather than trusting
+  // that Angular's reactive [attr.src] binding (driven by the vttCache signal
+  // write that just happened) has already committed to the DOM by the time
+  // we act — confirmed unreliable in practice: mode can be (re)asserted
+  // before that render lands, and a mode change alone doesn't retrigger a
+  // fetch once the browser considers a track already "handled".
+  private assignTrackSrc(video: HTMLVideoElement, key: string, url: string, showTrack: TextTrack) {
+    const el = Array.from(video.querySelectorAll('track')).find(
+      (t) => this.subtitleKey({ lang: t.srclang, label: t.label }) === key,
+    );
+    if (el && el.getAttribute('src') !== url) el.setAttribute('src', url);
+    showTrack.mode = 'showing';
   }
 
   private readSubtitlePref(): { lang: string; label: string } | null {
