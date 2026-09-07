@@ -32,6 +32,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -274,13 +276,20 @@ async function handleHls(req, res, url) {
     return res.end('bad target: ' + String(err?.message || err));
   }
 
+  // Aborts the upstream fetch if the browser gives up mid-download (seek, tab
+  // close, quality switch) instead of pulling the whole segment for nothing.
+  const abort = new AbortController();
+  res.on('close', () => abort.abort());
+
   let upstream;
   try {
     upstream = await fetch(target, {
       headers: { 'User-Agent': UA, Accept: '*/*', Referer: STREAM_REFERER, Origin: CLOUDNESTRA },
       redirect: 'follow',
+      signal: abort.signal,
     });
   } catch (err) {
+    if (abort.signal.aborted) return;
     console.error('[hls] upstream fail', String(err?.message || err));
     res.statusCode = 502;
     return res.end('upstream fetch failed');
@@ -300,12 +309,27 @@ async function handleHls(req, res, url) {
   }
 
   // Segment: MPEG-TS, often mislabeled text/html (page-N.html). Immutable -> long cache.
-  const buf = Buffer.from(await upstream.arrayBuffer());
+  // Stream straight through instead of buffering the whole ~1-2MB body first —
+  // the browser starts receiving bytes as they arrive from cloudnestra rather
+  // than waiting for the full segment to land here, which is what was actually
+  // slowing down buffer-ahead/preloading.
   const looksTs = /\.(ts|html?)($|\?)/i.test(targetPath);
   res.statusCode = upstream.status;
   res.setHeader('Content-Type', looksTs ? 'video/mp2t' : ct || 'application/octet-stream');
   res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-  return res.end(buf);
+  // Deliberately NOT forwarding upstream's Content-Length: fetch() transparently
+  // decodes Content-Encoding (gzip/br), but the header still reports the
+  // pre-decode wire length — forwarding it would understate the decoded byte
+  // count we actually stream, corrupting HTTP framing on this keep-alive
+  // connection. Omitting it lets Node fall back to chunked transfer-encoding,
+  // which is correct regardless of whether upstream compressed the response.
+
+  if (!upstream.body) return res.end();
+  try {
+    await pipeline(Readable.fromWeb(upstream.body), res);
+  } catch (err) {
+    if (!abort.signal.aborted) console.error('[hls] stream fail', String(err?.message || err));
+  }
 }
 
 const server = http.createServer(async (req, res) => {
@@ -327,6 +351,10 @@ const server = http.createServer(async (req, res) => {
     res.statusCode = 404;
     res.end('not found');
   } catch (err) {
+    // A client disconnecting mid-request (seek, tab close) aborts the in-flight
+    // fetch via the AbortSignal wired up in handleHls — expected and benign, not
+    // a real server error. res is already closed at this point, nothing to send.
+    if (err?.name === 'AbortError') return;
     console.error('[relay] unhandled', String(err?.stack || err));
     if (!res.headersSent) res.statusCode = 500;
     res.end('error');
