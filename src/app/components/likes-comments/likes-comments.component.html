@@ -1,0 +1,141 @@
+<div class="mt-6 rounded-xl bg-[#111111] border border-white/5 shadow-2xl p-5">
+
+  <!-- Like button -->
+  <button
+    (click)="toggleLike()"
+    type="button"
+    class="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all duration-200"
+    [ngClass]="liked()
+      ? 'bg-red-600/20 text-red-400 ring-1 ring-red-500/40'
+      : 'bg-white/5 text-gray-300 hover:bg-white/10 hover:text-white'"
+  >
+    <svg class="w-4 h-4" [attr.fill]="liked() ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+    </svg>
+    {{ likeCount() | number }}
+  </button>
+
+  <!-- Comments -->
+  <div class="mt-6 border-t border-white/5 pt-5">
+    <h3 class="text-sm font-bold uppercase tracking-wider text-indigo-400 mb-4">
+      Comments ({{ comments().length }})
+    </h3>
+
+    <!-- Identity picker + composer -->
+    <div class="rounded-lg bg-white/5 p-4">
+      <div class="flex flex-wrap items-center gap-4 mb-3">
+        <label class="flex items-center gap-1.5 text-xs font-medium text-gray-400 cursor-pointer">
+          <input type="radio" name="identityMode" [checked]="identityMode() === 'anonymous'" (change)="setIdentityMode('anonymous')" class="accent-indigo-500">
+          Anonymous
+        </label>
+        <label class="flex items-center gap-1.5 text-xs font-medium text-gray-400 cursor-pointer">
+          <input type="radio" name="identityMode" [checked]="identityMode() === 'random'" (change)="setIdentityMode('random')" class="accent-indigo-500">
+          Random name
+          @if (identityMode() === 'random' && randomDisplayName()) {
+            <span class="text-gray-600">({{ randomDisplayName() }})</span>
+          }
+        </label>
+        <label class="flex items-center gap-1.5 text-xs font-medium text-gray-400 cursor-pointer">
+          <input type="radio" name="identityMode" [checked]="identityMode() === 'custom'" (change)="setIdentityMode('custom')" class="accent-indigo-500">
+          Custom name
+        </label>
+        @if (identityMode() === 'custom') {
+          <input
+            type="text"
+            [value]="customName()"
+            (input)="customName.set($any($event.target).value)"
+            placeholder="Display name"
+            maxlength="24"
+            class="flex-shrink-0 w-40 px-2.5 py-1 rounded-md bg-white/5 border border-white/10 text-xs text-white placeholder:text-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          >
+        }
+      </div>
+
+      <textarea
+        [value]="commentText()"
+        (input)="commentText.set($any($event.target).value)"
+        rows="2"
+        maxlength="500"
+        placeholder="Share your reaction…"
+        class="w-full px-3 py-2 rounded-md bg-white/5 border border-white/10 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none"
+      ></textarea>
+
+      <div class="flex items-center justify-between mt-2">
+        <span class="text-[11px] text-gray-600">{{ commentText().length }}/500</span>
+        <button
+          (click)="postComment()"
+          [disabled]="!commentText().trim() || postingComment()"
+          type="button"
+          class="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-md text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200"
+        >
+          @if (postingComment()) {
+            <span class="h-3 w-3 animate-spin rounded-full border-2 border-white/40 border-t-white"></span>
+          }
+          Post
+        </button>
+      </div>
+
+      @if (moderationBanner()) {
+        <div class="mt-3 flex items-start gap-2 px-3 py-2 rounded-md bg-yellow-500/10 border border-yellow-500/20 text-xs text-yellow-400">
+          <svg class="w-3.5 h-3.5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m0 3.75h.008v.008H12v-.008zM21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          {{ moderationBanner() }}
+        </div>
+      }
+    </div>
+
+    <!-- List -->
+    <div class="mt-4">
+      @if (loadingComments()) {
+        <div class="flex items-center justify-center py-8">
+          <div class="h-5 w-5 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent"></div>
+        </div>
+      } @else if (comments().length === 0) {
+        <p class="text-sm text-gray-600 py-4 text-center">No comments yet — be the first to say something.</p>
+      } @else {
+        @for (c of comments(); track c.id) {
+          <div class="py-3 border-b border-white/5 last:border-0">
+            <div class="flex items-center gap-1.5 text-xs text-gray-500 mb-1">
+              @if (c.country) {
+                <span [attr.title]="countryName(c.country)">{{ countryFlag(c.country) }}</span>
+              }
+              <span class="font-medium text-gray-300">{{ c.displayName || 'Anonymous' }}</span>
+              @if (c.isMine) {
+                <span class="text-indigo-400">(you)</span>
+              }
+              <span>·</span>
+              <span>{{ timeAgo(c.createdAt) }}</span>
+            </div>
+            <div class="flex items-end justify-between gap-3">
+              <p class="text-sm text-gray-200 whitespace-pre-wrap break-words">{{ c.text }}</p>
+              <button
+                (click)="toggleCommentLike(c)"
+                type="button"
+                class="flex-shrink-0 inline-flex items-center gap-1 text-xs font-medium transition-colors duration-200"
+                [ngClass]="c.liked ? 'text-red-400' : 'text-gray-600 hover:text-gray-400'"
+              >
+                <svg class="w-3.5 h-3.5" [attr.fill]="c.liked ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                </svg>
+                {{ c.likeCount }}
+              </button>
+            </div>
+          </div>
+        }
+        @if (nextCursor() !== null) {
+          <div class="flex justify-center pt-3">
+            <button
+              (click)="loadMore()"
+              [disabled]="loadingMore()"
+              type="button"
+              class="px-4 py-1.5 rounded-md text-xs font-medium bg-white/5 text-gray-300 hover:bg-white/10 hover:text-white disabled:opacity-40 transition-all duration-200"
+            >
+              {{ loadingMore() ? 'Loading…' : 'Load more' }}
+            </button>
+          </div>
+        }
+      }
+    </div>
+  </div>
+</div>

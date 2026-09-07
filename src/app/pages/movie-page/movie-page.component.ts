@@ -6,6 +6,7 @@ import {DomSanitizer, SafeResourceUrl} from '@angular/platform-browser';
 import {NavbarComponent} from '../../components/navbar/navbar.component';
 import {BackButtonComponent} from '../../components/back-button/back-button.component';
 import {MoviePlayerComponent} from "../../components/movie-player/movie-player.component";
+import {LikesCommentsComponent} from "../../components/likes-comments/likes-comments.component";
 import {catchError, of, switchMap, tap} from "rxjs";
 import {PosterComponent} from "../../components/poster/poster.component";
 import {LoggerService} from "../../services/logger.service";
@@ -24,7 +25,7 @@ interface EpisodeInfo {
 
 @Component({
   selector: 'app-movie-page',
-  imports: [NavbarComponent, BackButtonComponent, NgClass, MoviePlayerComponent, PosterComponent, RouterLink],
+  imports: [NavbarComponent, BackButtonComponent, NgClass, MoviePlayerComponent, LikesCommentsComponent, PosterComponent, RouterLink],
   templateUrl: './movie-page.component.html',
   styleUrl: './movie-page.component.css'
 })
