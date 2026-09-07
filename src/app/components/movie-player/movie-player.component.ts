@@ -208,6 +208,8 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
         abrEwmaDefaultEstimate: 8_000_000, // start optimistic (~8 Mbit/s) instead of the 500 kbit/s floor
         abrBandWidthFactor: 1.0, // trust the full measured bandwidth (default 0.95)
         abrBandWidthUpFactor: 0.9, // upswitch readily (default 0.7)
+        progressive: true, // append fragment bytes to the buffer as they stream in
+        // rather than waiting for the whole segment response to finish
       });
       this.hls = hls;
       hls.loadSource(master);
