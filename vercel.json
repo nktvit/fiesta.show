@@ -24,6 +24,14 @@
     "api/subs.js": {
       "memory": 1024,
       "maxDuration": 15
+    },
+    "api/likes.js": {
+      "memory": 1024,
+      "maxDuration": 15
+    },
+    "api/comments.js": {
+      "memory": 1024,
+      "maxDuration": 15
     }
   },
   "buildCommand": "npm run build",

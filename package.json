@@ -6,7 +6,8 @@
     "start": "ng serve",
     "build": "npm install --prefix tv && npm run build --prefix tv && ng build",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test"
+    "test": "ng test",
+    "eval:moderation": "node --env-file=.env.local scripts/moderation-evals.mjs"
   },
   "browserslist": [
     "last 2 versions",
@@ -28,14 +29,18 @@
     "@angular/router": "^20.3.18",
     "@tailwindcss/container-queries": "^0.1.1",
     "@tailwindcss/typography": "^0.5.15",
+    "@upstash/ratelimit": "^2.0.8",
+    "@upstash/redis": "^1.38.4",
     "@vercel/analytics": "^1.5.0",
     "@vercel/functions": "^1.6.0",
     "@vercel/node": "^5.1.14",
     "@vercel/speed-insights": "^2.0.0",
+    "ai": "^7.0.93",
     "flowbite": "^3.1.2",
     "hls.js": "^1.6.16",
     "rxjs": "~7.8.1",
     "tslib": "^2.8.1",
+    "zod": "^4.5.4",
     "zone.js": "~0.15.0"
   },
   "devDependencies": {

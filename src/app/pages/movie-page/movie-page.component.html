@@ -384,6 +384,11 @@
         </div>
       }
 
+      <!-- ── LIKES & COMMENTS ──────────────────────────────────────── -->
+      @if (imdbId && !invalidResponse) {
+        <app-likes-comments [imdbId]="imdbId" [type]="type" [season]="season" [episode]="episode"></app-likes-comments>
+      }
+
       <!-- ── RECOMMENDATIONS ────────────────────────────────────────── -->
       @if (recommendations.length > 0) {
         <section class="mt-12 mb-10">

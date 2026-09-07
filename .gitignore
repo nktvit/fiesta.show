@@ -54,3 +54,4 @@ Thumbs.db
 /tools/fiesta-proxy/node_modules/**
 /.agents/**
 /.claude/**
+.env*
