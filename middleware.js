@@ -9,7 +9,17 @@ export default async function middleware(request) {
   const ua = request.headers.get('user-agent') || '';
   const url = new URL(request.url);
 
-  if (ua.indexOf('Tizen') !== -1) {
+  // Tizen catches known Samsung TV UAs directly. But any OTHER engine old
+  // enough to lack Proxy (added in Chrome 49) hits the same wall — Zone.js
+  // needs it — regardless of what brand string the device reports (old
+  // Android TV boxes, other smart-TV browsers, etc. often carry a bare old
+  // Chrome/Chromium version with no TV-specific token at all). Route both
+  // to the same downleveled /lite bundle, which is explicitly built for
+  // Chrome 47+ (see tv/babel.config.js) so anything at or above that floor
+  // already works there.
+  const chromeMatch = ua.match(/Chrome\/(\d+)/);
+  const isLegacyChrome = chromeMatch && parseInt(chromeMatch[1], 10) < 49;
+  if (ua.indexOf('Tizen') !== -1 || isLegacyChrome) {
     url.pathname = '/lite/index.html';
     return rewrite(url);
   }
