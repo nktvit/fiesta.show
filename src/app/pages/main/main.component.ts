@@ -2,7 +2,6 @@ import {Component, inject} from '@angular/core'
 import {Title, Meta} from '@angular/platform-browser'
 import {Router, RouterLink} from '@angular/router'
 import {DecimalPipe} from '@angular/common'
-import {SearchBoxComponent} from '../../components/search-box/search-box.component'
 import {NavbarComponent} from '../../components/navbar/navbar.component'
 import {PosterComponent} from "../../components/poster/poster.component"
 import {IMovie} from "../../interfaces/movie.interface"
@@ -12,7 +11,7 @@ import {TmdbService} from "../../services/tmdb.service"
   selector: 'app-main',
   templateUrl: './main.component.html',
   styleUrl: './main.component.css',
-  imports: [SearchBoxComponent, NavbarComponent, PosterComponent, DecimalPipe, RouterLink]
+  imports: [NavbarComponent, PosterComponent, DecimalPipe, RouterLink]
 })
 export class MainComponent {
   heroMovie: IMovie | null = null;
