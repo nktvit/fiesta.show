@@ -117,11 +117,11 @@
       } @else {
         @for (c of comments(); track c.id) {
           <div class="py-3 border-b border-white/5 last:border-0">
-            <div class="flex items-center gap-1.5 text-xs text-gray-500 mb-1">
+            <div class="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-gray-500 mb-1">
               @if (c.country) {
                 <span [attr.title]="countryName(c.country)">{{ countryFlag(c.country) }}</span>
               }
-              <span class="font-medium text-gray-300">{{ c.displayName || 'Anonymous' }}</span>
+              <span class="font-medium text-gray-300 truncate max-w-[11rem]">{{ c.displayName || 'Anonymous' }}</span>
               @if (c.isMine) {
                 <span class="text-indigo-400">(you)</span>
               }
@@ -209,7 +209,7 @@
                     (click)="toggleReveal(c.id)"
                     type="button"
                     aria-label="Reveal spoiler"
-                    class="spoiler-mask group relative flex-1 min-w-[13rem] text-left"
+                    class="spoiler-mask group relative flex-1 min-w-0 text-left"
                   >
                     <span class="block text-sm text-gray-200 whitespace-pre-wrap break-words spoiler-text" aria-hidden="true">{{ c.text }}</span>
                     <span class="absolute inset-0 flex items-center justify-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-400 group-hover:text-white transition-colors duration-200">
@@ -284,11 +284,11 @@
               <div class="mt-3 pl-4 border-l border-white/10 space-y-3">
                 @for (r of c.replies; track r.id) {
                   <div>
-                    <div class="flex items-center gap-1.5 text-xs text-gray-500 mb-1">
+                    <div class="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-gray-500 mb-1">
                       @if (r.country) {
                         <span [attr.title]="countryName(r.country)">{{ countryFlag(r.country) }}</span>
                       }
-                      <span class="font-medium text-gray-300">{{ r.displayName || 'Anonymous' }}</span>
+                      <span class="font-medium text-gray-300 truncate max-w-[11rem]">{{ r.displayName || 'Anonymous' }}</span>
                       @if (r.isMine) {
                         <span class="text-indigo-400">(you)</span>
                       }
@@ -376,7 +376,7 @@
                             (click)="toggleReveal(r.id)"
                             type="button"
                             aria-label="Reveal spoiler"
-                            class="spoiler-mask group relative flex-1 min-w-[13rem] text-left"
+                            class="spoiler-mask group relative flex-1 min-w-0 text-left"
                           >
                             <span class="block text-sm text-gray-300 whitespace-pre-wrap break-words spoiler-text" aria-hidden="true">{{ r.text }}</span>
                             <span class="absolute inset-0 flex items-center justify-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-400 group-hover:text-white transition-colors duration-200">

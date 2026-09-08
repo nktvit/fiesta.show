@@ -66,6 +66,9 @@ export class LikesCommentsComponent implements OnDestroy {
   readonly editSpoiler = signal(false);
   readonly savingEdit = signal(false);
   readonly editError = signal<string | null>(null);
+  // Which comment the in-flight save belongs to, so a result that arrives
+  // after the editor moved on can't land in the wrong one.
+  private savingEditFor: string | null = null;
 
   // Ticks so relative timestamps stay honest and the Edit button disappears
   // when the 15-minute window closes, without needing a reload.
@@ -253,6 +256,12 @@ export class LikesCommentsComponent implements OnDestroy {
     this.editText.set('');
     this.editSpoiler.set(false);
     this.editError.set(null);
+    // Also drops any in-flight save. A text edit waits on a moderation call
+    // that can take seconds, which is exactly when someone gives up and hits
+    // Cancel — without this the spinner would stay stuck on whatever editor
+    // they open next, and that request's result would land in it.
+    this.savingEdit.set(false);
+    this.savingEditFor = null;
   }
 
   saveEdit(comment: Comment, parentId: string | null = null): void {
@@ -266,19 +275,25 @@ export class LikesCommentsComponent implements OnDestroy {
     // content that never actually got posted.
     this.editError.set(null);
     this.savingEdit.set(true);
+    this.savingEditFor = comment.id;
     this.service.editComment(ref, comment.id, text, spoiler, parentId).subscribe({
       next: (res) => {
         // Patch only what an edit can change — likes and replies live in the
-        // local copy and aren't part of the PATCH response.
+        // local copy and aren't part of the PATCH response. This applies even
+        // if the editor has since been closed: the server accepted the edit,
+        // so the thread should show it either way.
         this.patchComment(comment.id, parentId, {
           text: res.comment.text,
           spoiler: res.comment.spoiler,
           editedAt: res.comment.editedAt,
         });
-        this.savingEdit.set(false);
+        if (this.savingEditFor !== comment.id) return;
         this.cancelEdit();
       },
       error: (err) => {
+        // Dropped on the floor if the editor moved on — showing this comment's
+        // rejection reason inside a different comment's form would misattribute it.
+        if (this.savingEditFor !== comment.id) return;
         this.editError.set(err?.error?.error || "Couldn't save your edit right now — please try again.");
         this.savingEdit.set(false);
       },

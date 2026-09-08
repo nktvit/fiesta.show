@@ -449,7 +449,17 @@ async function handleDelete(req, res) {
       return res.status(403).json({ error: 'You can only delete your own comments.' });
     }
 
-    await redis.zrem(targetKey, rawMember(match));
+    // ZREM is checked, not fired and forgotten: since editing rewrites a
+    // member in place, the exact string read a moment ago can already be gone
+    // by the time this runs (the author saved an edit while the delete was in
+    // flight). Removing 0 members and then cascading anyway would destroy the
+    // comment's likes and its whole replies thread while the comment itself
+    // survived — and still report success.
+    const removed = await redis.zrem(targetKey, rawMember(match));
+    if (removed !== 1) {
+      return res.status(409).json({ error: 'This comment changed somewhere else — reload and try again.' });
+    }
+
     await redis.del(commentLikesKey(commentId));
     // Deleting a top-level comment cascades to its replies thread. (Each
     // individual reply's own commentlikes: key is left behind — a small,
