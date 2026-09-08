@@ -22,6 +22,10 @@ export class LikesCommentsComponent {
   readonly type = input<string>('movie');
   readonly season = input<number | null>(null);
   readonly episode = input<number | null>(null);
+  // Two placements share this component: a compact like badge next to the
+  // IMDb/RT/Metacritic ratings, and the full comment thread further down the
+  // page. Each instance only fetches the data its own mode needs.
+  readonly mode = input<'like' | 'comments'>('comments');
 
   private readonly service = inject(LikesCommentsService);
 
@@ -62,17 +66,19 @@ export class LikesCommentsComponent {
   }
 
   private reload(ref: ContentRef): void {
+    if (this.mode() === 'like') {
+      this.service.getLikes(ref).subscribe({
+        next: (res) => {
+          this.likeCount.set(res.count);
+          this.liked.set(res.liked);
+        },
+        error: () => {},
+      });
+      return;
+    }
+
     this.moderationBanner.set(null);
     this.commentText.set('');
-
-    this.service.getLikes(ref).subscribe({
-      next: (res) => {
-        this.likeCount.set(res.count);
-        this.liked.set(res.liked);
-      },
-      error: () => {},
-    });
-
     this.loadingComments.set(true);
     this.comments.set([]);
     this.nextCursor.set(null);

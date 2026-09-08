@@ -1,22 +1,20 @@
-<div class="mt-6 rounded-xl bg-[#111111] border border-white/5 shadow-2xl p-5">
-
-  <!-- Like button -->
+@if (mode() === 'like') {
   <button
     (click)="toggleLike()"
     type="button"
-    class="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all duration-200"
-    [ngClass]="liked()
-      ? 'bg-red-600/20 text-red-400 ring-1 ring-red-500/40'
-      : 'bg-white/5 text-gray-300 hover:bg-white/10 hover:text-white'"
+    [title]="likeCount() + ' like' + (likeCount() === 1 ? '' : 's') + ' on Fiesta'"
+    class="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-bold transition-all duration-200 hover:brightness-110 cursor-pointer"
+    [ngClass]="liked() ? 'bg-red-600 text-white' : 'bg-gray-700/80 text-white'"
   >
-    <svg class="w-4 h-4" [attr.fill]="liked() ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+    <svg class="w-3 h-3" [attr.fill]="liked() ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
     </svg>
-    {{ likeCount() | number }}
+    Fiesta {{ likeCount() | number }}
   </button>
+}
 
-  <!-- Comments -->
-  <div class="mt-6 border-t border-white/5 pt-5">
+@if (mode() === 'comments') {
+  <div class="mt-6 rounded-xl bg-[#111111] border border-white/5 shadow-2xl p-5">
     <h3 class="text-sm font-bold uppercase tracking-wider text-indigo-400 mb-4">
       Comments ({{ comments().length }})
     </h3>
@@ -138,4 +136,4 @@
       }
     </div>
   </div>
-</div>
+}

@@ -145,6 +145,9 @@
                 MC {{ movieDetails.Metascore }}/100
               </a>
             }
+            @if (imdbId && !invalidResponse) {
+              <app-likes-comments mode="like" [imdbId]="imdbId" [type]="type" [season]="season" [episode]="episode"></app-likes-comments>
+            }
           </div>
 
           <!-- Mobile trailer button -->
@@ -384,11 +387,6 @@
         </div>
       }
 
-      <!-- ── LIKES & COMMENTS ──────────────────────────────────────── -->
-      @if (imdbId && !invalidResponse) {
-        <app-likes-comments [imdbId]="imdbId" [type]="type" [season]="season" [episode]="episode"></app-likes-comments>
-      }
-
       <!-- ── RECOMMENDATIONS ────────────────────────────────────────── -->
       @if (recommendations.length > 0) {
         <section class="mt-12 mb-10">
@@ -401,6 +399,11 @@
             }
           </div>
         </section>
+      }
+
+      <!-- ── COMMENTS ──────────────────────────────────────────────── -->
+      @if (imdbId && !invalidResponse) {
+        <app-likes-comments mode="comments" [imdbId]="imdbId" [type]="type" [season]="season" [episode]="episode"></app-likes-comments>
       }
 
     </div><!-- /max-w-5xl -->
