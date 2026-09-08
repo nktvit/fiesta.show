@@ -160,14 +160,63 @@ async function handlePost(req, res) {
   return res.status(201).json({ comment: { ...rest, isMine: true, likeCount: 0, liked: false } });
 }
 
+// A comment's Redis member is JSON, either as the exact stored string or
+// already auto-deserialized by @upstash/redis (see api/likes.js's sibling
+// note) — normalize back to the exact stored string, since ZREM needs a
+// byte-for-byte match, not just the same data.
+function rawMember(entry) {
+  return typeof entry === 'string' ? entry : JSON.stringify(entry);
+}
+
+async function handleDelete(req, res) {
+  const body = req.body || {};
+  let key;
+  try {
+    key = resolveContentKey(body);
+  } catch (e) {
+    return res.status(400).json({ error: e.message });
+  }
+
+  const { commentId, clientId } = body;
+  if (!commentId || typeof commentId !== 'string') {
+    return res.status(400).json({ error: 'Missing commentId.' });
+  }
+  if (!clientId || typeof clientId !== 'string') {
+    return res.status(400).json({ error: 'Missing clientId.' });
+  }
+
+  try {
+    const raw = await redis.zrange(`comments:${key}`, 0, -1);
+    const match = raw.find((entry) => {
+      const c = typeof entry === 'string' ? JSON.parse(entry) : entry;
+      return c.id === commentId;
+    });
+    if (!match) {
+      return res.status(404).json({ error: 'Comment not found.' });
+    }
+    const parsed = typeof match === 'string' ? JSON.parse(match) : match;
+    if (parsed.clientId !== clientId) {
+      return res.status(403).json({ error: 'You can only delete your own comments.' });
+    }
+
+    await redis.zrem(`comments:${key}`, rawMember(match));
+    await redis.del(commentLikesKey(commentId));
+    return res.status(200).json({ deleted: true });
+  } catch (e) {
+    console.error('comments DELETE error:', e);
+    return res.status(502).json({ error: 'Could not delete this comment right now.' });
+  }
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Accept, Content-Type, X-Client-Id');
   res.setHeader('Cache-Control', 'no-store');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   if (req.method === 'GET') return handleGet(req, res);
   if (req.method === 'POST') return handlePost(req, res);
+  if (req.method === 'DELETE') return handleDelete(req, res);
   return res.status(405).json({ error: 'Method not allowed.' });
 };

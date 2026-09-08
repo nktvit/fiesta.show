@@ -149,6 +149,19 @@ export class LikesCommentsComponent {
     });
   }
 
+  deleteComment(comment: Comment): void {
+    const ref = this.readyRef();
+    if (!ref || !comment.isMine) return;
+    if (typeof window !== 'undefined' && !window.confirm('Delete this comment?')) return;
+
+    const prev = this.comments();
+    this.comments.update((list) => list.filter((c) => c.id !== comment.id));
+
+    this.service.deleteComment(ref, comment.id).subscribe({
+      error: () => this.comments.set(prev),
+    });
+  }
+
   loadMore(): void {
     const cursor = this.nextCursor();
     const ref = this.readyRef();

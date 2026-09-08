@@ -121,6 +121,18 @@
               }
               <span>·</span>
               <span>{{ timeAgo(c.createdAt) }}</span>
+              @if (c.isMine) {
+                <button
+                  (click)="deleteComment(c)"
+                  type="button"
+                  title="Delete comment"
+                  class="ml-auto text-gray-600 hover:text-red-400 transition-colors duration-200"
+                >
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m2 0v13a1 1 0 01-1 1H8a1 1 0 01-1-1V7h10z" />
+                  </svg>
+                </button>
+              }
             </div>
             <div class="flex items-end justify-between gap-3">
               <p class="text-sm text-gray-200 whitespace-pre-wrap break-words">{{ c.text }}</p>

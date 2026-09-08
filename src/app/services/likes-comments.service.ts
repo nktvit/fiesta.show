@@ -89,6 +89,12 @@ export class LikesCommentsService {
     });
   }
 
+  deleteComment(ref: ContentRef, commentId: string): Observable<{ deleted: boolean }> {
+    return this.http.delete<{ deleted: boolean }>('/api/comments', {
+      body: { ...this.contentBody(ref), commentId, clientId: this.clientId },
+    });
+  }
+
   private contentBody(ref: ContentRef): Record<string, unknown> {
     const body: Record<string, unknown> = { type: ref.type, id: ref.imdbId };
     if (ref.type === 'tv') {
