@@ -42,8 +42,9 @@ const NAME_MAX = 24;
 // comment's own stored createdAt — the client runs the same countdown only to
 // know when to hide the Edit button; this is the authority.
 const EDIT_WINDOW_MS = 15 * 60 * 1000;
-// Per-comment ceiling on edits, tracked on the comment itself. Unlike the rate
-// limiters below, this one can't be reset by rotating a clientId or an IP.
+// Per-comment ceiling on accepted edits, tracked on the comment itself —
+// unlike the rate limiters below, it can't be reset by rotating a clientId or
+// an IP.
 const EDIT_MAX = 5;
 
 // commentId/parentId are interpolated straight into Redis key names, so they're
@@ -348,11 +349,13 @@ async function handlePatch(req, res) {
   if (Date.now() - parsed.createdAt > EDIT_WINDOW_MS) {
     return res.status(403).json({ error: 'Comments can only be edited within 15 minutes of posting.' });
   }
-  // Moderation verdicts on borderline text aren't perfectly deterministic (see
-  // lib/moderation.js), so an unlimited edit endpoint would let someone simply
-  // re-submit the same rejected text until the model happens to allow it. The
-  // rate limiters don't stop that — both clientId and IP are rotatable — but a
-  // counter stored on the comment itself does.
+  // Bounds how many times a comment can be rewritten at all. That matters
+  // because likes and replies survive an edit: without a cap, a comment could
+  // farm agreement and then be swapped for something else indefinitely, for as
+  // long as the window is open. Note this counts ACCEPTED edits only — a
+  // rejected edit never reaches the write below, so re-submitting text until
+  // the (non-deterministic, see lib/moderation.js) model happens to allow it is
+  // bounded by editIpLimiter, not by this.
   if (editCount >= EDIT_MAX) {
     return res.status(403).json({ error: `A comment can only be edited ${EDIT_MAX} times.` });
   }

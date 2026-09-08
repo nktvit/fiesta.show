@@ -50,9 +50,13 @@ when to stop drawing the pencil. Design points worth not re-deriving:
   pagination bound and the `nextCursor`, so letting an edit move it would both
   bump the comment up the feed and corrupt "Load more".
 - **`editCount`, capped at `EDIT_MAX = 5`**, stored on the comment and
-  stripped from GET responses. Rate limiters key on clientId and IP, both
-  rotatable; this one isn't. It's the real control against re-submitting the
-  same rejected text until the non-deterministic moderator happens to allow it.
+  stripped from GET responses. It counts ACCEPTED edits only — a rejected edit
+  never reaches the write — so what it actually bounds is bait-and-switch
+  (likes and replies survive an edit, so an uncapped comment could farm
+  agreement and then be rewritten repeatedly). Re-submitting text until the
+  non-deterministic moderator happens to allow it is bounded by the per-IP
+  edit limiter instead. The first version of this comment claimed editCount
+  covered both; it doesn't.
 - **Edits get their OWN rate limiters** (`ratelimit:comments:edit:*`, 5/5min
   per client, 15/10min per IP). Reusing the post limiter (1 per 20s) would
   have rejected the single most common edit there is — a typo spotted seconds
@@ -73,6 +77,19 @@ an edit, and a browser pass covering the mask, reveal, re-hide, the inline
 edit form, the inline moderation-error banner, and the pencil correctly
 disappearing on a 17-minute-old comment. All test data was removed from Redis
 afterwards — `content:movie:tt0111161` is back to zero members.
+
+**Reviewed**: an adversarial review of the diff raised 18 findings; 7 survived
+a refute-first verification pass and 3 were worth fixing (commit `2239f61`):
+DELETE not checking its ZREM result once edits made members mutable, a stuck
+`savingEdit` after Cancel leaking one comment's result into another's editor,
+and the comment metadata row overflowing on a 320px viewport — measured, the
+Edit and Delete buttons sat at x=384/406, outside the viewport entirely.
+**Deliberately not fixed**, all low severity: POST still creates a
+`replies:<uuid>` set without checking the parent exists (pre-existing, now at
+least bounded to the UUID shape); a spoiler-only flip consumes one of the 5
+edits; revealing a spoiler drops keyboard focus to `<body>` because the button
+it was on is destroyed; and an in-flight POST from a previous episode can be
+prepended into a newly loaded thread (pre-existing, not introduced here).
 
 **Known/accepted**: the AI Gateway free-tier limit hit repeatedly during
 testing (posting through the UI returned the fail-closed banner several
