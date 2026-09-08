@@ -1,12 +1,144 @@
 # Session handoff
 
-## IN PROGRESS (new session): comment spoilers + 15-minute edit window
+## TWO BRANCHES AWAITING REVIEW — built and verified, NOT merged, NOT deployed
 
-Branch `feat/comment-spoilers-and-edit`, **not yet committed, not yet merged,
-not deployed to production** — only to a preview (`streamfiesta-owpbiwzf2`).
+Both were finished at the end of this session and are the first thing to pick
+up. Neither is pushed; `main` is untouched by either.
+
+### NEXT TASK: heart confetti on the like button — use a LIBRARY, don't hand-roll
+
+**Read this before touching `feat/like-heart-bloom`.** After that branch was
+built, the user clarified what they actually wanted (in Russian): little
+**hearts spilling out of the button**, possibly with a firework/confetti
+effect — and explicitly *"просто возьми найди в интернете готовое, не
+пытайся сейчас сам собрать это"* (take a ready-made one off the internet,
+don't assemble it yourself). So the CSS burst on that branch is the **wrong
+direction** — it's abstract sparks, not hearts, and it was hand-written.
+
+Recommended: **canvas-confetti** (ISC, zero deps, measured 10,808 B raw /
+4,444 B gzipped). It is the right fit for three specific reasons:
+`confetti.shapeFromText({ text: '❤️', scalar: 2 })` gives real heart shapes;
+`origin: {x, y}` (0-1 of viewport) makes the burst come out of *the button's*
+position rather than the screen centre — convert the button's
+`getBoundingClientRect()` — and calling `confetti()` repeatedly layers extra
+bursts onto the same canvas, which is how you get the "салют" on top of the
+hearts. Lazy-load it (`await import('canvas-confetti')`) so it stays out of
+the initial bundle, exactly as `hls.js` already is.
+Simpler alternative: **js-confetti** (MIT, zero deps, 8,027 B raw / 2,715 B
+gzipped) — first-class `addConfetti({ emojis: ['❤️'] })` plus a
+`confettiDispatchPosition` for the click point. Less control, less code.
+Already ruled out and not worth revisiting: Lottie/Rive (480-752 KB brotli of
+WASM that no bundle analyzer reports), the Twitter sprite (unlicensed X
+artwork), party.js and tsparticles (both much heavier).
+
+**Keep from `feat/like-heart-bloom` regardless of which library wins**: the
+structural fix. The template used to swap two `<svg>` elements with
+`@if (liked())`, so Angular destroyed and recreated the node every toggle and
+no transition could ever run across like/unlike. Both hearts now stay mounted
+and cross-fade. That is independent of the burst and is worth keeping.
+
+### `feat/like-heart-bloom` (commits `e39566d`, plus a contrast fix) — superseded, see above
+
+User asked for "a beautiful heart animation" and to find existing solutions
+first. Researched, then rejected, all the obvious ones — **don't re-derive
+this**: the Twitter sprite (`web_heart_animation.png`, still live at
+abs.twimg.com, 2900×100, 29 frames, 11.4 KB) is unlicensed X artwork with its
+colours baked into the PNG palette; and the modern Lottie/Rive runtimes hide
+a WASM payload no bundle analyzer reports — `@lottiefiles/dotlottie-web` is
+~480 KB brotli and `@rive-app/canvas` ~752 KB, versus the 12 KB and 49 KB
+their JS shims advertise.
+
+**The real finding was structural**: the template swapped two separate `<svg>`
+elements with `@if (liked())`, so Angular destroyed and recreated the node on
+every toggle and *no CSS transition could ever run across like/unlike*. Both
+hearts now stay mounted and cross-fade. The burst is Ana Tudor's technique in
+Fiesta's gradient — a disc whose border thins to nothing as it grows (reads as
+an opening ring) plus one element carrying every spark as a box-shadow — which
+**deletes** the six `.burst-particle` spans. 0 KB JS, no assets.
+Measured live: ring 12→34px with border 6→0px, sparks scale 0→1.3, heart
+0.2→1.52→0.90→1.0. Nothing fires on unlike; under `prefers-reduced-motion`
+every animation reports `none` and the icon still swaps instantly.
+Preview: `streamfiesta-au7vu9cx6` (earlier: `ab98r5y7r`).
+
+**A real lesson from this branch, worth not repeating**: the burst was
+verified by sampling computed styles frame-by-frame, which proved the
+keyframes advanced — and it was still *invisible on screen*. Once liked, the
+pill behind it is the indigo/fuchsia/pink gradient, and the ring and sparks
+were those same brand colours; the pill is only 87×28 with the heart at
+(19,14), so a 34px ring sat almost entirely on top of it. The user reported
+"no animation I could see" and was right. A later commit switched the burst
+to white/light tints with travel far enough to clear the pill. **Measuring
+that an animation runs is not the same as looking at it.**
+**Budget gotcha**: the CSS-only version came in 123 bytes over the 2 kB
+`anyComponentStyle` budget, so `.heart`'s layout lives in the template as
+Tailwind utilities. Also worth knowing: **Angular scopes `@keyframes` names**
+(`_ngcontent-ng-cNNNNNN_heart-bloom`), so they can't be referenced from a
+global stylesheet.
+
+### `feat/readmore-animation` (commits `01265d5`, `752b1f3`) — built by a subagent in a worktree
+
+Worktree: `.claude/worktrees/agent-a377ccbc76fc80dbe`. Animates the Read
+More / Show Less expand-collapse on the person bio and the movie plot.
+Technique is a **JS-measured pixel `height` transition** — `interpolate-size`
+has no Safari/Firefox support at all, and `grid-template-rows: 0fr→1fr` needs
+Safari 16 (this repo's floor is Safari 15) *and* can't express this collapse
+anyway, since the collapsed state is a `line-clamp`ed 4/3 lines rather than
+zero height. Verified frame-by-frame in a real browser, both directions, plus
+reduced-motion and an interrupted mid-transition click.
+
+Two things it flagged that are worth knowing before merging:
+- **The movie-plot `isPlotLong = length > 400` bug ran the opposite way to
+  what this doc previously said.** The plot column holds ~80 chars/line, so 3
+  lines ≈ 240 chars — the 400 threshold is never reached before the text has
+  already overflowed. So the button never appeared for genuinely long plots
+  *and* the text wasn't clamped either. Consequence of the fix: plots between
+  ~240 and 400 characters used to render fully unclamped and now clamp to 3
+  lines with a working Read More. That is a visible change on those pages.
+- **`/person/2963` (Nicolas Cage) throws NG0100 on `main` right now** —
+  reproduced before any change. Writing the DOM measurement into a field that
+  gates an `@if` flips that `@if` inside the CD pass that just checked it.
+  Latent on the person page (a second `||` term usually hides it), guaranteed
+  on the plot. Both now measure inside a `queueMicrotask`.
+- Local dev needs more than `node scripts/set-env.js`: that script writes only
+  `production` + `OMDB_API_KEY`, but `tmdb.service.ts` reads
+  `TMDB_API_KEY` on the dev path, so person pages can't load locally without
+  hand-adding it. Worth fixing in the script.
+
+## Other findings from this session, not acted on
+
+- **The `_vercel/insights` / `_vercel/speed-insights` console errors are an ad
+  blocker, not a bug.** Both scripts return 200 from production (3,106 and
+  12,567 bytes). The SDK's "Be sure to enable Web Analytics for your project"
+  text is a generic fallback printed whenever `isDevelopment()` is false
+  (`@vercel/analytics/dist/index.mjs:146`) — it is not a diagnosis. Both
+  packages `console.log` unconditionally from `script.onerror`, with no
+  `debug` flag, so this cannot be silenced from our code.
+- **Production ships public source maps.** `angular.json`'s production config
+  has `sourceMap: true`, and `https://fiesta.show/main-*.js.map` returns 200
+  with the original TypeScript paths. Angular's default here is `false`.
+  Not changed — it's a real trade-off against readable prod stack traces.
+- **`TmdbService`'s in-memory cache poisons itself on a transient failure.**
+  `cached()` fills its `Map` once and never replaces the entry, while every
+  fetch does `catchError(() => of([]))` (`tmdb.service.ts:109,121,130,141`).
+  So one blip caches an empty array and the homepage row stays empty for the
+  whole session with no retry — only a full reload recovers. Fix: drop the
+  Map entry on the error path, then add a TTL and a size cap (nothing evicts
+  `genre_X_page_N` / `tv_episodes_X_S` today).
+- **Homepage opportunities** were inventoried in depth. Headlines:
+  `list=upcoming` is deployed AND has a written `TmdbService.getUpcoming()`
+  with zero call sites; `getPopular()` is fetched on every homepage load and
+  thrown away (its row was deleted in `5804afe`); every list branch already
+  accepts `&page`/returns `totalPages` but `fetchList()` hardcodes page 1;
+  and the player already persists watch progress that the homepage never
+  reads, which makes Continue Watching the best available win.
+
+## SHIPPED: comment spoilers + 15-minute edit window
+
+Merged to `main` as `2d3ecad`, pushed, and deployed to production —
+verified live on `fiesta.show` itself (30/30 API assertions, 11/11 on the
+delete guard, a real moderation rejection, and a browser pass).
 User asked for two things: mark a comment as a spoiler, and let people edit
-their own comment within 15 minutes of posting. Both are built and verified;
-what's left is commit → merge → prod deploy.
+their own comment within 15 minutes of posting.
 
 **Spoilers.** `spoiler` is a client-set boolean stored on the comment member.
 It is deliberately NOT a moderation concern — `lib/moderation.js` gets only
