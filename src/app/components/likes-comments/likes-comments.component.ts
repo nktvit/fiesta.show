@@ -1,4 +1,4 @@
-import { Component, computed, effect, inject, input, OnDestroy, signal } from '@angular/core';
+import { Component, computed, effect, ElementRef, inject, input, OnDestroy, signal, viewChild } from '@angular/core';
 import { DecimalPipe, NgClass } from '@angular/common';
 import { Comment, ContentRef, EDIT_WINDOW_MS, LikesCommentsService } from '../../services/likes-comments.service';
 
@@ -28,6 +28,9 @@ export class LikesCommentsComponent implements OnDestroy {
   readonly mode = input<'like' | 'comments'>('comments');
 
   private readonly service = inject(LikesCommentsService);
+
+  // The confetti burst is anchored to this element's position on screen.
+  private readonly likeBtn = viewChild<ElementRef<HTMLElement>>('likeBtn');
 
   readonly likeCount = signal(0);
   readonly liked = signal(false);
@@ -156,6 +159,7 @@ export class LikesCommentsComponent implements OnDestroy {
       if (this.burstTimeout) clearTimeout(this.burstTimeout);
       this.justLiked.set(true);
       this.burstTimeout = setTimeout(() => this.justLiked.set(false), 650);
+      void this.fireHearts();
     } else if (this.burstTimeout) {
       clearTimeout(this.burstTimeout);
       this.justLiked.set(false);
@@ -170,6 +174,53 @@ export class LikesCommentsComponent implements OnDestroy {
         this.liked.set(!nextLiked);
         this.likeCount.set(prevCount);
       },
+    });
+  }
+
+  // Hearts spill out of the button itself, so the burst origin is the
+  // button's own centre expressed in viewport fractions — canvas-confetti
+  // defaults to the middle of the screen, which would look unrelated to the
+  // thing that was clicked.
+  private async fireHearts(): Promise<void> {
+    const el = this.likeBtn()?.nativeElement;
+    if (!el || typeof window === 'undefined') return;
+
+    const rect = el.getBoundingClientRect();
+    const origin = {
+      x: (rect.left + rect.width / 2) / window.innerWidth,
+      y: (rect.top + rect.height / 2) / window.innerHeight,
+    };
+
+    // Lazy-loaded so it stays out of the initial bundle — the same treatment
+    // hls.js already gets on the player.
+    const confetti = (await import('canvas-confetti')).default;
+    const heart = confetti.shapeFromText({ text: '❤️', scalar: 2 });
+
+    // `disableForReducedMotion` is the library's own guard, so these become
+    // no-ops for that preference without branching on a media query here.
+    confetti({
+      origin,
+      shapes: [heart],
+      scalar: 2,
+      particleCount: 14,
+      spread: 70,
+      startVelocity: 28,
+      gravity: 0.7,
+      ticks: 170,
+      disableForReducedMotion: true,
+    });
+    // A faster, smaller second layer in Fiesta's own gradient colours — the
+    // firework behind the hearts.
+    confetti({
+      origin,
+      particleCount: 32,
+      spread: 95,
+      startVelocity: 34,
+      scalar: 0.7,
+      gravity: 0.9,
+      ticks: 120,
+      colors: ['#6366f1', '#d946ef', '#ec4899', '#818cf8', '#f0abfc'],
+      disableForReducedMotion: true,
     });
   }
 

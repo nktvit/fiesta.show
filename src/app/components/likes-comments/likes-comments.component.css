@@ -13,23 +13,6 @@
   100% { transform: scale(1); }
 }
 
-/* A solid disc whose border thins away as the box grows, so it opens into a
-   ring travelling outward. Starting at width/height 0 with a 6px border means
-   the disc is 12px across before it expands. */
-@keyframes heart-bloom {
-  0% { width: 0; height: 0; border-width: 7px; opacity: 0.95; }
-  55% { border-width: 3px; opacity: 0.55; }
-  100% { width: 46px; height: 46px; border-width: 0; opacity: 0; }
-}
-
-/* One element carrying every spark as a box-shadow, scaled outward from the
-   centre — no per-particle DOM nodes. */
-@keyframes heart-sparks {
-  0% { transform: scale(0); opacity: 0; }
-  25% { opacity: 1; }
-  100% { transform: scale(1.3); opacity: 0; }
-}
-
 .animate-count-pop {
   display: inline-block;
   animation: count-pop 0.4s ease-out;
@@ -58,54 +41,8 @@
   transform: scale(1);
 }
 
-.heart::before,
-.heart::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  border-radius: 50%;
-  pointer-events: none;
-  opacity: 0;
-}
-
-/* White, not brand colours: once liked, the pill BEHIND this burst is the
-   indigo/fuchsia/pink gradient, so fuchsia sparks on it are invisible. Light
-   tints are the only thing that reads against both the saturated pill and the
-   near-black page. The travel distances clear the 28px-tall pill vertically
-   (the heart sits 14px from its top edge) so part of every burst lands on the
-   dark background. */
-.heart::before {
-  width: 0;
-  height: 0;
-  border: 0 solid #fff;
-  transform: translate(-50%, -50%);
-}
-
-.heart::after {
-  width: 4px;
-  height: 4px;
-  margin: -2px 0 0 -2px;
-  transform: scale(0);
-  box-shadow:
-    15px -22px 0 #fff,
-    -17px -20px 0 #c7d2fe,
-    2px -26px 0 #fbcfe8,
-    20px 18px 0 #f5d0fe,
-    -18px 20px 0 #fff,
-    4px 24px 0 #fbcfe8;
-}
-
 .heart.is-bursting .heart-fill {
   animation: heart-spring 0.5s cubic-bezier(0.17, 0.89, 0.32, 1.49);
-}
-
-.heart.is-bursting::before {
-  animation: heart-bloom 0.45s cubic-bezier(0.21, 0.61, 0.35, 1) forwards;
-}
-
-.heart.is-bursting::after {
-  animation: heart-sparks 0.6s cubic-bezier(0.21, 0.61, 0.35, 1) forwards;
 }
 
 /* A spoiler-marked comment renders its own real text, blurred past legibility,
@@ -136,13 +73,12 @@
 
 @media (prefers-reduced-motion: reduce) {
   .animate-count-pop,
-  .heart.is-bursting .heart-fill,
-  .heart.is-bursting::before,
-  .heart.is-bursting::after {
+  .heart.is-bursting .heart-fill {
     animation: none;
   }
 
-  /* The icons still need to swap — they just do it instantly. */
+  /* The icons still need to swap — they just do it instantly. The confetti
+     itself is suppressed by canvas-confetti's own disableForReducedMotion. */
   .heart svg {
     transition: none;
   }

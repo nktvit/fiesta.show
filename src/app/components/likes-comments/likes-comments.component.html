@@ -1,5 +1,6 @@
 @if (mode() === 'like') {
   <button
+    #likeBtn
     (click)="toggleLike()"
     type="button"
     [title]="likeCount() + ' like' + (likeCount() === 1 ? '' : 's') + ' on Fiesta'"
