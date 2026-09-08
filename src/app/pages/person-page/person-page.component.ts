@@ -1,4 +1,4 @@
-import {Component, inject} from '@angular/core';
+import {AfterViewChecked, Component, ElementRef, inject, ViewChild} from '@angular/core';
 import {ActivatedRoute} from '@angular/router';
 import {of, switchMap} from 'rxjs';
 import {Title, Meta} from '@angular/platform-browser';
@@ -13,16 +13,30 @@ import {PersonDetails, TmdbService} from '../../services/tmdb.service';
   templateUrl: './person-page.component.html',
   styleUrl: './person-page.component.css',
 })
-export class PersonPageComponent {
+export class PersonPageComponent implements AfterViewChecked {
   private route = inject(ActivatedRoute);
   private tmdbService = inject(TmdbService);
   private titleService = inject(Title);
   private metaService = inject(Meta);
 
+  @ViewChild('bioClamp') private bioClampRef?: ElementRef<HTMLParagraphElement>;
+
   isLoading = true;
   notFound = false;
   person: PersonDetails | null = null;
   isFullBio = false;
+  // Whether the clamped bio paragraph is actually overflowing its 4-line
+  // clamp — a fixed character-count guess doesn't track real truncation
+  // (font size, viewport width, and paragraph breaks all affect how much
+  // text 4 lines actually holds), so this is measured directly from the DOM.
+  isBioTruncated = false;
+
+  ngAfterViewChecked() {
+    if (this.isFullBio || !this.bioClampRef) return;
+    const el = this.bioClampRef.nativeElement;
+    const truncated = el.scrollHeight > el.clientHeight + 1;
+    if (truncated !== this.isBioTruncated) this.isBioTruncated = truncated;
+  }
 
   ngOnInit() {
     this.route.paramMap.pipe(

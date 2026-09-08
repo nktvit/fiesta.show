@@ -336,6 +336,9 @@ export class MoviePageComponent implements OnDestroy {
       this.jsonLdElement.remove();
       this.jsonLdElement = null;
     }
+    if (this.showTrailer && isPlatformBrowser(this.platformId)) {
+      document.body.style.overflow = '';
+    }
   }
 
   private loadRecommendations() {
@@ -410,19 +413,34 @@ export class MoviePageComponent implements OnDestroy {
     }
   }
 
+  // Memoized: a getter re-evaluated every change-detection cycle would call
+  // bypassSecurityTrustResourceUrl() again each time, returning a new object
+  // even though the URL is unchanged — Angular then sees the iframe's [src]
+  // as "changed" and reloads it, which is what caused the trailer to visibly
+  // blink/refresh while open.
+  private trailerUrlCache: { key: string; url: SafeResourceUrl } | null = null;
+
   get trailerUrl(): SafeResourceUrl | null {
     if (!this.trailerKey) return null;
-    return this.sanitizer.bypassSecurityTrustResourceUrl(
-      `https://www.youtube.com/embed/${this.trailerKey}?autoplay=1`
-    );
+    if (this.trailerUrlCache?.key !== this.trailerKey) {
+      this.trailerUrlCache = {
+        key: this.trailerKey,
+        url: this.sanitizer.bypassSecurityTrustResourceUrl(
+          `https://www.youtube.com/embed/${this.trailerKey}?autoplay=1`
+        ),
+      };
+    }
+    return this.trailerUrlCache.url;
   }
 
   openTrailer() {
     this.showTrailer = true;
+    if (isPlatformBrowser(this.platformId)) document.body.style.overflow = 'hidden';
   }
 
   closeTrailer() {
     this.showTrailer = false;
+    if (isPlatformBrowser(this.platformId)) document.body.style.overflow = '';
   }
 
   private resolveTmdbId() {
