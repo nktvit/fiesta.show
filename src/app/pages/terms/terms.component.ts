@@ -1,11 +1,10 @@
 import { Component, inject, OnInit } from '@angular/core';
 import { Title, Meta } from '@angular/platform-browser';
-import { RouterLink } from '@angular/router';
 import { NavbarComponent } from '../../components/navbar/navbar.component';
 
 @Component({
   selector: 'app-terms',
-  imports: [NavbarComponent, RouterLink],
+  imports: [NavbarComponent],
   templateUrl: './terms.component.html',
 })
 export class TermsComponent implements OnInit {
