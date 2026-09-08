@@ -17,9 +17,9 @@
    ring travelling outward. Starting at width/height 0 with a 6px border means
    the disc is 12px across before it expands. */
 @keyframes heart-bloom {
-  0% { width: 0; height: 0; border-width: 6px; opacity: 1; }
-  55% { border-width: 2.5px; opacity: 0.85; }
-  100% { width: 34px; height: 34px; border-width: 0; opacity: 0; }
+  0% { width: 0; height: 0; border-width: 7px; opacity: 0.95; }
+  55% { border-width: 3px; opacity: 0.55; }
+  100% { width: 46px; height: 46px; border-width: 0; opacity: 0; }
 }
 
 /* One element carrying every spark as a box-shadow, scaled outward from the
@@ -69,25 +69,31 @@
   opacity: 0;
 }
 
+/* White, not brand colours: once liked, the pill BEHIND this burst is the
+   indigo/fuchsia/pink gradient, so fuchsia sparks on it are invisible. Light
+   tints are the only thing that reads against both the saturated pill and the
+   near-black page. The travel distances clear the 28px-tall pill vertically
+   (the heart sits 14px from its top edge) so part of every burst lands on the
+   dark background. */
 .heart::before {
   width: 0;
   height: 0;
-  border: 0 solid #d946ef;
+  border: 0 solid #fff;
   transform: translate(-50%, -50%);
 }
 
 .heart::after {
-  width: 3px;
-  height: 3px;
-  margin: -1.5px 0 0 -1.5px;
+  width: 4px;
+  height: 4px;
+  margin: -2px 0 0 -2px;
   transform: scale(0);
   box-shadow:
-    14px -10px 0 #6366f1,
-    -15px -7px 0 #d946ef,
-    1px -17px 0 #ec4899,
-    16px 6px 0 #818cf8,
-    -13px 10px 0 #f0abfc,
-    3px 16px 0 #f9a8d4;
+    15px -22px 0 #fff,
+    -17px -20px 0 #c7d2fe,
+    2px -26px 0 #fbcfe8,
+    20px 18px 0 #f5d0fe,
+    -18px 20px 0 #fff,
+    4px 24px 0 #fbcfe8;
 }
 
 .heart.is-bursting .heart-fill {
