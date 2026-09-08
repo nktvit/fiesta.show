@@ -75,8 +75,14 @@
         class="w-full px-3 py-2 rounded-md bg-white/5 border border-white/10 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none"
       ></textarea>
 
-      <div class="flex items-center justify-between mt-2">
-        <span class="text-[11px] text-gray-600">{{ commentText().length }}/500</span>
+      <div class="flex flex-wrap items-center justify-between gap-2 mt-2">
+        <div class="flex items-center gap-3">
+          <span class="text-[11px] text-gray-600">{{ commentText().length }}/500</span>
+          <label class="flex items-center gap-1.5 text-[11px] font-medium text-gray-400 hover:text-gray-300 cursor-pointer select-none transition-colors duration-200">
+            <input type="checkbox" [checked]="commentSpoiler()" (change)="commentSpoiler.set($any($event.target).checked)" class="accent-fuchsia-500">
+            Mark as spoiler
+          </label>
+        </div>
         <button
           (click)="postComment()"
           [disabled]="!commentText().trim() || postingComment()"
@@ -111,43 +117,125 @@
       } @else {
         @for (c of comments(); track c.id) {
           <div class="py-3 border-b border-white/5 last:border-0">
-            <div class="flex items-center gap-1.5 text-xs text-gray-500 mb-1">
+            <div class="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-gray-500 mb-1">
               @if (c.country) {
                 <span [attr.title]="countryName(c.country)">{{ countryFlag(c.country) }}</span>
               }
-              <span class="font-medium text-gray-300">{{ c.displayName || 'Anonymous' }}</span>
+              <span class="font-medium text-gray-300 truncate max-w-[11rem]">{{ c.displayName || 'Anonymous' }}</span>
               @if (c.isMine) {
                 <span class="text-indigo-400">(you)</span>
               }
               <span>·</span>
               <span>{{ timeAgo(c.createdAt) }}</span>
-              @if (c.isMine) {
+              @if (c.editedAt) {
+                <span class="text-gray-600" title="Edited by the author">(edited)</span>
+              }
+              @if (c.spoiler && isRevealed(c.id)) {
                 <button
-                  (click)="deleteComment(c)"
+                  (click)="toggleReveal(c.id)"
                   type="button"
-                  title="Delete comment"
-                  class="ml-auto text-gray-600 hover:text-red-400 transition-colors duration-200"
+                  title="Hide spoiler again"
+                  class="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide bg-fuchsia-500/15 text-fuchsia-300 hover:bg-fuchsia-500/25 transition-colors duration-200"
                 >
-                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m2 0v13a1 1 0 01-1 1H8a1 1 0 01-1-1V7h10z" />
-                  </svg>
+                  Spoiler
                 </button>
               }
+              @if (c.isMine) {
+                <span class="ml-auto flex items-center gap-2">
+                  @if (canEdit(c)) {
+                    <button
+                      (click)="startEdit(c)"
+                      type="button"
+                      [title]="'Edit comment (' + editTimeLeft(c) + ' left)'"
+                      class="text-gray-600 hover:text-indigo-400 transition-colors duration-200"
+                    >
+                      <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125" />
+                      </svg>
+                    </button>
+                  }
+                  <button
+                    (click)="deleteComment(c)"
+                    type="button"
+                    title="Delete comment"
+                    class="text-gray-600 hover:text-red-400 transition-colors duration-200"
+                  >
+                    <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m2 0v13a1 1 0 01-1 1H8a1 1 0 01-1-1V7h10z" />
+                    </svg>
+                  </button>
+                </span>
+              }
             </div>
-            <div class="flex items-end justify-between gap-3">
-              <p class="text-sm text-gray-200 whitespace-pre-wrap break-words">{{ c.text }}</p>
-              <button
-                (click)="toggleCommentLike(c)"
-                type="button"
-                class="flex-shrink-0 inline-flex items-center gap-1 text-xs font-medium transition-colors duration-200"
-                [ngClass]="c.liked ? 'text-red-400' : 'text-gray-600 hover:text-gray-400'"
-              >
-                <svg class="w-3.5 h-3.5" [attr.fill]="c.liked ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                </svg>
-                {{ c.likeCount }}
-              </button>
-            </div>
+            @if (editingId() === c.id) {
+              <textarea
+                [value]="editText()"
+                (input)="editText.set($any($event.target).value)"
+                rows="2"
+                maxlength="500"
+                class="w-full px-3 py-2 rounded-md bg-white/5 border border-white/10 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none"
+              ></textarea>
+              <div class="flex flex-wrap items-center justify-between gap-2 mt-1.5">
+                <label class="flex items-center gap-1.5 text-[11px] font-medium text-gray-400 hover:text-gray-300 cursor-pointer select-none transition-colors duration-200">
+                  <input type="checkbox" [checked]="editSpoiler()" (change)="editSpoiler.set($any($event.target).checked)" class="accent-fuchsia-500">
+                  Mark as spoiler
+                </label>
+                <div class="flex items-center gap-2">
+                  <button (click)="cancelEdit()" type="button" class="px-3 py-1 rounded-md text-xs font-medium text-gray-400 hover:text-white transition-colors duration-200">
+                    Cancel
+                  </button>
+                  <button
+                    (click)="saveEdit(c)"
+                    [disabled]="!editText().trim() || savingEdit()"
+                    type="button"
+                    class="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200"
+                  >
+                    @if (savingEdit()) {
+                      <span class="h-3 w-3 animate-spin rounded-full border-2 border-white/40 border-t-white"></span>
+                    }
+                    Save
+                  </button>
+                </div>
+              </div>
+              @if (editError()) {
+                <div class="mt-2 px-3 py-2 rounded-md bg-yellow-500/10 border border-yellow-500/20 text-xs text-yellow-400">
+                  {{ editError() }}
+                </div>
+              }
+            } @else {
+              <div class="flex items-end justify-between gap-3">
+                @if (c.spoiler && !isRevealed(c.id)) {
+                  <button
+                    (click)="toggleReveal(c.id)"
+                    type="button"
+                    aria-label="Reveal spoiler"
+                    class="spoiler-mask group relative flex-1 min-w-0 text-left"
+                  >
+                    <span class="block text-sm text-gray-200 whitespace-pre-wrap break-words spoiler-text" aria-hidden="true">{{ c.text }}</span>
+                    <span class="absolute inset-0 flex items-center justify-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-400 group-hover:text-white transition-colors duration-200">
+                      <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                      Spoiler — tap to reveal
+                    </span>
+                  </button>
+                } @else {
+                  <p class="text-sm text-gray-200 whitespace-pre-wrap break-words">{{ c.text }}</p>
+                }
+                <button
+                  (click)="toggleCommentLike(c)"
+                  type="button"
+                  class="flex-shrink-0 inline-flex items-center gap-1 text-xs font-medium transition-colors duration-200"
+                  [ngClass]="c.liked ? 'text-red-400' : 'text-gray-600 hover:text-gray-400'"
+                >
+                  <svg class="w-3.5 h-3.5" [attr.fill]="c.liked ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                  </svg>
+                  {{ c.likeCount }}
+                </button>
+              </div>
+            }
 
             <button
               (click)="startReply(c.id)"
@@ -167,21 +255,27 @@
                   placeholder="Reply…"
                   class="w-full px-3 py-2 rounded-md bg-white/5 border border-white/10 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none"
                 ></textarea>
-                <div class="flex items-center justify-end gap-2 mt-1.5">
-                  <button (click)="startReply(c.id)" type="button" class="px-3 py-1 rounded-md text-xs font-medium text-gray-400 hover:text-white transition-colors duration-200">
-                    Cancel
-                  </button>
-                  <button
-                    (click)="postReply(c)"
-                    [disabled]="!replyText().trim() || postingReply()"
-                    type="button"
-                    class="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200"
-                  >
-                    @if (postingReply()) {
-                      <span class="h-3 w-3 animate-spin rounded-full border-2 border-white/40 border-t-white"></span>
-                    }
-                    Reply
-                  </button>
+                <div class="flex flex-wrap items-center justify-between gap-2 mt-1.5">
+                  <label class="flex items-center gap-1.5 text-[11px] font-medium text-gray-400 hover:text-gray-300 cursor-pointer select-none transition-colors duration-200">
+                    <input type="checkbox" [checked]="replySpoiler()" (change)="replySpoiler.set($any($event.target).checked)" class="accent-fuchsia-500">
+                    Mark as spoiler
+                  </label>
+                  <div class="flex items-center gap-2">
+                    <button (click)="startReply(c.id)" type="button" class="px-3 py-1 rounded-md text-xs font-medium text-gray-400 hover:text-white transition-colors duration-200">
+                      Cancel
+                    </button>
+                    <button
+                      (click)="postReply(c)"
+                      [disabled]="!replyText().trim() || postingReply()"
+                      type="button"
+                      class="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200"
+                    >
+                      @if (postingReply()) {
+                        <span class="h-3 w-3 animate-spin rounded-full border-2 border-white/40 border-t-white"></span>
+                      }
+                      Reply
+                    </button>
+                  </div>
                 </div>
               </div>
             }
@@ -190,43 +284,125 @@
               <div class="mt-3 pl-4 border-l border-white/10 space-y-3">
                 @for (r of c.replies; track r.id) {
                   <div>
-                    <div class="flex items-center gap-1.5 text-xs text-gray-500 mb-1">
+                    <div class="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-gray-500 mb-1">
                       @if (r.country) {
                         <span [attr.title]="countryName(r.country)">{{ countryFlag(r.country) }}</span>
                       }
-                      <span class="font-medium text-gray-300">{{ r.displayName || 'Anonymous' }}</span>
+                      <span class="font-medium text-gray-300 truncate max-w-[11rem]">{{ r.displayName || 'Anonymous' }}</span>
                       @if (r.isMine) {
                         <span class="text-indigo-400">(you)</span>
                       }
                       <span>·</span>
                       <span>{{ timeAgo(r.createdAt) }}</span>
-                      @if (r.isMine) {
+                      @if (r.editedAt) {
+                        <span class="text-gray-600" title="Edited by the author">(edited)</span>
+                      }
+                      @if (r.spoiler && isRevealed(r.id)) {
                         <button
-                          (click)="deleteComment(r, c.id)"
+                          (click)="toggleReveal(r.id)"
                           type="button"
-                          title="Delete reply"
-                          class="ml-auto text-gray-600 hover:text-red-400 transition-colors duration-200"
+                          title="Hide spoiler again"
+                          class="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide bg-fuchsia-500/15 text-fuchsia-300 hover:bg-fuchsia-500/25 transition-colors duration-200"
                         >
-                          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m2 0v13a1 1 0 01-1 1H8a1 1 0 01-1-1V7h10z" />
-                          </svg>
+                          Spoiler
                         </button>
                       }
+                      @if (r.isMine) {
+                        <span class="ml-auto flex items-center gap-2">
+                          @if (canEdit(r)) {
+                            <button
+                              (click)="startEdit(r)"
+                              type="button"
+                              [title]="'Edit reply (' + editTimeLeft(r) + ' left)'"
+                              class="text-gray-600 hover:text-indigo-400 transition-colors duration-200"
+                            >
+                              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125" />
+                              </svg>
+                            </button>
+                          }
+                          <button
+                            (click)="deleteComment(r, c.id)"
+                            type="button"
+                            title="Delete reply"
+                            class="text-gray-600 hover:text-red-400 transition-colors duration-200"
+                          >
+                            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                              <path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m2 0v13a1 1 0 01-1 1H8a1 1 0 01-1-1V7h10z" />
+                            </svg>
+                          </button>
+                        </span>
+                      }
                     </div>
-                    <div class="flex items-end justify-between gap-3">
-                      <p class="text-sm text-gray-300 whitespace-pre-wrap break-words">{{ r.text }}</p>
-                      <button
-                        (click)="toggleCommentLike(r, c.id)"
-                        type="button"
-                        class="flex-shrink-0 inline-flex items-center gap-1 text-xs font-medium transition-colors duration-200"
-                        [ngClass]="r.liked ? 'text-red-400' : 'text-gray-600 hover:text-gray-400'"
-                      >
-                        <svg class="w-3 h-3" [attr.fill]="r.liked ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                        </svg>
-                        {{ r.likeCount }}
-                      </button>
-                    </div>
+                    @if (editingId() === r.id) {
+                      <textarea
+                        [value]="editText()"
+                        (input)="editText.set($any($event.target).value)"
+                        rows="2"
+                        maxlength="500"
+                        class="w-full px-3 py-2 rounded-md bg-white/5 border border-white/10 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none"
+                      ></textarea>
+                      <div class="flex flex-wrap items-center justify-between gap-2 mt-1.5">
+                        <label class="flex items-center gap-1.5 text-[11px] font-medium text-gray-400 hover:text-gray-300 cursor-pointer select-none transition-colors duration-200">
+                          <input type="checkbox" [checked]="editSpoiler()" (change)="editSpoiler.set($any($event.target).checked)" class="accent-fuchsia-500">
+                          Mark as spoiler
+                        </label>
+                        <div class="flex items-center gap-2">
+                          <button (click)="cancelEdit()" type="button" class="px-3 py-1 rounded-md text-xs font-medium text-gray-400 hover:text-white transition-colors duration-200">
+                            Cancel
+                          </button>
+                          <button
+                            (click)="saveEdit(r, c.id)"
+                            [disabled]="!editText().trim() || savingEdit()"
+                            type="button"
+                            class="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200"
+                          >
+                            @if (savingEdit()) {
+                              <span class="h-3 w-3 animate-spin rounded-full border-2 border-white/40 border-t-white"></span>
+                            }
+                            Save
+                          </button>
+                        </div>
+                      </div>
+                      @if (editError()) {
+                        <div class="mt-2 px-3 py-2 rounded-md bg-yellow-500/10 border border-yellow-500/20 text-xs text-yellow-400">
+                          {{ editError() }}
+                        </div>
+                      }
+                    } @else {
+                      <div class="flex items-end justify-between gap-3">
+                        @if (r.spoiler && !isRevealed(r.id)) {
+                          <button
+                            (click)="toggleReveal(r.id)"
+                            type="button"
+                            aria-label="Reveal spoiler"
+                            class="spoiler-mask group relative flex-1 min-w-0 text-left"
+                          >
+                            <span class="block text-sm text-gray-300 whitespace-pre-wrap break-words spoiler-text" aria-hidden="true">{{ r.text }}</span>
+                            <span class="absolute inset-0 flex items-center justify-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-400 group-hover:text-white transition-colors duration-200">
+                              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              </svg>
+                              Spoiler — tap to reveal
+                            </span>
+                          </button>
+                        } @else {
+                          <p class="text-sm text-gray-300 whitespace-pre-wrap break-words">{{ r.text }}</p>
+                        }
+                        <button
+                          (click)="toggleCommentLike(r, c.id)"
+                          type="button"
+                          class="flex-shrink-0 inline-flex items-center gap-1 text-xs font-medium transition-colors duration-200"
+                          [ngClass]="r.liked ? 'text-red-400' : 'text-gray-600 hover:text-gray-400'"
+                        >
+                          <svg class="w-3 h-3" [attr.fill]="r.liked ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                          </svg>
+                          {{ r.likeCount }}
+                        </button>
+                      </div>
+                    }
                   </div>
                 }
               </div>

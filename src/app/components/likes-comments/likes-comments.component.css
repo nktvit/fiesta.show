@@ -36,6 +36,32 @@
   animation: particle-burst 0.6s ease-out forwards;
 }
 
+/* A spoiler-marked comment renders its own real text, blurred past legibility,
+   rather than a placeholder bar — the reader still sees how long it is, and the
+   layout doesn't jump when it's revealed. `overflow: hidden` matters: the blur
+   would otherwise bleed a few readable-ish pixels outside the box. */
+.spoiler-mask {
+  overflow: hidden;
+  /* Tall enough that the "tap to reveal" label can wrap to two lines on a
+     narrow screen without being clipped — the mask has to be free to shrink
+     (min-w-0) or it pushes the like button out of the comment card. */
+  min-height: 2.75rem;
+  padding: 0.375rem 0.5rem;
+  border-radius: 0.375rem;
+  background: rgb(217 70 239 / 0.06);
+  transition: background-color 0.2s ease-out;
+}
+
+.spoiler-mask:hover {
+  background: rgb(217 70 239 / 0.13);
+}
+
+.spoiler-text {
+  filter: blur(6px);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-heart-pop,
   .animate-count-pop,
