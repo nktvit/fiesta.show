@@ -2,6 +2,11 @@ import { inject, Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
+// How long after posting a comment stays editable by its author. Mirrors
+// EDIT_WINDOW_MS in api/comments.js, which is the one that actually enforces
+// it — this copy only decides when to stop offering the Edit button.
+export const EDIT_WINDOW_MS = 15 * 60 * 1000;
+
 export interface Comment {
   id: string;
   text: string;
@@ -13,6 +18,9 @@ export interface Comment {
   liked: boolean;
   parentId?: string | null;
   replies?: Comment[];
+  // Absent on comments stored before either field existed.
+  spoiler?: boolean;
+  editedAt?: number | null;
 }
 
 export interface LikesResponse {
@@ -87,12 +95,31 @@ export class LikesCommentsService {
     text: string,
     displayName?: string | null,
     parentId?: string | null,
+    spoiler = false,
   ): Observable<{ comment: Comment }> {
     return this.http.post<{ comment: Comment }>('/api/comments', {
       ...this.contentBody(ref),
       clientId: this.clientId,
       text,
       displayName: displayName || undefined,
+      parentId: parentId || undefined,
+      spoiler,
+    });
+  }
+
+  editComment(
+    ref: ContentRef,
+    commentId: string,
+    text: string,
+    spoiler: boolean,
+    parentId?: string | null,
+  ): Observable<{ comment: Comment }> {
+    return this.http.patch<{ comment: Comment }>('/api/comments', {
+      ...this.contentBody(ref),
+      clientId: this.clientId,
+      commentId,
+      text,
+      spoiler,
       parentId: parentId || undefined,
     });
   }

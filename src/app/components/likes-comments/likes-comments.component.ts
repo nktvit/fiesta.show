@@ -1,6 +1,6 @@
-import { Component, computed, effect, inject, input, signal } from '@angular/core';
+import { Component, computed, effect, inject, input, OnDestroy, signal } from '@angular/core';
 import { DecimalPipe, NgClass } from '@angular/common';
-import { Comment, ContentRef, LikesCommentsService } from '../../services/likes-comments.service';
+import { Comment, ContentRef, EDIT_WINDOW_MS, LikesCommentsService } from '../../services/likes-comments.service';
 
 const ADJECTIVES = ['Curious', 'Sleepy', 'Brave', 'Mighty', 'Quiet', 'Jolly', 'Clever', 'Gentle'];
 const ANIMALS = ['Panda', 'Falcon', 'Otter', 'Tiger', 'Owl', 'Fox', 'Wolf', 'Dolphin'];
@@ -17,7 +17,7 @@ function randomName(): string {
   templateUrl: './likes-comments.component.html',
   styleUrl: './likes-comments.component.css',
 })
-export class LikesCommentsComponent {
+export class LikesCommentsComponent implements OnDestroy {
   readonly imdbId = input<string>('');
   readonly type = input<string>('movie');
   readonly season = input<number | null>(null);
@@ -45,6 +45,7 @@ export class LikesCommentsComponent {
   readonly randomDisplayName = signal('');
   readonly customName = signal('');
   readonly commentText = signal('');
+  readonly commentSpoiler = signal(false);
   readonly postingComment = signal(false);
   readonly moderationBanner = signal<string | null>(null);
 
@@ -52,7 +53,24 @@ export class LikesCommentsComponent {
   // replies go one level deep only, so there's no equivalent for replies.
   readonly replyingTo = signal<string | null>(null);
   readonly replyText = signal('');
+  readonly replySpoiler = signal(false);
   readonly postingReply = signal(false);
+
+  // Spoiler-masked comments the reader has chosen to uncover, by id. Deliberately
+  // per-page-view state: revisiting the page masks them again.
+  readonly revealed = signal<ReadonlySet<string>>(new Set());
+
+  // Inline edit state — one comment (or reply) at a time.
+  readonly editingId = signal<string | null>(null);
+  readonly editText = signal('');
+  readonly editSpoiler = signal(false);
+  readonly savingEdit = signal(false);
+  readonly editError = signal<string | null>(null);
+
+  // Ticks so relative timestamps stay honest and the Edit button disappears
+  // when the 15-minute window closes, without needing a reload.
+  private readonly now = signal(Date.now());
+  private ticker: ReturnType<typeof setInterval> | null = null;
 
   private readonly contentRef = computed<ContentRef>(() => ({
     imdbId: this.imdbId(),
@@ -73,6 +91,22 @@ export class LikesCommentsComponent {
       const ref = this.readyRef();
       if (ref) this.reload(ref);
     });
+
+    // Only the thread instance needs a clock; the compact like badge shows no
+    // timestamps. Read inside an effect rather than the constructor so the
+    // `mode` input binding has actually been applied.
+    effect(() => {
+      if (this.mode() !== 'comments' || this.ticker) return;
+      this.ticker = setInterval(() => this.now.set(Date.now()), 30_000);
+    });
+
+  }
+
+  // Also clears burstTimeout, which had no teardown before this component
+  // grew a lifecycle hook.
+  ngOnDestroy(): void {
+    if (this.ticker) clearInterval(this.ticker);
+    if (this.burstTimeout) clearTimeout(this.burstTimeout);
   }
 
   private reload(ref: ContentRef): void {
@@ -89,6 +123,10 @@ export class LikesCommentsComponent {
 
     this.moderationBanner.set(null);
     this.commentText.set('');
+    this.commentSpoiler.set(false);
+    this.replyingTo.set(null);
+    this.cancelEdit();
+    this.revealed.set(new Set());
     this.loadingComments.set(true);
     this.comments.set([]);
     this.nextCursor.set(null);
@@ -176,9 +214,81 @@ export class LikesCommentsComponent {
     });
   }
 
+  // A spoiler-masked comment stays masked until the reader asks for it, and
+  // can be put back under the mask with the same control.
+  isRevealed(commentId: string): boolean {
+    return this.revealed().has(commentId);
+  }
+
+  toggleReveal(commentId: string): void {
+    this.revealed.update((set) => {
+      const next = new Set(set);
+      if (!next.delete(commentId)) next.add(commentId);
+      return next;
+    });
+  }
+
+  // Mirrors the server's own window check (api/comments.js) — this only
+  // decides whether to offer the button; the server is what enforces it.
+  canEdit(comment: Comment): boolean {
+    return !!comment.isMine && this.now() - comment.createdAt < EDIT_WINDOW_MS;
+  }
+
+  editTimeLeft(comment: Comment): string {
+    const left = EDIT_WINDOW_MS - (this.now() - comment.createdAt);
+    if (left <= 0) return 'no time';
+    const m = Math.ceil(left / 60000);
+    return `${m}m`;
+  }
+
+  startEdit(comment: Comment): void {
+    this.editingId.set(comment.id);
+    this.editText.set(comment.text);
+    this.editSpoiler.set(!!comment.spoiler);
+    this.editError.set(null);
+  }
+
+  cancelEdit(): void {
+    this.editingId.set(null);
+    this.editText.set('');
+    this.editSpoiler.set(false);
+    this.editError.set(null);
+  }
+
+  saveEdit(comment: Comment, parentId: string | null = null): void {
+    const ref = this.readyRef();
+    const text = this.editText().trim();
+    if (!ref || !text || this.savingEdit()) return;
+    const spoiler = this.editSpoiler();
+
+    // No optimistic patch here: an edit can be rejected by moderation, and
+    // showing the new text before the server has accepted it would flash
+    // content that never actually got posted.
+    this.editError.set(null);
+    this.savingEdit.set(true);
+    this.service.editComment(ref, comment.id, text, spoiler, parentId).subscribe({
+      next: (res) => {
+        // Patch only what an edit can change — likes and replies live in the
+        // local copy and aren't part of the PATCH response.
+        this.patchComment(comment.id, parentId, {
+          text: res.comment.text,
+          spoiler: res.comment.spoiler,
+          editedAt: res.comment.editedAt,
+        });
+        this.savingEdit.set(false);
+        this.cancelEdit();
+      },
+      error: (err) => {
+        this.editError.set(err?.error?.error || "Couldn't save your edit right now — please try again.");
+        this.savingEdit.set(false);
+      },
+    });
+  }
+
   startReply(commentId: string): void {
     this.replyingTo.set(this.replyingTo() === commentId ? null : commentId);
     this.replyText.set('');
+    this.replySpoiler.set(false);
   }
 
   postReply(parent: Comment): void {
@@ -187,12 +297,13 @@ export class LikesCommentsComponent {
     if (!text || !ref || this.postingReply()) return;
 
     this.postingReply.set(true);
-    this.service.postComment(ref, text, null, parent.id).subscribe({
+    this.service.postComment(ref, text, null, parent.id, this.replySpoiler()).subscribe({
       next: (res) => {
         this.comments.update((list) =>
           list.map((c) => (c.id === parent.id ? { ...c, replies: [...(c.replies || []), res.comment] } : c)),
         );
         this.replyText.set('');
+        this.replySpoiler.set(false);
         this.replyingTo.set(null);
         this.postingReply.set(false);
       },
@@ -242,10 +353,11 @@ export class LikesCommentsComponent {
 
     this.moderationBanner.set(null);
     this.postingComment.set(true);
-    this.service.postComment(ref, text, displayName).subscribe({
+    this.service.postComment(ref, text, displayName, null, this.commentSpoiler()).subscribe({
       next: (res) => {
         this.comments.update((c) => [res.comment, ...c]);
         this.commentText.set('');
+        this.commentSpoiler.set(false);
         this.postingComment.set(false);
       },
       error: (err) => {
@@ -271,7 +383,7 @@ export class LikesCommentsComponent {
   }
 
   timeAgo(ts: number): string {
-    const s = Math.floor((Date.now() - ts) / 1000);
+    const s = Math.floor((this.now() - ts) / 1000);
     if (s < 60) return 'just now';
     const m = Math.floor(s / 60);
     if (m < 60) return `${m}m ago`;
