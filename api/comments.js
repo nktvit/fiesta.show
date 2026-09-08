@@ -1,13 +1,20 @@
-// Anonymous, pre-moderated comments. One Redis Sorted Set per content item
-// (score = createdAt ms), so it's naturally ordered and pageable with no
-// separate index. Moderation is synchronous and the ONLY safety mechanism
-// here (no human review queue) — see lib/moderation.js for the fail-closed
-// rationale.
+// Anonymous, pre-moderated comments, one level of replies deep (no
+// replies-to-replies). Top-level comments live in one Redis Sorted Set per
+// content item (score = createdAt ms); each top-level comment's replies live
+// in their OWN sorted set (`replies:{commentId}`), kept separate so paging
+// the top-level list never has to reason about interleaved reply timestamps.
+// Replies aren't paginated (reply counts per comment are expected to stay
+// small) — fetched in full whenever their parent is. Moderation is
+// synchronous and the ONLY safety mechanism here (no human review queue) —
+// see lib/moderation.js for the fail-closed rationale; replies go through
+// the exact same check as top-level comments.
 //
 //   GET  /api/comments?type=&id=&s=&e=&cursor=   + optional header X-Client-Id
-//        -> { comments: [...], nextCursor }
-//   POST /api/comments   { type, id, s?, e?, clientId, text, displayName? }
+//        -> { comments: [{ ..., replies: [...] }], nextCursor }
+//   POST /api/comments   { type, id, s?, e?, clientId, text, displayName?, parentId? }
 //        -> 201 { comment }   |   422 { error }  (flagged or moderation-unavailable)
+//   DELETE /api/comments   { type, id, s?, e?, commentId, clientId, parentId? }
+//        -> 200 { deleted: true }
 
 const { randomUUID } = require('crypto');
 const { Ratelimit } = require('@upstash/ratelimit');
@@ -64,27 +71,52 @@ async function handleGet(req, res) {
       count: PAGE_SIZE,
     });
 
-    const stripped = raw.map((entry) => {
+    const strip = (entry) => {
       const c = typeof entry === 'string' ? JSON.parse(entry) : entry;
       const { clientId, ...rest } = c;
       return { ...rest, isMine: !!requesterId && clientId === requesterId };
-    });
+    };
+    const stripped = raw.map(strip);
 
-    // Per-comment like count/state, batched into one round trip rather than
-    // 1-2 Redis calls per comment.
-    let comments = stripped;
+    // Pass 1: each top-level comment's like state + its raw replies,
+    // batched into one round trip.
+    let comments = stripped.map((c) => ({ ...c, likeCount: 0, liked: false, replies: [] }));
     if (stripped.length > 0) {
-      const pipe = redis.pipeline();
+      const pipe1 = redis.pipeline();
       for (const c of stripped) {
-        pipe.scard(commentLikesKey(c.id));
-        pipe.sismember(commentLikesKey(c.id), requesterId || '');
+        pipe1.scard(commentLikesKey(c.id));
+        pipe1.sismember(commentLikesKey(c.id), requesterId || '');
+        pipe1.zrange(`replies:${c.id}`, 0, -1);
       }
-      const results = await pipe.exec();
+      const results1 = await pipe1.exec();
+
       comments = stripped.map((c, i) => ({
         ...c,
-        likeCount: results[i * 2],
-        liked: requesterId ? !!results[i * 2 + 1] : false,
+        likeCount: results1[i * 3],
+        liked: requesterId ? !!results1[i * 3 + 1] : false,
+        replies: (results1[i * 3 + 2] || []).map(strip).sort((a, b) => a.createdAt - b.createdAt),
       }));
+
+      // Pass 2: each reply's own like state, once we know how many replies
+      // exist (can't be folded into pass 1 — that count isn't known yet).
+      const allReplies = comments.flatMap((c) => c.replies);
+      if (allReplies.length > 0) {
+        const pipe2 = redis.pipeline();
+        for (const r of allReplies) {
+          pipe2.scard(commentLikesKey(r.id));
+          pipe2.sismember(commentLikesKey(r.id), requesterId || '');
+        }
+        const results2 = await pipe2.exec();
+        let idx = 0;
+        comments = comments.map((c) => ({
+          ...c,
+          replies: c.replies.map((r) => {
+            const patched = { ...r, likeCount: results2[idx * 2], liked: requesterId ? !!results2[idx * 2 + 1] : false };
+            idx++;
+            return patched;
+          }),
+        }));
+      }
     }
 
     const nextCursor = comments.length === PAGE_SIZE ? comments[comments.length - 1].createdAt : null;
@@ -108,6 +140,7 @@ async function handlePost(req, res) {
   const { clientId } = body;
   const text = typeof body.text === 'string' ? body.text.trim() : '';
   const displayName = typeof body.displayName === 'string' ? body.displayName.trim() : '';
+  const parentId = typeof body.parentId === 'string' && body.parentId ? body.parentId : null;
 
   if (!clientId || typeof clientId !== 'string') {
     return res.status(400).json({ error: 'Missing clientId.' });
@@ -147,17 +180,19 @@ async function handlePost(req, res) {
     country: req.headers['x-vercel-ip-country'] || null,
     clientId,
     createdAt: Date.now(),
+    parentId,
   };
 
   try {
-    await redis.zadd(`comments:${key}`, { score: comment.createdAt, member: JSON.stringify(comment) });
+    const targetKey = parentId ? `replies:${parentId}` : `comments:${key}`;
+    await redis.zadd(targetKey, { score: comment.createdAt, member: JSON.stringify(comment) });
   } catch (e) {
     console.error('comments POST save error:', e);
     return res.status(502).json({ error: 'Could not save your comment right now.' });
   }
 
   const { clientId: _drop, ...rest } = comment;
-  return res.status(201).json({ comment: { ...rest, isMine: true, likeCount: 0, liked: false } });
+  return res.status(201).json({ comment: { ...rest, isMine: true, likeCount: 0, liked: false, replies: [] } });
 }
 
 // A comment's Redis member is JSON, either as the exact stored string or
@@ -178,6 +213,7 @@ async function handleDelete(req, res) {
   }
 
   const { commentId, clientId } = body;
+  const parentId = typeof body.parentId === 'string' && body.parentId ? body.parentId : null;
   if (!commentId || typeof commentId !== 'string') {
     return res.status(400).json({ error: 'Missing commentId.' });
   }
@@ -185,8 +221,10 @@ async function handleDelete(req, res) {
     return res.status(400).json({ error: 'Missing clientId.' });
   }
 
+  const targetKey = parentId ? `replies:${parentId}` : `comments:${key}`;
+
   try {
-    const raw = await redis.zrange(`comments:${key}`, 0, -1);
+    const raw = await redis.zrange(targetKey, 0, -1);
     const match = raw.find((entry) => {
       const c = typeof entry === 'string' ? JSON.parse(entry) : entry;
       return c.id === commentId;
@@ -199,8 +237,14 @@ async function handleDelete(req, res) {
       return res.status(403).json({ error: 'You can only delete your own comments.' });
     }
 
-    await redis.zrem(`comments:${key}`, rawMember(match));
+    await redis.zrem(targetKey, rawMember(match));
     await redis.del(commentLikesKey(commentId));
+    // Deleting a top-level comment cascades to its replies thread. (Each
+    // individual reply's own commentlikes: key is left behind — a small,
+    // harmless orphan, not worth an extra round trip to enumerate and clean.)
+    if (!parentId) {
+      await redis.del(`replies:${commentId}`);
+    }
     return res.status(200).json({ deleted: true });
   } catch (e) {
     console.error('comments DELETE error:', e);

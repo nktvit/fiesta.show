@@ -11,6 +11,8 @@ export interface Comment {
   isMine: boolean;
   likeCount: number;
   liked: boolean;
+  parentId?: string | null;
+  replies?: Comment[];
 }
 
 export interface LikesResponse {
@@ -80,18 +82,24 @@ export class LikesCommentsService {
     });
   }
 
-  postComment(ref: ContentRef, text: string, displayName?: string | null): Observable<{ comment: Comment }> {
+  postComment(
+    ref: ContentRef,
+    text: string,
+    displayName?: string | null,
+    parentId?: string | null,
+  ): Observable<{ comment: Comment }> {
     return this.http.post<{ comment: Comment }>('/api/comments', {
       ...this.contentBody(ref),
       clientId: this.clientId,
       text,
       displayName: displayName || undefined,
+      parentId: parentId || undefined,
     });
   }
 
-  deleteComment(ref: ContentRef, commentId: string): Observable<{ deleted: boolean }> {
+  deleteComment(ref: ContentRef, commentId: string, parentId?: string | null): Observable<{ deleted: boolean }> {
     return this.http.delete<{ deleted: boolean }>('/api/comments', {
-      body: { ...this.contentBody(ref), commentId, clientId: this.clientId },
+      body: { ...this.contentBody(ref), commentId, clientId: this.clientId, parentId: parentId || undefined },
     });
   }
 

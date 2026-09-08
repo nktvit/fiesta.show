@@ -48,6 +48,12 @@ export class LikesCommentsComponent {
   readonly postingComment = signal(false);
   readonly moderationBanner = signal<string | null>(null);
 
+  // Which top-level comment currently has its inline reply composer open —
+  // replies go one level deep only, so there's no equivalent for replies.
+  readonly replyingTo = signal<string | null>(null);
+  readonly replyText = signal('');
+  readonly postingReply = signal(false);
+
   private readonly contentRef = computed<ContentRef>(() => ({
     imdbId: this.imdbId(),
     type: this.type(),
@@ -126,39 +132,74 @@ export class LikesCommentsComponent {
     });
   }
 
-  toggleCommentLike(comment: Comment): void {
+  // `parentId` set means `comment` is a reply nested under that top-level
+  // comment; omitted means `comment` is itself top-level.
+  private patchComment(commentId: string, parentId: string | null, patch: Partial<Comment>): void {
+    this.comments.update((list) =>
+      list.map((c) => {
+        if (!parentId) return c.id === commentId ? { ...c, ...patch } : c;
+        if (c.id !== parentId) return c;
+        return { ...c, replies: (c.replies || []).map((r) => (r.id === commentId ? { ...r, ...patch } : r)) };
+      }),
+    );
+  }
+
+  toggleCommentLike(comment: Comment, parentId: string | null = null): void {
     const nextLiked = !comment.liked;
     const prevCount = comment.likeCount;
     const nextCount = prevCount + (nextLiked ? 1 : -1);
 
-    this.comments.update((list) =>
-      list.map((c) => (c.id === comment.id ? { ...c, liked: nextLiked, likeCount: nextCount } : c)),
-    );
+    this.patchComment(comment.id, parentId, { liked: nextLiked, likeCount: nextCount });
 
     this.service.toggleCommentLike(comment.id, nextLiked ? 'like' : 'unlike').subscribe({
-      next: (res) => {
-        this.comments.update((list) =>
-          list.map((c) => (c.id === comment.id ? { ...c, liked: res.liked, likeCount: res.count } : c)),
-        );
-      },
-      error: () => {
-        this.comments.update((list) =>
-          list.map((c) => (c.id === comment.id ? { ...c, liked: !nextLiked, likeCount: prevCount } : c)),
-        );
-      },
+      next: (res) => this.patchComment(comment.id, parentId, { liked: res.liked, likeCount: res.count }),
+      error: () => this.patchComment(comment.id, parentId, { liked: !nextLiked, likeCount: prevCount }),
     });
   }
 
-  deleteComment(comment: Comment): void {
+  deleteComment(comment: Comment, parentId: string | null = null): void {
     const ref = this.readyRef();
     if (!ref || !comment.isMine) return;
     if (typeof window !== 'undefined' && !window.confirm('Delete this comment?')) return;
 
     const prev = this.comments();
-    this.comments.update((list) => list.filter((c) => c.id !== comment.id));
+    if (!parentId) {
+      this.comments.update((list) => list.filter((c) => c.id !== comment.id));
+    } else {
+      this.comments.update((list) =>
+        list.map((c) => (c.id === parentId ? { ...c, replies: (c.replies || []).filter((r) => r.id !== comment.id) } : c)),
+      );
+    }
 
-    this.service.deleteComment(ref, comment.id).subscribe({
+    this.service.deleteComment(ref, comment.id, parentId).subscribe({
       error: () => this.comments.set(prev),
+    });
+  }
+
+  startReply(commentId: string): void {
+    this.replyingTo.set(this.replyingTo() === commentId ? null : commentId);
+    this.replyText.set('');
+  }
+
+  postReply(parent: Comment): void {
+    const text = this.replyText().trim();
+    const ref = this.readyRef();
+    if (!text || !ref || this.postingReply()) return;
+
+    this.postingReply.set(true);
+    this.service.postComment(ref, text, null, parent.id).subscribe({
+      next: (res) => {
+        this.comments.update((list) =>
+          list.map((c) => (c.id === parent.id ? { ...c, replies: [...(c.replies || []), res.comment] } : c)),
+        );
+        this.replyText.set('');
+        this.replyingTo.set(null);
+        this.postingReply.set(false);
+      },
+      error: (err) => {
+        this.moderationBanner.set(err?.error?.error || "Couldn't post your reply right now — please try again.");
+        this.postingReply.set(false);
+      },
     });
   }
 
