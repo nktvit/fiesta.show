@@ -5,7 +5,39 @@
 Both were finished at the end of this session and are the first thing to pick
 up. Neither is pushed; `main` is untouched by either.
 
-### `feat/like-heart-bloom` (commit `e39566d`) — new like-button animation
+### NEXT TASK: heart confetti on the like button — use a LIBRARY, don't hand-roll
+
+**Read this before touching `feat/like-heart-bloom`.** After that branch was
+built, the user clarified what they actually wanted (in Russian): little
+**hearts spilling out of the button**, possibly with a firework/confetti
+effect — and explicitly *"просто возьми найди в интернете готовое, не
+пытайся сейчас сам собрать это"* (take a ready-made one off the internet,
+don't assemble it yourself). So the CSS burst on that branch is the **wrong
+direction** — it's abstract sparks, not hearts, and it was hand-written.
+
+Recommended: **canvas-confetti** (ISC, zero deps, measured 10,808 B raw /
+4,444 B gzipped). It is the right fit for three specific reasons:
+`confetti.shapeFromText({ text: '❤️', scalar: 2 })` gives real heart shapes;
+`origin: {x, y}` (0-1 of viewport) makes the burst come out of *the button's*
+position rather than the screen centre — convert the button's
+`getBoundingClientRect()` — and calling `confetti()` repeatedly layers extra
+bursts onto the same canvas, which is how you get the "салют" on top of the
+hearts. Lazy-load it (`await import('canvas-confetti')`) so it stays out of
+the initial bundle, exactly as `hls.js` already is.
+Simpler alternative: **js-confetti** (MIT, zero deps, 8,027 B raw / 2,715 B
+gzipped) — first-class `addConfetti({ emojis: ['❤️'] })` plus a
+`confettiDispatchPosition` for the click point. Less control, less code.
+Already ruled out and not worth revisiting: Lottie/Rive (480-752 KB brotli of
+WASM that no bundle analyzer reports), the Twitter sprite (unlicensed X
+artwork), party.js and tsparticles (both much heavier).
+
+**Keep from `feat/like-heart-bloom` regardless of which library wins**: the
+structural fix. The template used to swap two `<svg>` elements with
+`@if (liked())`, so Angular destroyed and recreated the node every toggle and
+no transition could ever run across like/unlike. Both hearts now stay mounted
+and cross-fade. That is independent of the burst and is worth keeping.
+
+### `feat/like-heart-bloom` (commits `e39566d`, plus a contrast fix) — superseded, see above
 
 User asked for "a beautiful heart animation" and to find existing solutions
 first. Researched, then rejected, all the obvious ones — **don't re-derive
@@ -26,7 +58,17 @@ an opening ring) plus one element carrying every spark as a box-shadow — which
 Measured live: ring 12→34px with border 6→0px, sparks scale 0→1.3, heart
 0.2→1.52→0.90→1.0. Nothing fires on unlike; under `prefers-reduced-motion`
 every animation reports `none` and the icon still swaps instantly.
-Preview: `streamfiesta-ab98r5y7r`.
+Preview: `streamfiesta-au7vu9cx6` (earlier: `ab98r5y7r`).
+
+**A real lesson from this branch, worth not repeating**: the burst was
+verified by sampling computed styles frame-by-frame, which proved the
+keyframes advanced — and it was still *invisible on screen*. Once liked, the
+pill behind it is the indigo/fuchsia/pink gradient, and the ring and sparks
+were those same brand colours; the pill is only 87×28 with the heart at
+(19,14), so a 34px ring sat almost entirely on top of it. The user reported
+"no animation I could see" and was right. A later commit switched the burst
+to white/light tints with travel far enough to clear the pill. **Measuring
+that an animation runs is not the same as looking at it.**
 **Budget gotcha**: the CSS-only version came in 123 bytes over the 2 kB
 `anyComponentStyle` budget, so `.heart`'s layout lives in the template as
 Tailwind utilities. Also worth knowing: **Angular scopes `@keyframes` names**
