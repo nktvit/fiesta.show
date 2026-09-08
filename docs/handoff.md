@@ -1,11 +1,86 @@
 # Session handoff
 
+## DONE: the heart burst now actually lands on the button (`cf79bd3`)
+
+**Branch `feat/like-heart-bloom`, committed, NOT merged, NOT pushed, NOT
+deployed to production** — only to previews (`streamfiesta-iidrcbzrc` is the
+current one). This closes the "NEXT TASK" written immediately below, which
+should now be read as history rather than as instructions.
+
+The report was "the animation doesn't work". It was firing the whole time:
+the canvas was created, the particles animated, reduced motion was respected.
+It was simply never anywhere near the button — at 120ms after the click the
+hearts were already 150-300px out, scattered across the hero photo, with
+nothing at the pill at any point in the ~2.8s life. **Do not re-derive the two
+causes**; both were read straight out of
+`node_modules/canvas-confetti/src/confetti.js` and then confirmed on pixels:
+
+- **Travel is a geometric series**, `v0 / (1 - decay)`, with `v0` randomised
+  over `[0.5, 1.5]·startVelocity`. `startVelocity: 28` at the *default*
+  `decay: 0.9` is therefore up to 420px. The shipped call never set `decay`.
+- **`gravity` is not an acceleration.** The library adds `3·gravity` to `y`
+  once per tick, so total fall is just `3·gravity·ticks` — `gravity: 0.7` over
+  `ticks: 170` was a flat 357px of rain. `ticks` are *frames*, not ms.
+- **The "thin red slivers" were not 3D tumbling.** A shape from
+  `shapeFromText` is a *bitmap* shape, and bitmaps draw at
+  `scaleX = scalar·|cos(wobble)|`, `scaleY = scalar·|sin(wobble)|` — 90° out of
+  phase, so a heart is never full size on both axes at once and twice per
+  cycle one axis passes through exactly zero. **`flat: true` is load-bearing**:
+  it pins `wobble` to 0 and fixes this for *any* shape. Measured 3.1× more
+  visible ink with it than without.
+- **`colors` is ignored for bitmap shapes** (the pattern replaces `fillStyle`),
+  so the old call's palette did nothing at all. A `path` shape honours it.
+
+What it is now: a small fan of hearts spilling out of the pill's top edge,
+drawn with **the button's own heart SVG path** as a `path` shape (not the ❤️
+emoji), into a **170×120 `<canvas>` parented to the button** rather than
+canvas-confetti's full-viewport one. That anchors the burst by construction —
+it even scrolls with the pill — and the canvas edge is then a hard bound: a
+mistuned number can *clip* hearts now, it can no longer spray them over the
+hero. Measured envelope ~45px up, ~44px each side, last pixel gone by 950ms.
+`confetti.create()` deliberately runs on the **main thread** (no `useWorker`),
+which is what lets Path2D shapes render at all.
+
+Three things that are easy to undo by accident:
+- **Emit from the button's CENTRE, not from the heart icon.** At 360px the
+  pill wraps onto its own line at `x=16`, and `<main>`'s `overflow-x: hidden`
+  would slice the leftmost hearts in half if the emitter sat at the icon's
+  x=19. Verified at 360: leftmost lit pixel at viewport x=13, no h-scrollbar.
+  Hearts do drift over the IMDb/RT row 8px above at that width — accepted,
+  they still read as coming from the pill below.
+- **An unlike calls `cannon.reset()`.** Without it the burst kept pouring for
+  another ~1.5s out of a pill that had already gone grey and counted down.
+  `burstToken` alone doesn't cover this — it only guards a burst that hasn't
+  started. Measured: 0 painted pixels within one frame of the unlike.
+- **The chunk is warmed on `(pointerenter)`/`(focus)`.** Cold, the dynamic
+  import left ~150ms between the click and the first heart; warm it is 45ms.
+  Confirmed by diffing `.js` requests: fetched on hover, fetched on click if
+  there was no hover, and **never fetched at all under reduced motion** (the
+  `matchMedia` check runs before the import, deliberately — the library caches
+  its own reduced-motion answer at cannon-construction time and would miss a
+  later change).
+
+Costs the 2 kB `anyComponentStyle` budget **nothing** — the canvas geometry is
+Tailwind utilities in the template (`w-[170px] h-[120px] -top-[70px]`,
+`left-1/2 -translate-x-1/2`), mirrored by `BURST_W`/`BURST_H`/`BURST_ORIGIN`
+in the `.ts`. **Change one, change both.** Stylesheet stays at 1.09 kB.
+
+Verified on a real preview in a real browser, at 1280 and at 360: hearts
+visible and heart-shaped in screenshots (not just "the keyframes advanced" —
+see the lesson below), unlike cancels, 8 rapid clicks leave one canvas and
+zero painted pixels, none of the library's own canvases ever reach `<body>`,
+reduced motion still fills the icon, zero console errors.
+
+**Still to do**: merge to `main`, push, `vercel deploy --prod`, re-verify on
+`fiesta.show` itself. Also worth a look while there: the per-comment like
+hearts in the thread got none of this and are still a plain fill toggle.
+
 ## TWO BRANCHES AWAITING REVIEW — built and verified, NOT merged, NOT deployed
 
 Both were finished at the end of this session and are the first thing to pick
 up. Neither is pushed; `main` is untouched by either.
 
-### NEXT TASK: heart confetti on the like button — use a LIBRARY, don't hand-roll
+### (RESOLVED by `cf79bd3` above) NEXT TASK: heart confetti — use a LIBRARY, don't hand-roll
 
 **Read this before touching `feat/like-heart-bloom`.** After that branch was
 built, the user clarified what they actually wanted (in Russian): little
@@ -24,6 +99,13 @@ position rather than the screen centre — convert the button's
 bursts onto the same canvas, which is how you get the "салют" on top of the
 hearts. Lazy-load it (`await import('canvas-confetti')`) so it stays out of
 the initial bundle, exactly as `hls.js` already is.
+> **Corrected by `cf79bd3`:** the library choice was right, but two specifics
+> in this paragraph are not. `shapeFromText` yields a *bitmap* shape, which
+> squashes to slivers without `flat: true` and ignores `colors` entirely — use
+> a `path` shape built from the button's own heart instead. And a
+> viewport-fraction `origin` on the library's full-screen canvas is what let
+> the burst wander onto the hero photo; a small canvas parented to the button
+> bounds it. See the section above.
 Simpler alternative: **js-confetti** (MIT, zero deps, 8,027 B raw / 2,715 B
 gzipped) — first-class `addConfetti({ emojis: ['❤️'] })` plus a
 `confettiDispatchPosition` for the click point. Less control, less code.
