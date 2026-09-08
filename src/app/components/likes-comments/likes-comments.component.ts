@@ -31,6 +31,10 @@ export class LikesCommentsComponent {
 
   readonly likeCount = signal(0);
   readonly liked = signal(false);
+  // Drives the heart-pop + particle-burst animation for one cycle right
+  // after a fresh like (not on unlike, and not on the initial server fetch).
+  readonly justLiked = signal(false);
+  private burstTimeout: ReturnType<typeof setTimeout> | null = null;
 
   readonly comments = signal<Comment[]>([]);
   readonly nextCursor = signal<number | null>(null);
@@ -100,6 +104,15 @@ export class LikesCommentsComponent {
     const prevCount = this.likeCount();
     this.liked.set(nextLiked);
     this.likeCount.set(prevCount + (nextLiked ? 1 : -1));
+
+    if (nextLiked) {
+      if (this.burstTimeout) clearTimeout(this.burstTimeout);
+      this.justLiked.set(true);
+      this.burstTimeout = setTimeout(() => this.justLiked.set(false), 650);
+    } else if (this.burstTimeout) {
+      clearTimeout(this.burstTimeout);
+      this.justLiked.set(false);
+    }
 
     this.service.toggleLike(ref, nextLiked ? 'like' : 'unlike').subscribe({
       next: (res) => {
