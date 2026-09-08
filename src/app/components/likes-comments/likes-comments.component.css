@@ -77,8 +77,9 @@
     animation: none;
   }
 
-  /* The icons still need to swap — they just do it instantly. The confetti
-     itself is suppressed by canvas-confetti's own disableForReducedMotion. */
+  /* The icons still need to swap — they just do it instantly. The heart burst
+     is suppressed in fireHearts(), which checks this same media query in JS
+     before it even fetches the confetti chunk. */
   .heart svg {
     transition: none;
   }
