@@ -1,23 +1,16 @@
-@keyframes heart-pop {
-  0% { transform: scale(1); }
-  35% { transform: scale(1.4); }
-  60% { transform: scale(0.92); }
-  100% { transform: scale(1); }
-}
-
 @keyframes count-pop {
   0% { transform: scale(1); }
   40% { transform: scale(1.22); }
   100% { transform: scale(1); }
 }
 
-@keyframes particle-burst {
-  0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
-  100% { transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) scale(0); opacity: 0; }
-}
-
-.animate-heart-pop {
-  animation: heart-pop 0.5s ease-out;
+/* The heart overshoots past full size before settling — the overshoot is what
+   makes it read as a spring rather than a fade. */
+@keyframes heart-spring {
+  0% { transform: scale(0.2); }
+  45% { transform: scale(1.35); }
+  70% { transform: scale(0.94); }
+  100% { transform: scale(1); }
 }
 
 .animate-count-pop {
@@ -25,15 +18,31 @@
   animation: count-pop 0.4s ease-out;
 }
 
-.burst-particle {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 5px;
-  height: 5px;
-  border-radius: 9999px;
-  pointer-events: none;
-  animation: particle-burst 0.6s ease-out forwards;
+/* Layout for .heart and its two svgs lives in the template as Tailwind
+   utilities (relative/inline-flex/shrink-0/absolute/inset-0) — only what
+   Tailwind can't express is here, which also keeps this file under the 2 kB
+   component-style budget. */
+.heart svg {
+  transition: opacity 0.18s ease-out, transform 0.45s cubic-bezier(0.17, 0.89, 0.32, 1.49);
+}
+
+.heart-fill {
+  opacity: 0;
+  transform: scale(0.2);
+}
+
+.heart.is-liked .heart-outline {
+  opacity: 0;
+  transform: scale(0.7);
+}
+
+.heart.is-liked .heart-fill {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.heart.is-bursting .heart-fill {
+  animation: heart-spring 0.5s cubic-bezier(0.17, 0.89, 0.32, 1.49);
 }
 
 /* A spoiler-marked comment renders its own real text, blurred past legibility,
@@ -63,9 +72,15 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .animate-heart-pop,
   .animate-count-pop,
-  .burst-particle {
+  .heart.is-bursting .heart-fill {
     animation: none;
+  }
+
+  /* The icons still need to swap — they just do it instantly. The heart burst
+     is suppressed in fireHearts(), which checks this same media query in JS
+     before it even fetches the confetti chunk. */
+  .heart svg {
+    transition: none;
   }
 }
