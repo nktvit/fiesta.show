@@ -3,7 +3,7 @@ import {Title, Meta} from '@angular/platform-browser'
 import {Router, RouterLink} from '@angular/router'
 import {DecimalPipe} from '@angular/common'
 import {NavbarComponent} from '../../components/navbar/navbar.component'
-import {PosterComponent} from "../../components/poster/poster.component"
+import {MovieCollectionComponent} from "../../components/movie-collection/movie-collection.component"
 import {IMovie} from "../../interfaces/movie.interface"
 import {TmdbService} from "../../services/tmdb.service"
 
@@ -11,7 +11,7 @@ import {TmdbService} from "../../services/tmdb.service"
   selector: 'app-main',
   templateUrl: './main.component.html',
   styleUrl: './main.component.css',
-  imports: [NavbarComponent, PosterComponent, DecimalPipe, RouterLink]
+  imports: [NavbarComponent, MovieCollectionComponent, DecimalPipe, RouterLink]
 })
 export class MainComponent {
   heroMovie: IMovie | null = null;

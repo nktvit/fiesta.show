@@ -8,13 +8,11 @@
     @if (trendingTV.length > 0) {
       <section class="mb-10">
         <h2 class="text-lg md:text-xl font-bold mb-3 px-6 md:px-12 lg:px-16">Trending This Week</h2>
-        <div class="flex gap-2 md:gap-3 overflow-x-auto pb-4 px-6 md:px-12 lg:px-16 scrollbar-hide">
-          @for (movie of trendingTV; track movie.tmdbId ?? movie.imdbID) {
-            <div class="w-[120px] sm:w-[140px] md:w-[170px] lg:w-[190px] flex-shrink-0 transition-transform duration-200 hover:scale-105">
-              <app-poster [movie]="movie" [displayTitle]="true" class="rounded overflow-hidden"></app-poster>
-            </div>
-          }
-        </div>
+        <app-movie-collection
+          [movies]="trendingTV"
+          mode="row"
+          [priorityCount]="4">
+        </app-movie-collection>
       </section>
     }
 
@@ -29,13 +27,12 @@
           }
         </div>
       } @else {
-        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4">
-          @for (movie of popularTV; track movie.tmdbId ?? movie.imdbID) {
-            <div class="transition-transform duration-200 hover:scale-105">
-              <app-poster [movie]="movie" [displayTitle]="true" class="rounded overflow-hidden"></app-poster>
-            </div>
-          }
-        </div>
+        <app-movie-collection
+          [movies]="popularTV"
+          mode="grid"
+          variant="wide"
+          [priorityCount]="6">
+        </app-movie-collection>
 
         @if (isLoadingMore) {
           <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4 mt-4">

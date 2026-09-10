@@ -12,6 +12,7 @@ import {PosterComponent} from "../../components/poster/poster.component";
 import {LoggerService} from "../../services/logger.service";
 import {TmdbService, CastMember, CrewMember} from "../../services/tmdb.service";
 import {IMovie} from "../../interfaces/movie.interface";
+import {ExpandableTextComponent} from "../../components/expandable-text/expandable-text.component";
 import {environment} from "../../../environments/environment";
 import {Title, Meta} from '@angular/platform-browser';
 
@@ -25,7 +26,7 @@ interface EpisodeInfo {
 
 @Component({
   selector: 'app-movie-page',
-  imports: [NavbarComponent, BackButtonComponent, NgClass, MoviePlayerComponent, LikesCommentsComponent, PosterComponent, RouterLink],
+  imports: [NavbarComponent, BackButtonComponent, NgClass, MoviePlayerComponent, LikesCommentsComponent, PosterComponent, RouterLink, ExpandableTextComponent],
   templateUrl: './movie-page.component.html',
   styleUrl: './movie-page.component.css'
 })
@@ -34,10 +35,14 @@ export class MoviePageComponent implements OnDestroy {
   private platformId = inject(PLATFORM_ID);
   isLoading = true;
   invalidResponse: boolean = false;
-  isFullPlot = false;
-  shouldClamp = false;
-  isPlotLong = false;
   adjustedPlot = '';
+  /**
+   * Paragraph split kept as a stable array: <app-expandable-text> takes it as
+   * a signal input, so a getter would hand it a new array every change
+   * detection pass. Whether a "Read More" toggle is needed is measured from
+   * the rendered text inside that component now, not guessed from length.
+   */
+  plotParagraphs: string[] = [];
   movieId: string = "";
   movieDetails: any = {};
   movieDetailsArray: any[] = [];
@@ -89,7 +94,7 @@ export class MoviePageComponent implements OnDestroy {
         this.movieDetails = {};
         this.movieDetailsArray = [];
         this.adjustedPlot = '';
-        this.isFullPlot = false;
+        this.plotParagraphs = [];
         this.imdbId = null;
         this.type = 'movie';
         // Preserve the episode from the URL across a refresh / deep link; only the
@@ -156,8 +161,7 @@ export class MoviePageComponent implements OnDestroy {
 
           if (details.Plot && details.Plot !== 'N/A') {
             this.adjustedPlot = this.adjustPlot(details.Plot);
-            this.isPlotLong = this.adjustedPlot.length > 400;
-            this.shouldClamp = !this.isFullPlot && this.isPlotLong;
+            this.plotParagraphs = this.splitPlot(this.adjustedPlot);
           }
 
           this.movieDetailsArray = this.movieService.formatMovieDetailsArray(details);
@@ -215,8 +219,7 @@ export class MoviePageComponent implements OnDestroy {
 
       if (needsPlot && tmdb.overview) {
         this.adjustedPlot = this.adjustPlot(tmdb.overview);
-        this.isPlotLong = this.adjustedPlot.length > 400;
-        this.shouldClamp = !this.isFullPlot && this.isPlotLong;
+        this.plotParagraphs = this.splitPlot(this.adjustedPlot);
       }
 
       this.updatePageMeta();
@@ -549,9 +552,9 @@ export class MoviePageComponent implements OnDestroy {
       !this.movieDetails.Ratings?.some((r: any) => r.Source === 'Metacritic');
   }
 
-  togglePlot() {
-    this.isFullPlot = !this.isFullPlot;
-    this.shouldClamp = !this.isFullPlot && this.isPlotLong;
+  private splitPlot(plot: string): string[] {
+    if (!plot) return [];
+    return plot.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
   }
 
   adjustPlot(plot: string): string {

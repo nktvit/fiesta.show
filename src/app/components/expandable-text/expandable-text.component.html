@@ -1,0 +1,24 @@
+<div class="expandable" [class.is-expanded]="expanded" [style.--fade-color]="fadeColor()">
+  <div #content class="expandable__content">
+    @for (paragraph of paragraphs(); track $index) {
+      <p [style.--i]="$index">{{ paragraph }}</p>
+    }
+  </div>
+
+  <!-- Softens the collapsed cut-off instead of chopping mid-line. Faded out
+       rather than removed so the reveal reads as continuous. -->
+  <div class="expandable__fade" aria-hidden="true" [class.is-gone]="expanded || !canToggle"></div>
+</div>
+
+@if (canToggle) {
+  <button
+    type="button"
+    class="expandable__toggle mt-2 inline-flex items-center gap-1 text-sm font-medium text-indigo-400 transition-colors duration-200 hover:text-indigo-300"
+    [attr.aria-expanded]="expanded"
+    (click)="toggle()">
+    {{ expanded ? lessLabel() : moreLabel() }}
+    <svg class="expandable__chevron h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+      <path fill-rule="evenodd" clip-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"/>
+    </svg>
+  </button>
+}

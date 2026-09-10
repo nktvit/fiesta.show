@@ -2,13 +2,14 @@ import { Component, inject } from '@angular/core';
 import { Title, Meta } from '@angular/platform-browser';
 import { NavbarComponent } from '../../components/navbar/navbar.component';
 import { PosterComponent } from '../../components/poster/poster.component';
+import { MovieCollectionComponent } from '../../components/movie-collection/movie-collection.component';
 import { TmdbService } from '../../services/tmdb.service';
 import { IMovie } from '../../interfaces/movie.interface';
 import { InfiniteScrollDirective } from '../../directives/infinite-scroll.directive';
 
 @Component({
   selector: 'app-tv',
-  imports: [NavbarComponent, PosterComponent, InfiniteScrollDirective],
+  imports: [MovieCollectionComponent, NavbarComponent, PosterComponent, InfiniteScrollDirective],
   templateUrl: './tv.component.html',
   styleUrl: './tv.component.css',
 })

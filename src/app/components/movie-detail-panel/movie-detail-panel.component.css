@@ -1,0 +1,229 @@
+:host {
+  display: block;
+  /* The panel is a grid item spanning the full row; without this it stretches
+     to the row height and fights the animated height. */
+  align-self: start;
+  /* Keep clear of the sticky navbar and the fixed mobile bottom nav when
+     scrolled into view. */
+  scroll-margin-top: 5rem;
+  scroll-margin-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
+}
+
+@media (min-width: 640px) {
+  :host {
+    scroll-margin-bottom: 1rem;
+  }
+}
+
+.panel-content {
+  position: relative;
+  margin: 0.75rem 0 0.25rem;
+  padding: 1rem;
+  border-radius: 0.75rem;
+  background: #141414;
+  box-shadow: 0 20px 45px -20px rgb(0 0 0 / 0.9);
+  border: 1px solid rgb(255 255 255 / 0.08);
+}
+
+@media (min-width: 768px) {
+  .panel-content {
+    padding: 1.25rem;
+  }
+}
+
+.panel-close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 9999px;
+  color: rgb(209 213 219);
+  background: rgb(0 0 0 / 0.5);
+  transition: background-color 200ms ease, color 200ms ease;
+}
+
+.panel-close:hover {
+  background: rgb(0 0 0 / 0.8);
+  color: #fff;
+}
+
+/* --- media ---------------------------------------------------------------
+   Fixed aspect box. Backdrop and trailer are both absolutely positioned, so
+   loading either cannot change the panel's height mid-animation. */
+
+.panel-media {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  background: #000;
+}
+
+.panel-backdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: opacity 400ms ease;
+}
+
+.panel-backdrop--empty {
+  background: linear-gradient(135deg, #1f2937, #111827);
+}
+
+.panel-media.is-playing .panel-backdrop {
+  opacity: 0;
+}
+
+/* The player wrapper and the iframe are created by the YouTube API at runtime,
+   so they never receive Angular's scoped style attribute — these rules have to
+   pierce the emulated encapsulation to reach them. */
+:host ::ng-deep .panel-video {
+  position: absolute;
+  left: 0;
+  right: 0;
+  /* Taller than the 16:9 media box on purpose. The player letterboxes the
+     video in the middle, so its height still matches the box exactly, while
+     YouTube's title bar and its bottom "more videos" strip — both anchored to
+     the player's own edges — fall into the cropped-away black margins. No
+     picture is lost; params alone cannot remove either bar. */
+  top: -60px;
+  bottom: -60px;
+  opacity: 0;
+  transition: opacity 400ms ease;
+}
+
+:host ::ng-deep .panel-media.is-playing .panel-video {
+  opacity: 1;
+}
+
+:host ::ng-deep .panel-video iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  /* Suppresses YouTube's hover title/share/watch-later overlay outright.
+     `modestbranding` has been a no-op since 2023 and `rel=0` only narrows
+     related videos, so this is what actually keeps the frame clean. Playback
+     is driven through the IFrame API instead of the player's own UI, and the
+     mute button below is a sibling with normal pointer events. */
+  pointer-events: none;
+  /* A hair of overscan so no hairline of the player's own background shows
+     at the left/right edges. */
+  transform: scale(1.01);
+}
+
+.panel-media-button {
+  position: absolute;
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #fff;
+  background: rgb(0 0 0 / 0.6);
+  border: 1px solid rgb(255 255 255 / 0.2);
+  backdrop-filter: blur(4px);
+  transition: background-color 200ms ease;
+}
+
+.panel-media-button:hover {
+  background: rgb(0 0 0 / 0.85);
+}
+
+.panel-mute {
+  right: 0.75rem;
+  bottom: 0.75rem;
+  width: 2.75rem;
+  height: 2.75rem;
+  justify-content: center;
+  border-radius: 9999px;
+}
+
+.panel-play-trailer {
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 0.625rem 1rem;
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+/* --- info ---------------------------------------------------------------- */
+
+.panel-info {
+  min-width: 0;
+}
+
+.panel-overview {
+  margin-top: 0.75rem;
+  /* Reserves roughly three lines so a late-arriving overview doesn't grow the
+     panel while it is animating open. */
+  min-height: 4.2rem;
+}
+
+.panel-cast {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.panel-cast-member {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 3.5rem;
+  text-align: center;
+}
+
+.panel-cast-member img,
+.panel-cast-initials {
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 9999px;
+  object-fit: cover;
+  background: rgb(255 255 255 / 0.08);
+  transition: transform 200ms ease;
+}
+
+.panel-cast-initials {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  color: rgb(156 163 175);
+}
+
+.panel-cast-member:hover img,
+.panel-cast-member:hover .panel-cast-initials {
+  transform: scale(1.08);
+}
+
+.panel-cast-name {
+  margin-top: 0.25rem;
+  font-size: 0.625rem;
+  line-height: 1.2;
+  color: rgb(156 163 175);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-backdrop,
+  .panel-media-button,
+  .panel-close,
+  .panel-cast-member img,
+  .panel-cast-member .panel-cast-initials {
+    transition: none;
+  }
+}

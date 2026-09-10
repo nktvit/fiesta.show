@@ -163,16 +163,12 @@
           @if (adjustedPlot) {
             <div class="mt-8">
               <p class="text-base font-bold text-white mb-2">Plot</p>
-              <p class="text-gray-300 leading-relaxed text-sm md:text-base"
-                [ngClass]="{'line-clamp-3': shouldClamp}">
-                {{ adjustedPlot }}
-              </p>
-              @if (isPlotLong) {
-                <button class="mt-2 text-sm font-medium text-indigo-400 hover:text-indigo-300 transition-colors duration-200"
-                  (click)="togglePlot()">
-                  {{ isFullPlot ? 'Show Less' : 'Read More' }}
-                </button>
-              }
+              <app-expandable-text
+                class="text-gray-300 leading-relaxed text-sm md:text-base"
+                [paragraphs]="plotParagraphs"
+                [collapsedLines]="3"
+                fadeColor="#0a0a0a">
+              </app-expandable-text>
             </div>
           }
 

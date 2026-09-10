@@ -1,42 +1,41 @@
-import {AfterViewChecked, Component, ElementRef, inject, ViewChild} from '@angular/core';
+import {Component, inject} from '@angular/core';
 import {ActivatedRoute} from '@angular/router';
 import {of, switchMap} from 'rxjs';
 import {Title, Meta} from '@angular/platform-browser';
 import {NavbarComponent} from '../../components/navbar/navbar.component';
 import {BackButtonComponent} from '../../components/back-button/back-button.component';
-import {PosterComponent} from '../../components/poster/poster.component';
+import {MovieCollectionComponent} from '../../components/movie-collection/movie-collection.component';
 import {PersonDetails, TmdbService} from '../../services/tmdb.service';
+import {IMovie} from '../../interfaces/movie.interface';
+import {ExpandableTextComponent} from '../../components/expandable-text/expandable-text.component';
 
 @Component({
   selector: 'app-person-page',
-  imports: [NavbarComponent, BackButtonComponent, PosterComponent],
+  imports: [NavbarComponent, BackButtonComponent, MovieCollectionComponent, ExpandableTextComponent],
   templateUrl: './person-page.component.html',
   styleUrl: './person-page.component.css',
 })
-export class PersonPageComponent implements AfterViewChecked {
+export class PersonPageComponent {
   private route = inject(ActivatedRoute);
   private tmdbService = inject(TmdbService);
   private titleService = inject(Title);
   private metaService = inject(Meta);
 
-  @ViewChild('bioClamp') private bioClampRef?: ElementRef<HTMLParagraphElement>;
-
   isLoading = true;
   notFound = false;
   person: PersonDetails | null = null;
-  isFullBio = false;
-  // Whether the clamped bio paragraph is actually overflowing its 4-line
-  // clamp — a fixed character-count guess doesn't track real truncation
-  // (font size, viewport width, and paragraph breaks all affect how much
-  // text 4 lines actually holds), so this is measured directly from the DOM.
-  isBioTruncated = false;
-
-  ngAfterViewChecked() {
-    if (this.isFullBio || !this.bioClampRef) return;
-    const el = this.bioClampRef.nativeElement;
-    const truncated = el.scrollHeight > el.clientHeight + 1;
-    if (truncated !== this.isBioTruncated) this.isBioTruncated = truncated;
-  }
+  /**
+   * Split once per person rather than in a getter: <app-expandable-text> takes
+   * it as a signal input, and a getter would hand it a brand-new array on
+   * every change-detection pass, re-rendering the paragraphs continuously.
+   */
+  bioParagraphs: string[] = [];
+  /**
+   * Acting vs. crew work, in the order this person is best known for. Built
+   * once per person so the template isn't handed new arrays every change
+   * detection pass.
+   */
+  creditSections: { title: string; movies: IMovie[] }[] = [];
 
   ngOnInit() {
     this.route.paramMap.pipe(
@@ -45,7 +44,8 @@ export class PersonPageComponent implements AfterViewChecked {
         this.isLoading = true;
         this.notFound = false;
         this.person = null;
-        this.isFullBio = false;
+        this.bioParagraphs = [];
+        this.creditSections = [];
         window.scrollTo({top: 0});
 
         if (!id || !/^\d+$/.test(id)) return of(null);
@@ -58,6 +58,8 @@ export class PersonPageComponent implements AfterViewChecked {
         return;
       }
       this.person = person;
+      this.bioParagraphs = this.splitBiography(person.biography);
+      this.creditSections = this.buildCreditSections(person);
       this.updatePageMeta();
     });
   }
@@ -75,14 +77,16 @@ export class PersonPageComponent implements AfterViewChecked {
     this.metaService.updateTag({property: 'og:description', content: desc});
   }
 
-  toggleBio() {
-    this.isFullBio = !this.isFullBio;
+  private buildCreditSections(person: PersonDetails): { title: string; movies: IMovie[] }[] {
+    const acting = { title: 'Acting', movies: person.actingCredits ?? [] };
+    const crew = { title: 'Directing & Crew', movies: person.crewCredits ?? [] };
+    const crewFirst = person.knownForDepartment && person.knownForDepartment !== 'Acting';
+    return (crewFirst ? [crew, acting] : [acting, crew]).filter(section => section.movies.length > 0);
   }
 
-  get bioParagraphs(): string[] {
-    const bio = this.person?.biography;
-    if (!bio) return [];
-    return bio
+  private splitBiography(biography: string | undefined): string[] {
+    if (!biography) return [];
+    return biography
       .split(/\n{2,}/)
       .map(p => p.trim())
       .filter(Boolean);

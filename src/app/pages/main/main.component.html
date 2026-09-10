@@ -93,18 +93,13 @@
 
     <!-- ROW: Trending This Week -->
     @if (trendingMovies.length > 0) {
-      <section class="group/row">
-        <h2 class="text-base sm:text-lg md:text-xl font-bold mb-2 sm:mb-3 px-6 md:px-12 lg:px-16 group-hover/row:text-indigo-400 transition-colors">
-          Trending This Week
-        </h2>
-        <div class="flex gap-1.5 sm:gap-2 md:gap-2.5 overflow-x-auto pb-4 px-6 md:px-12 lg:px-16 scrollbar-hide">
-          @for (movie of trendingMovies; track movie.tmdbId ?? movie.imdbID) {
-            <div class="w-[120px] sm:w-[140px] md:w-[170px] lg:w-[190px] flex-shrink-0 transition-transform duration-200 hover:scale-105 hover:z-10">
-              <app-poster [movie]="movie" [displayTitle]="true" class="rounded overflow-hidden"></app-poster>
-            </div>
-          }
-        </div>
-      </section>
+      <app-movie-collection
+        [movies]="trendingMovies"
+        mode="row"
+        heading="Trending This Week"
+        headingClass="group-hover/row:text-indigo-400"
+        [priorityCount]="4">
+      </app-movie-collection>
     } @else {
       <section class="px-6 md:px-12 lg:px-16">
         <div class="h-5 w-48 bg-gray-800 rounded mb-3"></div>
@@ -135,50 +130,35 @@
 
     <!-- ROW: In Theaters Now -->
     @if (nowPlayingMovies.length > 0) {
-      <section class="group/row">
-        <h2 class="text-base sm:text-lg md:text-xl font-bold mb-2 sm:mb-3 px-6 md:px-12 lg:px-16 group-hover/row:text-indigo-400 transition-colors">
-          In Theaters Now
-        </h2>
-        <div class="flex gap-1.5 sm:gap-2 md:gap-2.5 overflow-x-auto pb-4 px-6 md:px-12 lg:px-16 scrollbar-hide">
-          @for (movie of nowPlayingMovies; track movie.tmdbId ?? movie.imdbID) {
-            <div class="w-[120px] sm:w-[140px] md:w-[170px] lg:w-[190px] flex-shrink-0 transition-transform duration-200 hover:scale-105 hover:z-10">
-              <app-poster [movie]="movie" [displayTitle]="true" class="rounded overflow-hidden"></app-poster>
-            </div>
-          }
-        </div>
-      </section>
+      <app-movie-collection
+        [movies]="nowPlayingMovies"
+        mode="row"
+        heading="In Theaters Now"
+        headingClass="group-hover/row:text-indigo-400"
+        [priorityCount]="4">
+      </app-movie-collection>
     }
 
     <!-- ROW: Top Rated -->
     @if (topRatedMovies.length > 0) {
-      <section class="group/row">
-        <h2 class="text-base sm:text-lg md:text-xl font-bold mb-2 sm:mb-3 px-6 md:px-12 lg:px-16 group-hover/row:text-emerald-400 transition-colors">
-          Top Rated of All Time
-        </h2>
-        <div class="flex gap-1.5 sm:gap-2 md:gap-2.5 overflow-x-auto pb-4 px-6 md:px-12 lg:px-16 scrollbar-hide">
-          @for (movie of topRatedMovies; track movie.tmdbId ?? movie.imdbID) {
-            <div class="w-[120px] sm:w-[140px] md:w-[170px] lg:w-[190px] flex-shrink-0 transition-transform duration-200 hover:scale-105 hover:z-10">
-              <app-poster [movie]="movie" [displayTitle]="true" class="rounded overflow-hidden"></app-poster>
-            </div>
-          }
-        </div>
-      </section>
+      <app-movie-collection
+        [movies]="topRatedMovies"
+        mode="row"
+        heading="Top Rated of All Time"
+        headingClass="group-hover/row:text-emerald-400"
+        [priorityCount]="4">
+      </app-movie-collection>
     }
 
     <!-- ROW: Trending TV -->
     @if (trendingTV.length > 0) {
-      <section class="group/row">
-        <h2 class="text-base sm:text-lg md:text-xl font-bold mb-2 sm:mb-3 px-6 md:px-12 lg:px-16 group-hover/row:text-purple-400 transition-colors">
-          Trending TV Shows
-        </h2>
-        <div class="flex gap-1.5 sm:gap-2 md:gap-2.5 overflow-x-auto pb-4 px-6 md:px-12 lg:px-16 scrollbar-hide">
-          @for (movie of trendingTV; track movie.tmdbId ?? movie.imdbID) {
-            <div class="w-[120px] sm:w-[140px] md:w-[170px] lg:w-[190px] flex-shrink-0 transition-transform duration-200 hover:scale-105 hover:z-10">
-              <app-poster [movie]="movie" [displayTitle]="true" class="rounded overflow-hidden"></app-poster>
-            </div>
-          }
-        </div>
-      </section>
+      <app-movie-collection
+        [movies]="trendingTV"
+        mode="row"
+        heading="Trending TV Shows"
+        headingClass="group-hover/row:text-purple-400"
+        [priorityCount]="4">
+      </app-movie-collection>
     }
   </div>
 </main>

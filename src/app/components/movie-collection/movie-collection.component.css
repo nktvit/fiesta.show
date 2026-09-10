@@ -1,0 +1,50 @@
+:host {
+  display: block;
+}
+
+/* Tinting the unselected cards is done with two class bindings on this
+   component — one on the container, one on the chosen card — rather than a
+   per-card state subscription. Every poster on the page is change-detected on
+   every tick, so pushing the work into CSS keeps a 100-card grid at two DOM
+   writes per open instead of a hundred re-evaluated bindings. */
+.collection-card {
+  transition: opacity 300ms ease;
+}
+
+.collection.has-selection .collection-card:not(.is-selected) {
+  opacity: 0.4;
+}
+
+/* Hover-scale on a dimmed card reads as a bug, and compositing 100 scaled
+   layers while the panel animates is exactly the wrong time for it. */
+.collection.has-selection .collection-card:not(.is-selected):hover {
+  transform: none;
+}
+
+/* filter promotes a compositing layer per element, which is expensive on
+   older mobile GPUs — the desaturation is a pointer-device nicety only. */
+@media (hover: hover) and (min-width: 768px) {
+  .collection-card {
+    transition: opacity 300ms ease, filter 300ms ease;
+  }
+
+  .collection.has-selection .collection-card:not(.is-selected) {
+    filter: saturate(0.5);
+  }
+}
+
+/* Shelves scroll horizontally; the panel below them must not. */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .collection-card {
+    transition: none;
+  }
+}

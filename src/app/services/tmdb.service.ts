@@ -46,7 +46,12 @@ export interface PersonDetails {
   deathday: string | null;
   placeOfBirth: string | null;
   knownForDepartment: string | null;
+  /** Everything, kept for callers that don't care about the split. */
   credits: IMovie[];
+  /** Titles the person appeared in. */
+  actingCredits: IMovie[];
+  /** Titles they worked on behind the camera (directing, writing, producing). */
+  crewCredits: IMovie[];
 }
 
 @Injectable({ providedIn: 'root' })
@@ -249,7 +254,15 @@ export class TmdbService {
   getPerson(personId: number): Observable<PersonDetails | null> {
     if (environment.production) {
       return this.http.get<any>(`/api/tmdb?list=person&id=${personId}`).pipe(
-        map(res => (res && res.id ? (res as PersonDetails) : null)),
+        // Tolerate an API deployment that predates the acting/crew split.
+        map(res => (res && res.id
+          ? {
+              ...res,
+              credits: res.credits || [],
+              actingCredits: res.actingCredits || res.credits || [],
+              crewCredits: res.crewCredits || [],
+            } as PersonDetails
+          : null)),
         catchError(() => of(null))
       );
     }
@@ -264,19 +277,18 @@ export class TmdbService {
           `https://api.themoviedb.org/3/person/${personId}/combined_credits?api_key=${apiKey}&language=en-US`
         ).pipe(
           map(creditsData => {
+            // Acting and crew work are listed separately: merging them made a
+            // director's page show films they directed next to films they only
+            // appeared in, with no way to tell which was which.
+            const actingCredits = this.dedupeCredits(creditsData.cast || []);
+            const crewCredits = this.dedupeCredits(creditsData.crew || []);
             const seen = new Set<string>();
-            const credits: IMovie[] = [...(creditsData.cast || []), ...(creditsData.crew || [])]
-              .filter((c: any) => {
-                if (!c.poster_path) return false;
-                const key = `${c.media_type}_${c.id}`;
-                if (seen.has(key)) return false;
-                seen.add(key);
-                return true;
-              })
-              .sort((a: any, b: any) =>
-                (b.release_date || b.first_air_date || '').localeCompare(a.release_date || a.first_air_date || '')
-              )
-              .map((c: any) => this.mapMovie(c, c.media_type));
+            const credits: IMovie[] = [...actingCredits, ...crewCredits].filter(c => {
+              const key = `${c.mediaType}_${c.tmdbId}`;
+              if (seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            });
 
             const details: PersonDetails = {
               id: person.id,
@@ -288,6 +300,8 @@ export class TmdbService {
               placeOfBirth: person.place_of_birth || null,
               knownForDepartment: person.known_for_department || null,
               credits,
+              actingCredits,
+              crewCredits,
             };
             return details;
           })
@@ -295,6 +309,26 @@ export class TmdbService {
       }),
       catchError(() => of(null))
     );
+  }
+
+  /**
+   * One credit list: drops entries with no poster, collapses the repeats TMDB
+   * returns when someone held several jobs on the same title, newest first.
+   */
+  private dedupeCredits(entries: any[]): IMovie[] {
+    const seen = new Set<string>();
+    return entries
+      .filter((c: any) => {
+        if (!c.poster_path) return false;
+        const key = `${c.media_type}_${c.id}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .sort((a: any, b: any) =>
+        (b.release_date || b.first_air_date || '').localeCompare(a.release_date || a.first_air_date || '')
+      )
+      .map((c: any) => this.mapMovie(c, c.media_type));
   }
 
   searchPeople(query: string): Observable<PersonSearchResult[]> {

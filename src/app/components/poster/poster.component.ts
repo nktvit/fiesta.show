@@ -1,5 +1,13 @@
-import { Component, inject, input, ChangeDetectorRef, SimpleChanges } from '@angular/core';
-import { RouterLink } from "@angular/router";
+import {
+  ChangeDetectionStrategy,
+  ChangeDetectorRef,
+  Component,
+  inject,
+  input,
+  output,
+  SimpleChanges,
+} from '@angular/core';
+import { Router, RouterLink } from "@angular/router";
 import { IMovie } from "../../interfaces/movie.interface";
 import { NgOptimizedImage } from "@angular/common";
 import { TmdbService } from "../../services/tmdb.service";
@@ -8,22 +16,34 @@ import { TmdbService } from "../../services/tmdb.service";
   selector: 'app-poster',
   imports: [RouterLink, NgOptimizedImage],
   templateUrl: './poster.component.html',
-  styleUrl: './poster.component.css'
+  styleUrl: './poster.component.css',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class PosterComponent {
   readonly movie = input.required<IMovie>();
   readonly size = input<'small' | 'medium' | 'large'>();
   readonly displayTitle = input<boolean>(false);
   readonly priority = input<boolean>(false);
+  /**
+   * When true the card body expands in place (the host collection handles it)
+   * instead of navigating. The play button and the title stay real links to
+   * /movie/:id either way.
+   */
+  readonly expandable = input<boolean>(false);
+  readonly expanded = input<boolean>(false);
+
+  /** Emitted on a card-body activation when `expandable` is on. */
+  readonly select = output<void>();
 
   imageUrl = '';
   loading = true;
 
   private cdr = inject(ChangeDetectorRef);
   private tmdb = inject(TmdbService);
+  private router = inject(Router);
   private tmdbFetchAttempted = false;
 
-ngOnInit() {
+  ngOnInit() {
     this.updateImageUrl();
   }
 
@@ -32,6 +52,32 @@ ngOnInit() {
       this.tmdbFetchAttempted = false;
       this.updateImageUrl();
     }
+  }
+
+  get movieLink(): (string | number)[] {
+    const movie = this.movie();
+    return ['/movie', movie.imdbID || movie.tmdbId || ''];
+  }
+
+  get movieQueryParams(): Record<string, string> {
+    return this.movie().mediaType === 'tv' ? { type: 'tv' } : {};
+  }
+
+  onCardActivate() {
+    if (this.expandable()) {
+      this.select.emit();
+      return;
+    }
+    this.router.navigate(this.movieLink, { queryParams: this.movieQueryParams });
+  }
+
+  onCardKeydown(event: KeyboardEvent) {
+    if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') return;
+    // Only the card body itself — let Enter on the nested play/title links do
+    // their own thing.
+    if (event.target !== event.currentTarget) return;
+    event.preventDefault();
+    this.onCardActivate();
   }
 
   updateImageUrl() {
@@ -46,12 +92,16 @@ ngOnInit() {
         } else {
           this.loading = false;
         }
-        this.cdr.detectChanges();
+        this.cdr.markForCheck();
       });
     } else {
       this.loading = false;
     }
-    this.cdr.detectChanges();
+    // markForCheck, not detectChanges: this runs from ngOnChanges, i.e. inside
+    // the parent's change-detection pass. Forcing a nested pass on a view that
+    // is still being created throws once views are inserted mid-@for, which is
+    // exactly what the expanding panel does.
+    this.cdr.markForCheck();
   }
 
   get sizeClasses(): string {
@@ -69,12 +119,12 @@ ngOnInit() {
 
   onImageLoad() {
     this.loading = false;
-    this.cdr.detectChanges();
+    this.cdr.markForCheck();
   }
 
   onImageError() {
     this.imageUrl = '';
     this.loading = false;
-    this.cdr.detectChanges();
+    this.cdr.markForCheck();
   }
 }

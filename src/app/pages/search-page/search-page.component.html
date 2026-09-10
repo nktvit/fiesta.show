@@ -34,11 +34,13 @@
     @if (!isLoading) {
       @if (movies.length > 0) {
         <p class="px-8 pt-2 pb-1 text-sm text-gray-400">{{ totalResults }} results found</p>
-        <div class="px-8 py-6 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-          @for (movie of movies; track movie.imdbID) {
-            <app-poster [movie]="movie" [displayTitle]="true"></app-poster>
-          }
-        </div>
+        <app-movie-collection
+          class="block px-8 py-6"
+          [movies]="movies"
+          mode="grid"
+          variant="browse"
+          [priorityCount]="5">
+        </app-movie-collection>
         @if (isLoadingMore) {
           <div class="px-8 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 mb-6">
             @for (_ of [1,2,3,4,5]; track $index) {

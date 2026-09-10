@@ -196,21 +196,36 @@ module.exports = async function handler(req, res) {
       var creditsResponse = await fetch(TMDB_BASE + '/person/' + id + '/combined_credits?api_key=' + apiKey + '&language=en-US');
       var creditsData = await creditsResponse.json();
 
-      var seen = {};
-      var credits = (creditsData.cast || []).concat(creditsData.crew || [])
-        .filter(function(c) {
-          if (!c.poster_path) return false;
-          var key = c.media_type + '_' + c.id;
-          if (seen[key]) return false;
-          seen[key] = true;
-          return true;
-        })
-        .sort(function(a, b) {
-          var da = a.release_date || a.first_air_date || '';
-          var db = b.release_date || b.first_air_date || '';
-          return db.localeCompare(da);
-        })
-        .map(function(c) { return mapMovie(c, c.media_type); });
+      // Acting and crew work are listed separately: merging them made a
+      // director's page show films they directed next to films they only
+      // appeared in, with no way to tell which was which.
+      function dedupeCredits(entries) {
+        var seen = {};
+        return (entries || [])
+          .filter(function(c) {
+            if (!c.poster_path) return false;
+            var key = c.media_type + '_' + c.id;
+            if (seen[key]) return false;
+            seen[key] = true;
+            return true;
+          })
+          .sort(function(a, b) {
+            var da = a.release_date || a.first_air_date || '';
+            var db = b.release_date || b.first_air_date || '';
+            return db.localeCompare(da);
+          })
+          .map(function(c) { return mapMovie(c, c.media_type); });
+      }
+
+      var actingCredits = dedupeCredits(creditsData.cast);
+      var crewCredits = dedupeCredits(creditsData.crew);
+      var seenAll = {};
+      var credits = actingCredits.concat(crewCredits).filter(function(c) {
+        var key = c.mediaType + '_' + c.tmdbId;
+        if (seenAll[key]) return false;
+        seenAll[key] = true;
+        return true;
+      });
 
       return res.status(200).json({
         id: personData.id,
@@ -222,6 +237,8 @@ module.exports = async function handler(req, res) {
         placeOfBirth: personData.place_of_birth || null,
         knownForDepartment: personData.known_for_department || null,
         credits: credits,
+        actingCredits: actingCredits,
+        crewCredits: crewCredits,
       });
     }
 

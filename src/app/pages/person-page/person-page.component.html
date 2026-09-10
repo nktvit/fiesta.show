@@ -52,35 +52,31 @@
           @if (bioParagraphs.length > 0) {
             <div class="mt-6">
               <p class="mb-2 text-base font-bold text-white">Biography</p>
-              <div class="space-y-3 text-sm leading-relaxed text-gray-300 md:text-base">
-                @if (isFullBio) {
-                  @for (paragraph of bioParagraphs; track $index) {
-                    <p>{{ paragraph }}</p>
-                  }
-                } @else {
-                  <p #bioClamp class="line-clamp-4">{{ bioParagraphs[0] }}</p>
-                }
-              </div>
-              @if (bioParagraphs.length > 1 || isBioTruncated) {
-                <button
-                  class="mt-2 text-sm font-medium text-indigo-400 transition-colors duration-200 hover:text-indigo-300"
-                  (click)="toggleBio()">
-                  {{ isFullBio ? 'Show Less' : 'Read More' }}
-                </button>
-              }
+              <app-expandable-text
+                class="text-sm leading-relaxed text-gray-300 md:text-base"
+                [paragraphs]="bioParagraphs"
+                [collapsedLines]="4"
+                fadeColor="#0a0a0a">
+              </app-expandable-text>
             </div>
           }
         </div>
       </div>
 
-      @if (person.credits.length > 0) {
+      <!-- Acting and behind-the-camera work are separate sections. A director
+           who also acts was previously shown one undifferentiated grid. The
+           section they are best known for leads. -->
+      @for (section of creditSections; track section.title) {
         <section class="mt-10">
-          <h2 class="mb-4 text-lg font-bold text-white md:text-xl">Known For</h2>
-          <div class="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 md:gap-4 lg:grid-cols-6">
-            @for (credit of person.credits; track credit.tmdbId) {
-              <app-poster [movie]="credit" [displayTitle]="true"></app-poster>
-            }
-          </div>
+          <h2 class="mb-4 text-lg font-bold text-white md:text-xl">
+            {{ section.title }}
+            <span class="ml-2 text-sm font-medium text-gray-500">{{ section.movies.length }}</span>
+          </h2>
+          <app-movie-collection
+            [movies]="section.movies"
+            mode="grid"
+            variant="compact">
+          </app-movie-collection>
         </section>
       }
     </div>

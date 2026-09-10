@@ -1,0 +1,88 @@
+:host {
+  display: block;
+}
+
+.expandable {
+  position: relative;
+}
+
+.expandable__content {
+  /* Height is driven imperatively from the component; overflow must stay
+     hidden so the collapsed state clips rather than reflows the page. */
+  overflow: hidden;
+}
+
+.expandable__content p + p {
+  margin-top: 0.75rem;
+}
+
+/* --- gradual reveal -------------------------------------------------------
+   Two parts. The fade overlay softens the collapsed cut-off, and on expand the
+   paragraphs come in one after another rather than all at once. The first
+   paragraph only brightens (it is already partly visible while collapsed, so
+   animating it from opacity 0 would read as a flash). */
+
+.expandable__fade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3.5rem;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent, var(--fade-color, #0a0a0a));
+  opacity: 1;
+  transition: opacity 220ms ease;
+}
+
+.expandable__fade.is-gone {
+  opacity: 0;
+}
+
+.expandable.is-expanded .expandable__content p {
+  animation: revealParagraph 380ms cubic-bezier(0.4, 0, 0.2, 1) both;
+  animation-delay: calc(var(--i, 0) * 60ms);
+}
+
+.expandable.is-expanded .expandable__content p:first-child {
+  animation-name: brightenParagraph;
+}
+
+@keyframes revealParagraph {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes brightenParagraph {
+  from {
+    opacity: 0.45;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.expandable__chevron {
+  transition: transform 220ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.expandable__toggle[aria-expanded='true'] .expandable__chevron {
+  transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .expandable__content,
+  .expandable__fade,
+  .expandable__chevron {
+    transition: none;
+  }
+
+  .expandable.is-expanded .expandable__content p {
+    animation: none;
+  }
+}

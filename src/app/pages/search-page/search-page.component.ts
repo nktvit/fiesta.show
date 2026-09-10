@@ -1,6 +1,7 @@
 import { Component, inject } from '@angular/core';
 import { Title, Meta } from '@angular/platform-browser';
 import { PosterComponent } from '../../components/poster/poster.component';
+import { MovieCollectionComponent } from '../../components/movie-collection/movie-collection.component';
 import { MovieService } from '../../services/movie.service';
 import { PersonSearchResult, TmdbService } from '../../services/tmdb.service';
 import { NavbarComponent } from '../../components/navbar/navbar.component';
@@ -12,7 +13,7 @@ import { InfiniteScrollDirective } from '../../directives/infinite-scroll.direct
 
 @Component({
   selector: 'app-search-page',
-  imports: [PosterComponent, NavbarComponent, NotfoundComponent, InfiniteScrollDirective, RouterLink],
+  imports: [PosterComponent, MovieCollectionComponent, NavbarComponent, NotfoundComponent, InfiniteScrollDirective, RouterLink],
   templateUrl: './search-page.component.html',
   styleUrl: './search-page.component.css'
 })
