@@ -1,5 +1,137 @@
 # Session handoff
 
+## SHIPPED TO PRODUCTION: mobile bottom nav + expanding movie cards (`3fb9b35`)
+
+`main` was fast-forwarded to `3fb9b35` and pushed, so this is **live on
+fiesta.show**, not just a preview. Four commits, all verified before merge:
+
+- `f50dc8d` mobile bottom nav (branch `feat/mobile-bottom-nav-redesign`)
+- `e2a7fec` expanding cards
+- `05a36d4` richer panel + title stops navigating
+- `d99682f` merge of the nav branch into the cards branch
+- `3fb9b35` Play starts the stream + animation smoothing
+
+Both feature branches still exist on `origin`. The worktree at
+`.claude/worktrees/expanding-cards` is now redundant — remove it.
+
+### What shipped
+
+**Mobile bottom nav** (`src/app/components/bottom-nav/`, `sm:hidden`): four
+route tabs plus a Genres bottom sheet. The navbar lost its hamburger; links and
+the genre dropdown are `sm:`-and-up only, and the search box is opt-in per page
+via `[mobileSearch]`.
+
+**Expanding cards**: clicking a card opens its details in a new row directly
+below that card's row, tinting the others. Rolled out to search, genre,
+top-rated, tv, person credits and the four home shelves via one new
+`<app-movie-collection>` (grid | row mode), which replaced ~90 lines of
+duplicated markup. `MoviesGridComponent` was dead code and is deleted.
+
+**Shared `<app-expandable-text>`** replaced the two hand-rolled Read More
+toggles (person bio, movie plot).
+
+**Person pages split acting from crew work.** `combined_credits` cast and crew
+were merged, so a director's page showed films they directed beside films they
+merely appeared in. Fixed in both `tmdb.service.ts` *and* `api/tmdb.js` —
+production reads the pre-shaped serverless response, so client-only would have
+been a no-op in prod.
+
+**Play starts the stream.** Play buttons carry `?play=1`; the movie page scrolls
+`#player` into view and `MoviePlayerComponent` autostarts.
+
+### Hard-won findings — read before touching this code
+
+- **`modestbranding=1` is a no-op** (deprecated Aug 2023) and `rel=0` only
+  narrows related videos. Neither removes YouTube chrome. What works: the
+  player wrapper is *taller* than the 16:9 box (`top/bottom: -60px`) so the
+  title bar and bottom strip fall into cropped black margins — the video
+  letterboxes centred, so **no picture is lost**; `pointer-events: none` on the
+  iframe kills the hover overlay; and the backdrop is held `CHROME_SETTLE_MS`
+  (4500ms) after playback starts because the centre play/pause glyph cannot be
+  cropped. Those numbers came from screenshotting the player over time — the
+  assertions were passing while the branding was still plainly visible.
+- **Use the IFrame Player API, not raw postMessage.** The raw protocol needs a
+  `listening` handshake loop and the right `targetOrigin`; `unMute()` after
+  `onReady` just works. `host: 'https://www.youtube-nocookie.com'` gets nocookie
+  *and* the JS API together.
+- **Everything player-related runs `runOutsideAngular`.** The player posts
+  progress messages several times a second and this app is zone-based with
+  Default CD — each one would otherwise tick the whole application.
+- **What made the open animation stutter** (all three were real): the iframe was
+  being created mid-transition (creating a cross-origin iframe is enormously
+  expensive — this was the bulk of it, now deferred until the panel settles); a
+  `filter: saturate()` was animating on every unselected card, promoting a
+  compositing layer each; and the panel lacked `contain: layout paint`. Now 0
+  long frames on desktop, 1 on mobile.
+- **Signals do not reduce change detection in Default-CD components.** The
+  original design had every poster subscribing to a dim signal — strictly worse
+  than nothing. The tint is two class bindings and pure CSS instead.
+- **`PosterComponent` is OnPush with `markForCheck`.** Its old
+  `detectChanges()` calls ran inside the parent's pass and throw once views are
+  inserted mid-`@for`, which is exactly what the panel does.
+- **Column count comes from `matchMedia`, not `getComputedStyle`.** The counts
+  are hardcoded Tailwind classes, so the breakpoints *are* the source of truth;
+  reading layout would also thrash on every panel open.
+- **Panel is reused, not recreated, when another card in the same row is
+  clicked** — hence the full reset in `ngOnChanges`, including tearing the
+  player down. Miss that and the previous trailer keeps playing.
+- **`NgOptimizedImage` rejects pixel values in `sizes`** (NG02952). All entries
+  must be responsive units.
+- **iOS scroll lock**: `overflow: hidden` alone does not hold on iOS Safari.
+  The sheet also pins `position: fixed` with a saved `scrollY`, restored on
+  close.
+- **The BMC greeting bubble is an anonymous `<div>`** with only inline styles —
+  matched on its `bottom: 16px`, and scaled via box properties (not
+  `transform`, which the widget animates itself in from).
+
+### Verification
+
+`tools/e2e/` (untracked — see its README) holds six Playwright suites, **181
+checks, all green on merged `main`**. They mock TMDB/OMDB because dev has no
+API keys, but deliberately use the **real YouTube embed**.
+
+Unit tests: **5 pre-existing failures**, unrelated — `movie.service.spec.ts`
+hardcodes `apikey=a1128251` which is not in the local env. Not caused by this
+work; they fail on `main` before it too.
+
+### NOT verified — needs a real device on production
+
+**Autoplay after navigation.** `/api/stream` is a Vercel function that does not
+run under `ng serve`, so the `?play=1` autostart could never be exercised
+locally. The gesture that asked for playback happened on the *previous* page
+and gestures do not survive navigation, so the browser may refuse `play()` —
+iOS Safari most likely. It degrades honestly (reverts to the play button rather
+than sitting started-but-silent), but **go press Play on a phone and confirm.**
+
+### Requested but NOT started — next session picks these up
+
+1. **Collapse the expanded card on a significant scroll.** The user was
+   explicit that a *little* scroll must not close it — needs an accumulated
+   delta from the scroll position at open (~200-300px), in either direction,
+   not any-scroll. `MovieCollectionComponent.close()` already does the animated
+   teardown. Listener must be `passive` and `runOutsideAngular` or it ticks CD
+   on every scroll frame.
+2. **Search page: move the input bar down and make it less ugly.** The input is
+   in `navbar.component.html` behind `[mobileSearch]`; the empty-state prompt is
+   in `search-page.component.html`. Treat the two as one composition rather than
+   styling the input alone.
+
+### Smaller open items
+
+- `docs/UI/` (~4MB of verification screenshots) and `skills-lock.json` are
+  deliberately uncommitted in the working tree.
+- Panel has **no genres from TMDB** — `/find` does not return them, so genres,
+  runtime, certificate and awards all come from the OMDB details endpoint via
+  the new non-publishing `MovieService.getDetailsSnapshot()`. (`getMovieDetails`
+  publishes into the subject the movie page binds to — calling it from the panel
+  would overwrite that page's state.)
+- The movie page's own recommendations shelf still navigates rather than
+  expanding; deliberate, since expanding a card while already on a movie page
+  reads oddly. `[expandable]="false"` flips it.
+- Console noise from the embed: `compute-pressure is not allowed in this
+  document` comes from inside the YouTube iframe. Harmless, unfixable from here.
+
+
 ## DONE: the heart burst now actually lands on the button (`cf79bd3`)
 
 **Branch `feat/like-heart-bloom`, committed, NOT merged, NOT pushed, NOT
@@ -75,7 +207,7 @@ reduced motion still fills the icon, zero console errors.
 `fiesta.show` itself. Also worth a look while there: the per-comment like
 hearts in the thread got none of this and are still a plain fill toggle.
 
-## TWO BRANCHES AWAITING REVIEW — built and verified, NOT merged, NOT deployed
+## (STALE — both branches were merged long ago, see cf79bd3 / 8f353b2) TWO BRANCHES AWAITING REVIEW
 
 Both were finished at the end of this session and are the first thing to pick
 up. Neither is pushed; `main` is untouched by either.
