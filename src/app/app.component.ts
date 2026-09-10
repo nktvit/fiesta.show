@@ -3,11 +3,12 @@ import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs';
 import { NavigationService } from './services/navigation.service';
 import { FooterComponent } from './components/footer/footer.component';
+import { BottomNavComponent } from './components/bottom-nav/bottom-nav.component';
 import { computeRoute, injectSpeedInsights } from '@vercel/speed-insights';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, FooterComponent],
+  imports: [RouterOutlet, FooterComponent, BottomNavComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.css',
   host: { class: 'block min-h-screen' },

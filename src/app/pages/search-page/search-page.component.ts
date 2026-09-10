@@ -24,6 +24,10 @@ export class SearchPageComponent {
   hasMore = false;
   isLoading = false;
   isLoadingMore = false;
+  /** False until a query arrives. The bottom nav's Search tab lands here with
+      no query at all, and "no results found" is the wrong thing to greet it
+      with — that's a failed search, not an empty one. */
+  hasQuery = false;
 
   private movieService = inject(MovieService);
   private tmdbService = inject(TmdbService);
@@ -35,6 +39,7 @@ export class SearchPageComponent {
   ngOnInit(): void {
     this.route.queryParams.subscribe(params => {
       const query = params['query'];
+      this.hasQuery = !!query;
       if (query) {
         this.titleService.setTitle(`Search "${query}" | Stream Fiesta`);
         this.metaService.updateTag({ name: 'description', content: `Search results for "${query}" — watch free on Stream Fiesta.` });

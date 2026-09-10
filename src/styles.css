@@ -14,6 +14,77 @@ body.hide-bmc-widget [id*="bmc"] {
   display: none !important;
 }
 
+/* The BMC widget floats bottom-right at an 18px margin, which lands it on top
+   of the mobile bottom nav. Lift it clear of the bar + home indicator. */
+@media screen and (max-width: 639px) {
+  /* 64px is a lot of thumb real estate for a tip jar on a phone. 48px still
+     clears the 44px minimum touch target. */
+  #bmc-wbtn {
+    bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px)) !important;
+    width: 48px !important;
+    height: 48px !important;
+    border-radius: 24px !important;
+  }
+
+  #bmc-wbtn img {
+    width: 26px !important;
+    height: 26px !important;
+  }
+
+  /* The widget's greeting bubble is a sibling of #bmc-wbtn with no id or class
+     of its own — only inline styles — so it has to be matched by the one stable
+     thing it has, its `bottom: 16px`. Without this it sits at the very bottom of
+     the viewport and covers the tab labels.
+
+     It also ships desktop proportions (18px text, 16px padding, 260px wide),
+     which on a 390px screen is a card covering a good part of the page. The box
+     properties are scaled down here rather than the `transform`, because the
+     widget animates itself in from an inline `scale(.7)` and overriding that
+     would freeze the entrance. */
+  body > div[style*="bottom: 16px"] {
+    bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px)) !important;
+    /* The widget hardcodes `right: 102px` to clear its own 64px button; the
+       button is 48px here, so the bubble follows it in. */
+    right: 86px !important;
+    max-width: 175px !important;
+    padding: 9px 11px !important;
+    font-size: 12px !important;
+    line-height: 1.35 !important;
+    border-radius: 10px !important;
+  }
+}
+
+/* Bottom-nav genre sheet. Scroll lock lives here rather than as an inline
+   style so it can't collide with the movie page's trailer-modal lock. The BMC
+   widget sits at z-index 9999999, far above any app layer, so it has to be
+   hidden outright while the sheet is up — a separate class from
+   `hide-bmc-widget` so the About page's own toggle isn't disturbed.
+
+   `overflow: hidden` alone does NOT hold on iOS Safari — the page keeps
+   scrolling and rubber-banding behind the sheet. So the lock also pins the body
+   with `position: fixed`; the component supplies the matching `top: -<scrollY>px`
+   inline and restores the scroll offset on close. */
+body.nav-sheet-open {
+  overflow: hidden;
+  position: fixed;
+  left: 0;
+  right: 0;
+  width: 100%;
+}
+
+/* BMC's greeting bubble ("Don't forget to grab some popcorn…", set by
+   data-message in index.html) is an anonymous <div> — inline styles, no id or
+   class — so the id list below can't reach it, and it was landing on top of the
+   open sheet. Everything this app renders lives inside <app-root>, so a bare
+   `body > div` is always one of BMC's injected layers: hiding them wholesale is
+   safe here and, unlike :has(), works on the iOS 15 / Safari 15 targets. */
+body.nav-sheet-open > div,
+body.nav-sheet-open #bmc-wbtn,
+body.nav-sheet-open #bmc-iframe,
+body.nav-sheet-open #bmc-close-btn {
+  display: none !important;
+}
+
 @media screen and (max-width: 767px) {
   input, select, textarea {
     font-size: 16px;

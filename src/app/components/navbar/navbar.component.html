@@ -1,4 +1,7 @@
-<header class="flex flex-wrap sm:justify-start sm:flex-nowrap w-full text-sm py-3 md:py-4 transition-all duration-500"
+<!-- On mobile this is a slim brand-only bar: primary navigation lives in
+     <app-bottom-nav>. The links, the Genres dropdown and (unless a page opts in
+     via [mobileSearch]) the search box are all sm:+ only. -->
+<header class="flex flex-wrap sm:justify-start sm:flex-nowrap w-full text-sm py-3 md:py-4 transition-all duration-500 motion-reduce:transition-none"
   [ngClass]="transparent()
     ? (scrolled ? 'bg-black/40 backdrop-blur-lg' : 'bg-gradient-to-b from-black/80 via-black/40 to-transparent')
     : 'bg-white dark:bg-gray-800 shadow-sm'">
@@ -8,28 +11,16 @@
       [ngClass]="transparent() ? 'text-white' : 'text-gray-900 dark:text-white'">
       Stream Fiesta
     </a>
-    <button type="button"
-      class="sm:hidden md:mb-0 p-2.5 inline-flex justify-center items-center gap-x-2 rounded-lg border border-transparent hover:bg-white/10 transition-colors"
-      [ngClass]="transparent() ? 'text-white' : 'text-gray-800 dark:text-white'"
-      (click)="isOpenMenu = !isOpenMenu" aria-controls="navbar-alignment" aria-label="Toggle navigation">
-      @if (!isOpenMenu) {
-        <svg class="flex-shrink-0 size-5" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="3" x2="21" y1="6" y2="6" />
-          <line x1="3" x2="21" y1="12" y2="12" />
-          <line x1="3" x2="21" y1="18" y2="18" />
-        </svg>
-      } @else {
-        <svg class="flex-shrink-0 size-5" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M18 6 6 18" />
-          <path d="m6 6 12 12" />
-        </svg>
-      }
-    </button>
+    <!-- Wrapper div, not the component host: search-box.component.css sets
+         `:host { display: block }`, and component styles land after the global
+         stylesheet, so `hidden` on the host loses the cascade. -->
     @if (showSearchBox()) {
-      <app-search-box class="sm:order-3 w-full sm:w-auto"></app-search-box>
+      <div class="sm:order-3 w-full sm:w-auto"
+        [ngClass]="mobileSearch() ? 'block mt-3 sm:mt-0' : 'hidden sm:block'">
+        <app-search-box></app-search-box>
+      </div>
     }
-    <div class="overflow-hidden sm:overflow-visible transition-all duration-300 basis-full grow sm:grow-0 sm:basis-auto sm:block sm:order-2"
-      [ngClass]="{hidden: !isOpenMenu}">
+    <div class="hidden sm:block sm:grow-0 sm:basis-auto sm:order-2">
       <div class="flex flex-col gap-4 mt-4 sm:flex-row sm:items-center sm:mt-0 sm:ps-6">
         <a class="font-medium text-sm transition-colors"
           [ngClass]="currentPage === '/'
@@ -61,7 +52,7 @@
               bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
               @for (genre of genres; track genre.id) {
                 <a [routerLink]="['/genre', genre.id]"
-                  (click)="isGenreOpen = false; isOpenMenu = false"
+                  (click)="isGenreOpen = false"
                   class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
                   {{ genre.name }}
                 </a>
