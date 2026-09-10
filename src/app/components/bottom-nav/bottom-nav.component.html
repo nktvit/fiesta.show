@@ -1,0 +1,135 @@
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!-- GENRE SHEET — the taxonomy that can't fit in a tab            -->
+<!-- z-40 keeps it under the movie page's trailer modal (z-50).    -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+@if (genresOpen()) {
+  <div class="sheet-backdrop fixed inset-0 z-40 bg-black/70 backdrop-blur-sm sm:hidden"
+    (click)="closeGenres()" aria-hidden="true"></div>
+
+  <div #sheetPanel (keydown)="onSheetKeydown($event)"
+    class="sheet-panel fixed inset-x-0 bottom-0 z-40 flex max-h-[72vh] flex-col rounded-t-2xl border-t border-white/10 bg-[#121212] shadow-2xl sm:hidden"
+    role="dialog" aria-modal="true" aria-labelledby="bottom-nav-genres-title">
+    <div class="mx-auto mt-2.5 h-1 w-10 flex-shrink-0 rounded-full bg-white/20"></div>
+    <div class="flex flex-shrink-0 items-center justify-between px-5 pb-3 pt-3">
+      <h2 id="bottom-nav-genres-title" class="text-sm font-bold tracking-wide text-white">Browse by genre</h2>
+      <!-- h-11 w-11 = 44px, the minimum comfortable touch target. -->
+      <button type="button" (click)="closeGenres()" aria-label="Close genres"
+        class="-mr-2 flex h-11 w-11 items-center justify-center rounded-full text-gray-400 transition-colors hover:text-white motion-reduce:transition-none">
+        <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M18 6 6 18" />
+          <path d="m6 6 12 12" />
+        </svg>
+      </button>
+    </div>
+    <!-- overscroll-contain stops the scroll chaining to the locked page behind. -->
+    <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-sheet-safe">
+      @if (genres().length > 0) {
+        <div class="grid grid-cols-2 gap-2">
+          @for (genre of genres(); track genre.id) {
+            <a [routerLink]="['/genre', genre.id]" (click)="closeGenres()"
+              class="rounded-lg px-3 py-3 text-center text-sm font-medium transition-colors hover:bg-indigo-600 hover:text-white motion-reduce:transition-none"
+              [class.bg-indigo-600]="genre.id === activeGenreId()"
+              [class.text-white]="genre.id === activeGenreId()"
+              [class.bg-white-soft]="genre.id !== activeGenreId()"
+              [class.text-gray-200]="genre.id !== activeGenreId()"
+              [attr.aria-current]="genre.id === activeGenreId() ? 'page' : null">
+              {{ genre.name }}
+            </a>
+          }
+        </div>
+      } @else {
+        <div class="grid grid-cols-2 gap-2">
+          @for (_ of [1,2,3,4,5,6,7,8]; track $index) {
+            <div class="h-11 animate-pulse rounded-lg bg-white/5"></div>
+          }
+        </div>
+      }
+    </div>
+  </div>
+}
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!-- TAB BAR                                                        -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+<nav class="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#0a0a0a]/95 pb-safe-b backdrop-blur-md sm:hidden"
+  aria-label="Primary">
+  <ul class="flex h-14 items-stretch">
+    @for (tab of tabs; track tab.path) {
+      <li class="flex-1">
+        <a [routerLink]="tab.path"
+          class="relative flex h-full flex-col items-center justify-center gap-0.5 px-0.5 transition-[color,transform] duration-200 active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100"
+          [class.text-indigo-400]="isActive(tab)"
+          [class.text-gray-400]="!isActive(tab)"
+          [attr.aria-current]="isActive(tab) ? 'page' : null">
+          @if (isActive(tab)) {
+            <span class="absolute inset-x-0 top-0 mx-auto h-0.5 w-8 rounded-full bg-indigo-400" aria-hidden="true"></span>
+          }
+          <svg class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+            @switch (tab.icon) {
+              @case ('home') {
+                <path d="M15 21v-7a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v7" />
+                <path d="M3 10.2a2 2 0 0 1 .7-1.5l7-6a2 2 0 0 1 2.6 0l7 6a2 2 0 0 1 .7 1.5V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+              }
+              @case ('search') {
+                <circle cx="11" cy="11" r="8" />
+                <path d="m21 21-4.3-4.3" />
+              }
+              @case ('tv') {
+                <rect x="2" y="7" width="20" height="15" rx="2" />
+                <path d="m17 2-5 5-5-5" />
+              }
+              @case ('star') {
+                <path d="M12 2.5l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5-5.8-3-5.8 3 1.1-6.5L2.6 9.3l6.5-.9z" />
+              }
+            }
+          </svg>
+          <span class="text-[10px] font-medium leading-none">{{ tab.label }}</span>
+        </a>
+      </li>
+    }
+
+    <!-- Genres opens the sheet above rather than navigating: 19 destinations
+         can't be one tab.
+
+         It therefore has two states the other tabs don't have to tell apart,
+         and giving both the same "current page" styling is what made it read
+         as a broken tab:
+           · you are ON a /genre route  -> the underline pill + indigo, exactly
+             like the real tabs, because that genuinely is where you are;
+           · the drawer is OPEN right now -> a filled pill behind the icon and
+             a flipped chevron, which is control state, not location.
+         The chevron is always present so the button announces itself as
+         something that opens, rather than somewhere that you go. -->
+    <li class="flex-1">
+      <button #genresBtn type="button" (click)="toggleGenres()"
+        class="relative flex h-full w-full flex-col items-center justify-center gap-0.5 px-0.5 transition-[color,transform] duration-200 active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100"
+        [class.text-white]="genresOpen()"
+        [class.text-indigo-400]="!genresOpen() && genresActive()"
+        [class.text-gray-400]="!genresOpen() && !genresActive()"
+        [attr.aria-expanded]="genresOpen()"
+        aria-haspopup="dialog">
+        @if (genresActive()) {
+          <span class="absolute inset-x-0 top-0 mx-auto h-0.5 w-8 rounded-full bg-indigo-400" aria-hidden="true"></span>
+        }
+        <!-- Fixed h-6 w-10 so the pill can appear without nudging the row. -->
+        <span class="flex h-6 w-10 items-center justify-center rounded-full transition-colors duration-200 motion-reduce:transition-none"
+          [class.genres-pill]="genresOpen()">
+          <svg class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="3" y="3" width="7" height="7" rx="1.5" />
+            <rect x="14" y="3" width="7" height="7" rx="1.5" />
+            <rect x="3" y="14" width="7" height="7" rx="1.5" />
+            <rect x="14" y="14" width="7" height="7" rx="1.5" />
+          </svg>
+        </span>
+        <span class="flex items-center gap-0.5 text-[10px] font-medium leading-none">
+          Genres
+          <svg class="h-2.5 w-2.5 transition-transform duration-200 motion-reduce:transition-none"
+            [class.rotate-180]="genresOpen()"
+            fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m6 15 6-6 6 6" />
+          </svg>
+        </span>
+      </button>
+    </li>
+  </ul>
+</nav>

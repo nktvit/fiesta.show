@@ -1,5 +1,5 @@
 <main class="bg-[#0a0a0a] min-h-screen text-white">
-  <app-navbar [showSearchBox]="true"></app-navbar>
+  <app-navbar [showSearchBox]="true" [mobileSearch]="true"></app-navbar>
   <div class="container max-w-6xl flex-grow flex flex-col mx-auto my-6">
     @if (isLoading) {
       <div class="px-8 py-6 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
@@ -51,7 +51,22 @@
         <div appInfiniteScroll [disabled]="!hasMore || isLoadingMore" (scrolled)="loadMore()" class="h-4"></div>
       }
       @if (movies.length === 0) {
-        <app-notfound class="flex-grow flex flex-col"></app-notfound>
+        @if (hasQuery) {
+          <app-notfound class="flex-grow flex flex-col"></app-notfound>
+        } @else {
+          <!-- Landed here from the bottom nav's Search tab with nothing typed
+               yet — a prompt, not a "nothing found" dead end. -->
+          <div class="flex-grow flex flex-col items-center justify-center px-8 py-16 text-center">
+            <svg class="h-12 w-12 text-gray-700" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.3-4.3" />
+            </svg>
+            <p class="mt-4 text-base font-semibold text-white">Search Stream Fiesta</p>
+            <p class="mt-1 max-w-xs text-sm text-gray-400">
+              Find any movie, show or person &mdash; start typing in the box above.
+            </p>
+          </div>
+        }
       }
     }
   </div>
