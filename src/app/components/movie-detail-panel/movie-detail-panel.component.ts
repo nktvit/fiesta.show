@@ -22,7 +22,12 @@ import { MovieSummary, MovieSummaryService } from '../../services/movie-summary.
 import { ExpandableTextComponent } from '../expandable-text/expandable-text.component';
 
 /** Milliseconds for the open/close height transition. */
-const TRANSITION_MS = 300;
+const TRANSITION_MS = 420;
+/**
+ * Decelerating curve. The stock ease-in-out reads as mechanical on a box this
+ * large: it starts slowly, so the row appears to hesitate before opening.
+ */
+const EASING = 'cubic-bezier(.22,.61,.36,1)';
 /** How long to wait for muted autoplay before falling back to the backdrop. */
 const AUTOPLAY_GRACE_MS = 1500;
 /**
@@ -326,7 +331,7 @@ export class MovieDetailPanelComponent implements OnChanges, AfterViewInit, OnDe
       void this.host.offsetHeight;
       requestAnimationFrame(() => {
         this.host.style.transition =
-          `height ${TRANSITION_MS}ms cubic-bezier(.4,0,.2,1), opacity 200ms linear`;
+          `height ${TRANSITION_MS}ms ${EASING}, opacity 260ms ease-out`;
         this.host.style.height = `${content.scrollHeight}px`;
         this.host.style.opacity = '1';
         this.settle(TRANSITION_MS + 20);
@@ -347,7 +352,7 @@ export class MovieDetailPanelComponent implements OnChanges, AfterViewInit, OnDe
       void this.host.offsetHeight;
       requestAnimationFrame(() => {
         this.host.style.transition =
-          `height ${TRANSITION_MS}ms cubic-bezier(.4,0,.2,1), opacity 200ms linear`;
+          `height ${TRANSITION_MS}ms ${EASING}, opacity 200ms ease-in`;
         this.host.style.height = '0px';
         this.host.style.opacity = '0';
       });

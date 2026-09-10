@@ -15,7 +15,10 @@
   }
 }
 
+/* The host animates its height; the content rises into that space rather than
+   being uncovered by it, which is what stops the open reading as a shutter. */
 .panel-content {
+  animation: panelRise 420ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
   position: relative;
   margin: 0.75rem 0 0.25rem;
   padding: 1rem;
@@ -23,6 +26,17 @@
   background: #141414;
   box-shadow: 0 20px 45px -20px rgb(0 0 0 / 0.9);
   border: 1px solid rgb(255 255 255 / 0.08);
+}
+
+@keyframes panelRise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 @media (min-width: 768px) {
@@ -173,7 +187,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
-  margin-top: 1rem;
+  margin-top: 0.5rem;
 }
 
 .panel-cast-member {
@@ -219,6 +233,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .panel-content {
+    animation: none;
+  }
+
   .panel-backdrop,
   .panel-media-button,
   .panel-close,

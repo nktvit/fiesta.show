@@ -48,7 +48,7 @@ const GRID_CLASSES: Record<CollectionVariant, string> = {
 };
 
 /** Matches the panel's own transition so removal waits for the collapse. */
-const TRANSITION_MS = 300;
+const TRANSITION_MS = 420;
 
 /**
  * A grid or horizontal shelf of posters where clicking a card expands its

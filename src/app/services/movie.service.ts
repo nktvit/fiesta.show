@@ -62,6 +62,17 @@ export class MovieService {
     );
   }
 
+  /**
+   * Details for a title without publishing them.
+   *
+   * `getMovieDetails` pushes into `movieDetailsSubject`, which the movie page
+   * is bound to — calling it from anywhere else (the in-grid expansion panel,
+   * say) would overwrite whatever that page is showing.
+   */
+  getDetailsSnapshot(id: string): Observable<any | null> {
+    return this.fetchMovieDetails(id).pipe(catchError(() => of(null)));
+  }
+
   private fetchMovieDetails(id: string): Observable<any> {
     const url = this.buildDetailsUrl(id);
     return this.http.get<any>(url, {observe: 'response'}).pipe(

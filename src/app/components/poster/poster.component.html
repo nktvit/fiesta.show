@@ -48,13 +48,13 @@
     </div>
 
     @if (displayTitle()) {
+      <!-- Plain text, not a link: the title is part of the card body, so
+           clicking it expands the card like anywhere else on the poster rather
+           than navigating away. The play button below is still a real anchor,
+           so /movie/:id stays in the crawlable markup either way. -->
       <div
         class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-4 rounded-lg opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-300 ease-in-out">
-        <a
-          [routerLink]="movieLink"
-          [queryParams]="movieQueryParams"
-          (click)="$event.stopPropagation()"
-          class="text-white text-xs sm:text-base lg:text-md font-semibold line-clamp-3 hover:text-indigo-300 focus:outline-none focus-visible:underline transition-colors duration-200">{{ movie().Title }}</a>
+        <span class="text-white text-xs sm:text-base lg:text-md font-semibold line-clamp-3">{{ movie().Title }}</span>
       </div>
     }
   </div>
