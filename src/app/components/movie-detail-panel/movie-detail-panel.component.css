@@ -18,6 +18,9 @@
 /* The host animates its height; the content rises into that space rather than
    being uncovered by it, which is what stops the open reading as a shutter. */
 .panel-content {
+  /* Confines layout and paint to this subtree, so recalculating it on every
+     frame of the height animation doesn't invalidate the whole grid. */
+  contain: layout paint;
   animation: panelRise 420ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
   position: relative;
   margin: 0.75rem 0 0.25rem;

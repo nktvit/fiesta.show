@@ -243,8 +243,8 @@
         <div class="mt-10 rounded-xl overflow-hidden bg-[#111111] border border-white/5 shadow-2xl">
 
           <!-- Player -->
-          <div class="bg-black">
-            <app-movie-player [imdbId]="imdbId" [type]="type" [season]="season" [episode]="episode" [poster]="playerPoster" [server]="server" (serverChange)="onServerChange($event)"></app-movie-player>
+          <div class="bg-black" id="player">
+            <app-movie-player [autostart]="autostart" [imdbId]="imdbId" [type]="type" [season]="season" [episode]="episode" [poster]="playerPoster" [server]="server" (serverChange)="onServerChange($event)"></app-movie-player>
           </div>
 
           <!-- Now Playing bar -->
@@ -378,8 +378,8 @@
 
       <!-- ── MOVIE PLAYER ───────────────────────────────────────────── -->
       @if (type !== 'tv' && imdbId && !invalidResponse) {
-        <div class="mt-10 md:mt-16 lg:mt-24 mb-6 md:mb-10 lg:mb-16 rounded-xl shadow-lg bg-black" style="clip-path: inset(0 round 0.75rem)">
-          <app-movie-player [imdbId]="imdbId" [type]="type" [season]="season" [episode]="episode" [poster]="playerPoster" [server]="server" (serverChange)="onServerChange($event)"></app-movie-player>
+        <div id="player" class="mt-10 md:mt-16 lg:mt-24 mb-6 md:mb-10 lg:mb-16 rounded-xl shadow-lg bg-black" style="clip-path: inset(0 round 0.75rem)">
+          <app-movie-player [autostart]="autostart" [imdbId]="imdbId" [type]="type" [season]="season" [episode]="episode" [poster]="playerPoster" [server]="server" (serverChange)="onServerChange($event)"></app-movie-player>
         </div>
       }
 

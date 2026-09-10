@@ -21,17 +21,11 @@
   transform: none;
 }
 
-/* filter promotes a compositing layer per element, which is expensive on
-   older mobile GPUs — the desaturation is a pointer-device nicety only. */
-@media (hover: hover) and (min-width: 768px) {
-  .collection-card {
-    transition: opacity 300ms ease, filter 300ms ease;
-  }
-
-  .collection.has-selection .collection-card:not(.is-selected) {
-    filter: saturate(0.5);
-  }
-}
+/* No `filter` here on purpose. Desaturating the unselected cards looked good
+   in isolation, but it promotes a compositing layer per card and every one of
+   them animates on the same frames as the panel's height transition — with a
+   full grid that was enough to make the open visibly stutter. Opacity alone
+   composites without a repaint and reads almost identically. */
 
 /* Shelves scroll horizontally; the panel below them must not. */
 .scrollbar-hide {

@@ -30,6 +30,12 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   readonly poster = input<string | null>(null);
   // kept for parent compatibility (query-param persistence); single clean source now
   readonly server = input<number>(0);
+  /**
+   * Begin playback as soon as the stream is attached, without waiting for a
+   * click. Set when the viewer arrived here by pressing Play somewhere else,
+   * so the press carries through the navigation.
+   */
+  readonly autostart = input<boolean>(false);
   readonly serverChange = output<number>();
 
   readonly videoEl = viewChild<ElementRef<HTMLVideoElement>>('videoEl');
@@ -95,6 +101,17 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
       const url = this.masterUrl();
       const ref = this.videoEl();
       if (url && ref) void this.attach(ref.nativeElement, url);
+    });
+
+    // Arrived with Play already pressed: start as soon as there is something
+    // to play. Only ever fires once — a later episode switch should not yank
+    // the viewer back into playback.
+    effect(() => {
+      const url = this.masterUrl();
+      const ref = this.videoEl();
+      if (!this.autostart() || this.autostartDone || !url || !ref || this.started()) return;
+      this.autostartDone = true;
+      queueMicrotask(() => this.autoStartPlayback());
     });
 
     // Re-apply the saved subtitle preference whenever the track list changes
@@ -566,6 +583,37 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
       if (token !== this.loadToken) return;
       this.segmentSource.set(r.headers.get('X-Fiesta-Source'));
     } catch {}
+  }
+
+  private autostartDone = false;
+
+  /**
+   * The click that asked for playback happened on the previous page, and a
+   * gesture doesn't survive a navigation — so the browser may refuse to play.
+   * If it does, drop straight back to the normal play button rather than
+   * leaving a started-but-silent player on screen.
+   */
+  private async autoStartPlayback() {
+    const video = this.videoEl()?.nativeElement;
+    if (!video) return;
+
+    const resume = this.resumeTime();
+    if (resume !== null) {
+      this.pendingResumeTime = resume;
+      this.resumeTime.set(null);
+    } else {
+      this.restoreProgress(video);
+    }
+
+    this.started.set(true);
+    this.paused.set(false);
+    try {
+      await video.play();
+    } catch {
+      this.started.set(false);
+      this.paused.set(false);
+      if (resume !== null) this.resumeTime.set(resume);
+    }
   }
 
   startPlayback() {

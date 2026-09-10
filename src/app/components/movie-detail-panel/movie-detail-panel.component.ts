@@ -81,6 +81,14 @@ export class MovieDetailPanelComponent implements OnChanges, AfterViewInit, OnDe
   private revealTimer?: ReturnType<typeof setTimeout>;
   private contentObserver?: ResizeObserver;
   private destroyed = false;
+  /**
+   * Creating a cross-origin iframe is one of the most expensive things a page
+   * can do, and doing it while a height transition is running drops frames —
+   * this is what made the open look like a shutter. The trailer key is parked
+   * here until the panel has finished opening.
+   */
+  private openSettled = false;
+  private pendingTrailerKey: string | null = null;
 
   private readonly host = (inject(ElementRef) as ElementRef<HTMLElement>).nativeElement;
   private readonly cdr = inject(ChangeDetectorRef);
@@ -102,6 +110,7 @@ export class MovieDetailPanelComponent implements OnChanges, AfterViewInit, OnDe
     this.teardownPlayer();
     this.summarySub?.unsubscribe();
     this.summary = null;
+    this.pendingTrailerKey = null;
     this.overviewParagraphs = [];
     this.showVideo = false;
     this.muted = true;
@@ -160,7 +169,12 @@ export class MovieDetailPanelComponent implements OnChanges, AfterViewInit, OnDe
         : [];
       this.loadingSummary = false;
       this.cdr.markForCheck();
-      if (summary.trailerKey) this.mountPlayer(summary.trailerKey);
+      if (!summary.trailerKey) return;
+      if (this.openSettled) {
+        this.mountPlayer(summary.trailerKey);
+      } else {
+        this.pendingTrailerKey = summary.trailerKey;
+      }
     });
   }
 
@@ -177,6 +191,11 @@ export class MovieDetailPanelComponent implements OnChanges, AfterViewInit, OnDe
 
   get movieQueryParams(): Record<string, string> {
     return this.movie().mediaType === 'tv' ? { type: 'tv' } : {};
+  }
+
+  /** Play goes to the movie page *and* starts the stream there. */
+  get playQueryParams(): Record<string, string> {
+    return { ...this.movieQueryParams, play: '1' };
   }
 
   // --- trailer ------------------------------------------------------------
@@ -324,6 +343,7 @@ export class MovieDetailPanelComponent implements OnChanges, AfterViewInit, OnDe
 
     this.zone.runOutsideAngular(() => {
       this.host.style.overflow = 'hidden';
+      this.host.style.willChange = 'height';
       this.host.style.height = '0px';
       this.host.style.opacity = '0';
       // Force a style/layout flush before the change. WebKit 15 will otherwise
@@ -371,6 +391,11 @@ export class MovieDetailPanelComponent implements OnChanges, AfterViewInit, OnDe
       this.host.style.transition = '';
       this.host.style.height = 'auto';
       this.host.style.overflow = 'visible';
+      this.host.style.willChange = '';
+      this.openSettled = true;
+      const pending = this.pendingTrailerKey;
+      this.pendingTrailerKey = null;
+      if (pending) this.mountPlayer(pending);
     }, ms);
   }
 }

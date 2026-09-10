@@ -63,12 +63,17 @@ export class PosterComponent {
     return this.movie().mediaType === 'tv' ? { type: 'tv' } : {};
   }
 
+  /** Play goes to the movie page *and* starts the stream there. */
+  get playQueryParams(): Record<string, string> {
+    return { ...this.movieQueryParams, play: '1' };
+  }
+
   onCardActivate() {
     if (this.expandable()) {
       this.select.emit();
       return;
     }
-    this.router.navigate(this.movieLink, { queryParams: this.movieQueryParams });
+    this.router.navigate(this.movieLink, { queryParams: this.playQueryParams });
   }
 
   onCardKeydown(event: KeyboardEvent) {

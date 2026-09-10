@@ -1,4 +1,4 @@
-import {Component, inject, PLATFORM_ID, OnDestroy} from '@angular/core';
+import {AfterViewChecked, Component, inject, PLATFORM_ID, OnDestroy} from '@angular/core';
 import {isPlatformBrowser, NgClass} from '@angular/common';
 import {MovieService} from '../../services/movie.service';
 import {ActivatedRoute, Router, RouterLink} from '@angular/router';
@@ -30,12 +30,19 @@ interface EpisodeInfo {
   templateUrl: './movie-page.component.html',
   styleUrl: './movie-page.component.css'
 })
-export class MoviePageComponent implements OnDestroy {
+export class MoviePageComponent implements AfterViewChecked, OnDestroy {
   private jsonLdElement: HTMLScriptElement | null = null;
   private platformId = inject(PLATFORM_ID);
   isLoading = true;
   invalidResponse: boolean = false;
   adjustedPlot = '';
+  /**
+   * Arrived from a Play button elsewhere (`?play=1`): scroll straight to the
+   * player and start it, rather than dropping the viewer at the top of the
+   * page to hunt for it.
+   */
+  autostart = false;
+  private scrolledToPlayer = false;
   /**
    * Paragraph split kept as a stable array: <app-expandable-text> takes it as
    * a signal input, so a getter would hand it a new array every change
@@ -95,6 +102,8 @@ export class MoviePageComponent implements OnDestroy {
         this.movieDetailsArray = [];
         this.adjustedPlot = '';
         this.plotParagraphs = [];
+        this.autostart = this.route.snapshot.queryParams['play'] === '1';
+        this.scrolledToPlayer = false;
         this.imdbId = null;
         this.type = 'movie';
         // Preserve the episode from the URL across a refresh / deep link; only the
@@ -332,6 +341,21 @@ export class MoviePageComponent implements OnDestroy {
     this.jsonLdElement.type = 'application/ld+json';
     this.jsonLdElement.text = JSON.stringify(schema);
     document.head.appendChild(this.jsonLdElement);
+  }
+
+  ngAfterViewChecked() {
+    // The player only exists once the details have resolved, so this waits for
+    // it to appear rather than scrolling on init. Runs once per navigation.
+    if (!this.autostart || this.scrolledToPlayer || this.isLoading) return;
+    const player = document.getElementById('player');
+    if (!player) return;
+    this.scrolledToPlayer = true;
+    // A frame later: the hero image and poster are still settling, and
+    // scrolling mid-layout lands in the wrong place.
+    requestAnimationFrame(() => {
+      const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      player.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' });
+    });
   }
 
   ngOnDestroy() {
