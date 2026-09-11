@@ -16,14 +16,36 @@
 }
 
 .suggestions-dropdown {
-  animation: dropdownSlideIn 0.2s ease-out;
+  animation: dropdownSlideIn 0.18s ease-out;
+  /* Set by the component on the host while the field is focused: the space
+     actually left between the bottom of the field and the top of the keyboard
+     (or, keyboard closed, the top of the mobile tab bar). The 20rem fallback is
+     what renders with no JS and on any browser without visualViewport.
+     A vh/svh clamp cannot work here — the iOS layout viewport does not shrink
+     when the keyboard opens, so no viewport unit can see it. */
+  max-height: var(--sf-dd-max, 20rem);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 
 .suggestion-item {
   animation: itemSlideIn 0.15s ease-out;
 }
 
-/* Custom scrollbar for suggestions */
+/* These two were the only animations in the codebase with no reduced-motion
+   escape hatch. */
+@media (prefers-reduced-motion: reduce) {
+  .suggestions-dropdown,
+  .suggestion-item {
+    animation: none;
+  }
+}
+
+/* Custom scrollbar for suggestions. The thumb used to be black with the white
+   variant gated behind `prefers-color-scheme: dark` — but this app is
+   `darkMode: 'class'` with <html class="dark"> set unconditionally, so anyone
+   whose OS is in light mode got an invisible black thumb on a near-black panel.
+   The media query is gone; the values are light-on-dark always. */
 .suggestions-dropdown::-webkit-scrollbar {
   width: 6px;
 }
@@ -33,20 +55,10 @@
 }
 
 .suggestions-dropdown::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.15);
+  background: rgba(255, 255, 255, 0.2);
   border-radius: 3px;
 }
 
 .suggestions-dropdown::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.25);
-}
-
-@media (prefers-color-scheme: dark) {
-  .suggestions-dropdown::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.15);
-  }
-
-  .suggestions-dropdown::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.25);
-  }
+  background: rgba(255, 255, 255, 0.3);
 }

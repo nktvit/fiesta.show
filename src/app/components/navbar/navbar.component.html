@@ -1,10 +1,11 @@
 <!-- On mobile this is a slim brand-only bar: primary navigation lives in
-     <app-bottom-nav>. The links, the Genres dropdown and (unless a page opts in
-     via [mobileSearch]) the search box are all sm:+ only. -->
+     <app-bottom-nav>. The links, the Genres dropdown and the search box are all
+     sm:+ only — /search renders its own field in the page body, so nothing here
+     is ever the mobile search input. -->
 <header class="flex flex-wrap sm:justify-start sm:flex-nowrap w-full text-sm py-3 md:py-4 transition-all duration-500 motion-reduce:transition-none"
   [ngClass]="transparent()
     ? (scrolled ? 'bg-black/40 backdrop-blur-lg' : 'bg-gradient-to-b from-black/80 via-black/40 to-transparent')
-    : 'bg-white dark:bg-gray-800 shadow-sm'">
+    : 'bg-[#0a0a0a] border-b border-white/5'">
   <nav class="w-full mx-auto px-4 md:px-12 lg:px-16 flex flex-wrap basis-full items-center justify-between"
     aria-label="Global">
     <a class="sm:order-1 md:mb-0 flex-none text-xl font-bold tracking-tight" [routerLink]="['/']"
@@ -15,9 +16,8 @@
          `:host { display: block }`, and component styles land after the global
          stylesheet, so `hidden` on the host loses the cascade. -->
     @if (showSearchBox()) {
-      <div class="sm:order-3 w-full sm:w-auto"
-        [ngClass]="mobileSearch() ? 'block mt-3 sm:mt-0' : 'hidden sm:block'">
-        <app-search-box></app-search-box>
+      <div class="hidden sm:order-3 sm:block sm:w-72 md:w-80">
+        <app-search-box [surface]="transparent() ? 'glass' : 'sunken'"></app-search-box>
       </div>
     }
     <div class="hidden sm:block sm:grow-0 sm:basis-auto sm:order-2">

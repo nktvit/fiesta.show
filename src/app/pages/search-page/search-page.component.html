@@ -1,8 +1,70 @@
 <main class="bg-[#0a0a0a] min-h-screen text-white">
-  <app-navbar [showSearchBox]="true" [mobileSearch]="true"></app-navbar>
-  <div class="container max-w-6xl flex-grow flex flex-col mx-auto my-6">
+  <!-- No [showSearchBox]: /search renders the field in its own body. This, not a
+       CSS `hidden`, is what guarantees one input per viewport — the navbar box is
+       gone from this page at every breakpoint, not just on mobile. -->
+  <app-navbar></app-navbar>
+
+  <div class="container max-w-6xl mx-auto pb-6">
+    <!-- FIELD + COPY ARE ONE BLOCK. The field is the only element that does not
+         change between the two query states; the line under it is the only element
+         that always says where you are. Same px-6 / md:px-12 / lg:px-16 rail as the
+         poster grid, the People row and every other page in the app. -->
+    <header class="px-6 pt-6 md:px-12 md:pt-8 lg:px-16">
+      <!-- Collapses to nothing once there is a query. The h1 stays in the DOM so
+           the document keeps exactly one heading and AT still gets an accurate
+           one. `overflow: hidden` lives on the inner wrapper (see
+           search-page.component.css) and MUST NOT be moved onto an ancestor of
+           <app-search-box>, or the absolutely positioned suggestions dropdown is
+           clipped to zero height in the results state. -->
+      <div class="sf-head" [class.is-collapsed]="hasQuery">
+        <div class="min-h-0 overflow-hidden">
+          <h1 class="truncate pb-4 text-2xl font-bold tracking-tight text-white md:text-3xl">
+            {{ hasQuery ? 'Results for &ldquo;' + query + '&rdquo;' : 'Search Stream Fiesta' }}
+          </h1>
+        </div>
+      </div>
+
+      <app-search-box class="block w-full max-w-xl"></app-search-box>
+
+      <!-- The shared slot. Replaces the old stray `{{ totalResults }} results
+           found` label that floated above the grid with no owner, and gives the
+           count an announcement it has never had. -->
+      <p class="mt-3 max-w-xl text-sm leading-relaxed text-gray-400" aria-live="polite">
+        @if (!hasQuery) {
+          Movies, shows and the people in them &mdash; start typing.
+        } @else if (isLoading) {
+          Searching&hellip;
+        } @else if (movies.length > 0) {
+          <span class="font-semibold text-white">{{ totalResults | number }}</span> results
+        } @else {
+          Nothing matched &mdash; try a different spelling.
+        }
+      </p>
+
+      <!-- Live genres, not invented example queries: they cannot rot, they cannot
+           land on the not-found screen, and TmdbService.getGenres() is shareReplay
+           cached and already fetched by the navbar. Mobile is a one-row scroller
+           that bleeds to the screen edge (the same gesture as the People row
+           below); sm:+ wraps inside the rail. -->
+      @if (!hasQuery && genres.length > 0) {
+        <div class="-mx-6 mt-5 flex gap-2 overflow-x-auto px-6 pb-1 scrollbar-hide sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0"
+          role="group" aria-label="Browse by genre">
+          @for (genre of genres; track genre.id) {
+            <a [routerLink]="['/genre', genre.id]"
+              class="inline-flex h-11 flex-none items-center rounded-lg bg-white/5 px-4 text-sm font-medium text-gray-200
+                     ring-1 ring-inset ring-white/10 transition-colors duration-150
+                     hover:bg-indigo-600 hover:text-white hover:ring-indigo-500
+                     focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400
+                     motion-reduce:transition-none sm:h-9 sm:px-3.5">
+              {{ genre.name }}
+            </a>
+          }
+        </div>
+      }
+    </header>
+
     @if (isLoading) {
-      <div class="px-8 py-6 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+      <div class="px-6 py-6 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 md:px-12 lg:grid-cols-5 lg:px-16 gap-4">
         @for (_ of [1,2,3,4,5,6,7,8,9,10]; track $index) {
           <div class="aspect-[2/3] rounded-lg bg-gray-800 animate-pulse"></div>
         }
@@ -10,7 +72,7 @@
     }
 
     @if (people.length > 0) {
-      <div class="px-8 pt-4">
+      <div class="px-6 pt-4 md:px-12 lg:px-16">
         <p class="text-sm font-bold text-white mb-3">People</p>
         <div class="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
           @for (person of people; track person.id) {
@@ -33,16 +95,15 @@
 
     @if (!isLoading) {
       @if (movies.length > 0) {
-        <p class="px-8 pt-2 pb-1 text-sm text-gray-400">{{ totalResults }} results found</p>
         <app-movie-collection
-          class="block px-8 py-6"
+          class="block px-6 py-6 md:px-12 lg:px-16"
           [movies]="movies"
           mode="grid"
           variant="browse"
           [priorityCount]="5">
         </app-movie-collection>
         @if (isLoadingMore) {
-          <div class="px-8 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 mb-6">
+          <div class="px-6 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 md:px-12 lg:grid-cols-5 lg:px-16 gap-4 mb-6">
             @for (_ of [1,2,3,4,5]; track $index) {
               <div class="aspect-[2/3] rounded-lg bg-gray-800 animate-pulse"></div>
             }
@@ -50,23 +111,13 @@
         }
         <div appInfiniteScroll [disabled]="!hasMore || isLoadingMore" (scrolled)="loadMore()" class="h-4"></div>
       }
-      @if (movies.length === 0) {
-        @if (hasQuery) {
-          <app-notfound class="flex-grow flex flex-col"></app-notfound>
-        } @else {
-          <!-- Landed here from the bottom nav's Search tab with nothing typed
-               yet — a prompt, not a "nothing found" dead end. -->
-          <div class="flex-grow flex flex-col items-center justify-center px-8 py-16 text-center">
-            <svg class="h-12 w-12 text-gray-700" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="11" cy="11" r="8" />
-              <path d="m21 21-4.3-4.3" />
-            </svg>
-            <p class="mt-4 text-base font-semibold text-white">Search Stream Fiesta</p>
-            <p class="mt-1 max-w-xs text-sm text-gray-400">
-              Find any movie, show or person &mdash; start typing in the box above.
-            </p>
-          </div>
-        }
+      <!-- The no-query branch is gone: the header IS the empty state now, and the
+           48px decorative magnifier it used to hold is the same glyph the field
+           already carries 100px above it. `flex-grow flex flex-col` dropped from
+           <app-notfound> — <main> is not a flex container, so it never did
+           anything. -->
+      @if (movies.length === 0 && hasQuery) {
+        <app-notfound class="block py-10"></app-notfound>
       }
     }
   </div>

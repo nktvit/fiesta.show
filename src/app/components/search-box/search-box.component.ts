@@ -1,4 +1,4 @@
-import { Component, inject, OnDestroy } from '@angular/core';
+import { Component, ElementRef, NgZone, OnDestroy, ViewChild, inject, input } from '@angular/core';
 import { MovieService } from '../../services/movie.service';
 import { TmdbService, PersonSearchResult } from '../../services/tmdb.service';
 import { NgClass, TitleCasePipe } from '@angular/common';
@@ -25,7 +25,25 @@ interface SearchSuggestion {
 export class SearchBoxComponent implements OnDestroy {
   searchTerm = "";
   lastSearchTerm = "";
-  placeholder = "Enter any title...";
+  /** Permanent, load-bearing copy: it no longer blanks on focus. Fits both the
+      342px mobile field and the 288px navbar slot at sm:. */
+  placeholder = "Search titles or people";
+
+  /** 'glass' is for the three pages whose navbar is transparent over hero art
+      (/, /movie/:id, /person/:id) — a solid #121212 chip there reads as a hole
+      punched in the image. Threaded from the navbar's own `transparent()`. */
+  readonly surface = input<'sunken' | 'glass'>('sunken');
+
+  private static seq = 0;
+  /** Replaces the hardcoded Preline id the sr-only label pointed at, and gives
+      aria-controls / aria-activedescendant unique targets. */
+  readonly uid = 'sf-search-' + (++SearchBoxComponent.seq);
+
+  @ViewChild('searchInput') private searchInput?: ElementRef<HTMLInputElement>;
+  @ViewChild('shell') private shell?: ElementRef<HTMLElement>;
+
+  private vvListener = () => this.measureDropdown();
+  private static safeBottomPx = -1;
   mode: 'home' | 'search' = 'home';
   isPromptUpdated = false;
   isLoading = false;
@@ -49,6 +67,8 @@ export class SearchBoxComponent implements OnDestroy {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private logger = inject(LoggerService);
+  private host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private zone = inject(NgZone);
 
   performSearch(prompt: string) {
     prompt = prompt.trim();
@@ -64,6 +84,9 @@ export class SearchBoxComponent implements OnDestroy {
         },
         error: (error) => {
           this.logger.error('Error during search:', error);
+          // RxJS does not fire `complete` after `error`, so without this one
+          // dropped request left the field disabled and spinning forever.
+          this.isLoading = false;
         },
         complete: () => {
           this.isLoading = false;
@@ -79,6 +102,13 @@ export class SearchBoxComponent implements OnDestroy {
       if (query) {
         this.searchTerm = query;
         this.lastSearchTerm = query;
+      } else if (this.router.url.split('?')[0] === '/search') {
+        // Scoped to /search on purpose. A blanket else is a cross-page
+        // regression: movie-page navigates with `queryParamsHandling: 'merge'`,
+        // and each of those emissions would wipe whatever the user had typed
+        // into the header box.
+        this.searchTerm = '';
+        this.lastSearchTerm = '';
       }
     });
 
@@ -93,6 +123,10 @@ export class SearchBoxComponent implements OnDestroy {
   }
 
   ngOnDestroy() {
+    // A route change while focused must not leak the listeners or leave the
+    // BMC widget hidden for the rest of the session.
+    document.body.classList.remove('sf-suggest-open');
+    this.removeViewportListeners();
     this.destroy$.next();
     this.destroy$.complete();
   }
@@ -159,6 +193,10 @@ export class SearchBoxComponent implements OnDestroy {
       }
 
       const people = await peoplePromise;
+
+      // A slow page-1 "bat" must not land on top of a newer "batman", and a tap
+      // on Clear inside the 300ms debounce must not reopen the list.
+      if (page === 1 && this.searchTerm.trim() !== term) return;
       const peopleSuggestions: SearchSuggestion[] = people.slice(0, 4).map(p => ({
         id: String(p.id),
         title: p.name,
@@ -233,8 +271,18 @@ export class SearchBoxComponent implements OnDestroy {
   }
 
   handleFocus() {
-    this.placeholder = "";
     this.isFocused = true;
+    // The BMC widget sits at z-index 9999999, above every app layer, 48px at
+    // bottom: calc(4.75rem + safe) — i.e. on top of the last suggestion row's
+    // right-hand side, stealing the tap. Same pattern as body.nav-sheet-open,
+    // separate class so the About page's own toggle is undisturbed.
+    document.body.classList.add('sf-suggest-open');
+    this.measureDropdown();
+    this.zone.runOutsideAngular(() => {
+      window.visualViewport?.addEventListener('resize', this.vvListener);
+      window.visualViewport?.addEventListener('scroll', this.vvListener);
+      window.addEventListener('resize', this.vvListener);
+    });
     if (this.searchTerm.length >= 2) {
       // If we already have results for this term, just show them
       if (this.suggestions.length > 0 && this.lastSuggestionTerm === this.searchTerm) {
@@ -246,9 +294,73 @@ export class SearchBoxComponent implements OnDestroy {
   }
 
   handleFocusOut() {
-    this.placeholder = "Enter any title...";
     this.isFocused = false;
+    document.body.classList.remove('sf-suggest-open');
+    this.removeViewportListeners();
     this.hideSuggestions();
+  }
+
+  private removeViewportListeners() {
+    window.visualViewport?.removeEventListener('resize', this.vvListener);
+    window.visualViewport?.removeEventListener('scroll', this.vvListener);
+    window.removeEventListener('resize', this.vvListener);
+  }
+
+  clearSearch() {
+    this.searchTerm = '';
+    this.isPromptUpdated = true;
+    // Must reset: without it, clear-then-retype-the-same-query leaves the submit
+    // chip permanently disabled by the `=== lastSearchTerm` rule.
+    this.lastSearchTerm = '';
+    this.suggestions = [];
+    this.showSuggestions = false;
+    this.selectedSuggestionIndex = -1;
+    this.searchInput?.nativeElement.focus();
+  }
+
+  /** env(safe-area-inset-bottom) is not readable from JS; a one-shot probe is. */
+  private safeBottom(): number {
+    if (SearchBoxComponent.safeBottomPx >= 0) return SearchBoxComponent.safeBottomPx;
+    const probe = document.createElement('div');
+    probe.style.cssText =
+      'position:fixed;left:0;bottom:0;width:0;visibility:hidden;pointer-events:none;' +
+      'height:env(safe-area-inset-bottom,0px);';
+    document.body.appendChild(probe);
+    SearchBoxComponent.safeBottomPx = probe.getBoundingClientRect().height;
+    probe.remove();
+    return SearchBoxComponent.safeBottomPx;
+  }
+
+  /**
+   * Sizes the dropdown to the space actually left below the field.
+   *
+   * A vh/svh clamp cannot do this: the iOS layout viewport does not shrink when
+   * the keyboard opens, so no viewport unit can see it. `visualViewport.offsetTop
+   * + .height` and `getBoundingClientRect().bottom` are both layout-viewport
+   * coordinates, so the subtraction is valid.
+   */
+  private measureDropdown() {
+    const shell = this.shell?.nativeElement;
+    if (!shell) return;
+    const vv = window.visualViewport;
+    const rect = shell.getBoundingClientRect();
+    const viewportBottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
+    const keyboardOpen = !!vv && vv.height < window.innerHeight - 120;
+    const isPhone = window.innerWidth < 640;
+    // Tab bar: h-14 (56) + 1px top border + home-indicator inset + 8px of air.
+    // Irrelevant once the keyboard has covered it.
+    const reserve = keyboardOpen ? 12 : (isPhone ? 57 + this.safeBottom() + 8 : 16);
+    const avail = viewportBottom - rect.bottom - 8 /* mt-2 */ - reserve;
+    const max = Math.max(144, Math.min(320, Math.round(avail)));
+    this.host.nativeElement.style.setProperty('--sf-dd-max', max + 'px');
+  }
+
+  /** aria-activedescendant is a lie if the row it names is scrolled out of sight. */
+  private scrollActiveOptionIntoView() {
+    if (this.selectedSuggestionIndex < 0) return;
+    this.host.nativeElement
+      .querySelector<HTMLElement>('#' + this.uid + '-opt-' + this.selectedSuggestionIndex)
+      ?.scrollIntoView({ block: 'nearest' });
   }
 
   handleSubmit(event: any) {
@@ -265,10 +377,12 @@ export class SearchBoxComponent implements OnDestroy {
       case 'ArrowDown':
         event.preventDefault();
         this.selectedSuggestionIndex = Math.min(this.selectedSuggestionIndex + 1, this.suggestions.length - 1);
+        this.scrollActiveOptionIntoView();
         break;
       case 'ArrowUp':
         event.preventDefault();
         this.selectedSuggestionIndex = Math.max(this.selectedSuggestionIndex - 1, -1);
+        this.scrollActiveOptionIntoView();
         break;
       case 'Enter':
         if (this.selectedSuggestionIndex >= 0) {

@@ -1,108 +1,199 @@
-<div class="flex h-full justify-center">
-  <form action="" class="m-auto relative" (submit)="handleSubmit($event)">
-    <label for="hs-trailing-button-add-on-with-icon-and-button" class="sr-only">Search</label>
-    <div class="relative flex rounded-lg shadow-sm">
-      <input
-        (input)="handleInput($event)"
-        (focus)="handleFocus()"
-        (blur)="handleFocusOut()"
-        (keydown)="handleKeydown($event)"
-        [value]="searchTerm"
-        type="text"
-        id="hs-trailing-button-add-on-with-icon-and-button"
-        [placeholder]="placeholder"
-        [disabled]="isLoading"
-        name="hs-trailing-button-add-on-with-icon-and-button"
-        autocomplete="off"
-        class="py-3 px-4 ps-11 block w-full border-gray-200 shadow-sm rounded-s-lg text-sm
-                focus:z-10 focus:border-blue-500 focus:ring-blue-500
-                disabled:opacity-50 disabled:pointer-events-none
-                dark:bg-slate-900 dark:border-gray-700 dark:text-gray-400
-                dark:focus:ring-gray-600">
-      <div class="absolute inset-y-0 start-0 flex items-center pointer-events-none z-20 ps-4">
-        <svg class="flex-shrink-0 size-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" width="24"
-          height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-          stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="11" cy="11" r="8" />
-          <path d="m21 21-4.3-4.3" />
-        </svg>
-      </div>
+<!-- One continuous surface. The old markup was an <input> and a <button> glued
+     edge to edge (rounded-s-lg against rounded-e-md), which is why the seam
+     never looked right — there is no seam here left to get wrong.
+
+     6px of inset all round at both sizes: h-14 shell / h-11 buttons on mobile,
+     h-12 / h-9 from sm:. The shell radius stays 16px, so the concentric inner
+     radius is 16 - 6 = 10px at every size, not just one. -->
+<form role="search" class="relative w-full" (submit)="handleSubmit($event)">
+  <label [attr.for]="uid" class="sr-only">Search</label>
+
+  <div #shell
+    class="group relative flex h-14 items-center rounded-2xl ring-1 ring-inset
+           transition-[background-color,box-shadow] duration-200 ease-out
+           focus-within:ring-2 focus-within:ring-indigo-500
+           motion-reduce:transition-none sm:h-12"
+    [ngClass]="surface() === 'glass'
+      ? 'bg-black/40 ring-white/15 backdrop-blur-md hover:bg-black/50 focus-within:bg-black/50'
+      : 'bg-[#121212] ring-white/10 hover:bg-[#161616] focus-within:bg-[#161616]'">
+
+    <span class="pointer-events-none absolute inset-y-0 left-0 flex w-14 items-center justify-center sm:w-12" aria-hidden="true">
+      <svg class="h-[18px] w-[18px] text-gray-400 transition-colors duration-200 group-focus-within:text-indigo-400 motion-reduce:transition-none"
+        xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="8" />
+        <path d="m21 21-4.3-4.3" />
+      </svg>
+    </span>
+
+    <!-- No [disabled]="isLoading": disabling a focused input force-blurs it on
+         iOS and drops the keyboard mid-search, and performSearch's error path
+         used to leave isLoading true forever (RxJS does not fire complete after
+         error), which bricked the field after one dropped request. aria-busy
+         carries the state instead; the submit chip keeps the real [disabled].
+
+         text-base with NO step-down: styles.css scopes `input { font-size:16px }`
+         to max-width 767px as an element selector, which loses to any Tailwind
+         text utility — so a sm:/md: step re-opens iOS zoom-on-focus. -->
+    <input
+      #searchInput
+      (input)="handleInput($event)"
+      (focus)="handleFocus()"
+      (blur)="handleFocusOut()"
+      (keydown)="handleKeydown($event)"
+      [value]="searchTerm"
+      [id]="uid"
+      type="search"
+      name="q"
+      [placeholder]="placeholder"
+      [attr.aria-busy]="isLoading"
+      autocomplete="off"
+      autocorrect="off"
+      autocapitalize="none"
+      spellcheck="false"
+      inputmode="search"
+      enterkeyhint="search"
+      role="combobox"
+      aria-autocomplete="list"
+      [attr.aria-expanded]="(showSuggestions || isLoadingSuggestions) && isFocused"
+      [attr.aria-controls]="showSuggestions && isFocused && suggestions.length > 0 ? uid + '-listbox' : null"
+      [attr.aria-activedescendant]="showSuggestions && selectedSuggestionIndex >= 0 ? uid + '-opt-' + selectedSuggestionIndex : null"
+      [ngClass]="searchTerm.length > 0 ? 'pr-14 sm:pr-[5.5rem]' : 'pr-4 sm:pr-12'"
+      class="h-full w-full appearance-none border-0 bg-transparent pl-14 text-base text-white
+             caret-indigo-400 outline-none placeholder:text-gray-400
+             focus:outline-none focus:ring-0
+             [&::-webkit-search-cancel-button]:appearance-none sm:pl-12">
+
+    <div class="absolute inset-y-0 right-0 flex items-center gap-1.5 pr-1.5">
+      @if (searchTerm.length > 0) {
+        <!-- pointerdown.preventDefault stops the input's blur firing before the
+             click: blur flips isFocused, which unmounts the dropdown and would
+             tear this button out from under the finger. pointerdown rather than
+             mousedown because iOS synthesises mouse events after the touch has
+             already moved focus. -->
+        <button type="button" aria-label="Clear search"
+          (pointerdown)="$event.preventDefault()" (click)="clearSearch()"
+          class="flex h-11 w-11 flex-none items-center justify-center rounded-[10px] text-gray-400
+                 transition-colors duration-150 hover:bg-white/10 hover:text-white
+                 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400
+                 motion-reduce:transition-none sm:h-9 sm:w-9">
+          <svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M18 6 6 18" />
+            <path d="m6 6 12 12" />
+          </svg>
+        </button>
+      }
+      <!-- hidden below sm:. enterkeyhint="search" already puts a literal Search
+           key under the thumb and a single-input form still submits implicitly,
+           so the phone loses nothing — and it removes two adjacent 44px targets
+           6px apart whose outcomes are opposite (Clear destroys the query,
+           Submit runs it) at the hardest-to-hit corner of the screen.
+           Disabled when the term is unchanged because performSearch() no-ops on
+           an unchanged term; an enabled-looking button would be lying. -->
       <button
         type="submit"
-        [disabled]="isLoading"
-        class="py-3 px-4 inline-flex justify-center items-center gap-2 text-sm font-semibold rounded-e-md border border-transparent bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:pointer-events-none dark:focus:outline-none dark:focus:ring-1 dark:focus:ring-gray-600">
+        [disabled]="isLoading || searchTerm.trim().length === 0 || searchTerm.trim() === lastSearchTerm"
+        [attr.aria-label]="isLoading ? 'Searching' : 'Search'"
+        class="hidden h-9 w-9 flex-none items-center justify-center rounded-[10px] bg-indigo-600 text-white
+               transition-[background-color,transform] duration-150 hover:bg-indigo-500 active:scale-95
+               focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/70
+               disabled:bg-white/5 disabled:text-gray-500
+               motion-reduce:transition-none motion-reduce:active:scale-100 sm:flex">
         @if (isLoading) {
           <span
             class="animate-spin inline-block size-4 border-[3px] border-current border-t-transparent text-white rounded-full"
             role="status" aria-label="loading">
             <span class="sr-only">Loading...</span>
           </span>
+        } @else {
+          <svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M5 12h14" />
+            <path d="m12 5 7 7-7 7" />
+          </svg>
         }
-        Search
       </button>
     </div>
+  </div>
 
-    <!-- Suggestions Dropdown -->
-    @if ((showSuggestions || isLoadingSuggestions) && isFocused) {
-      <div
-        (scroll)="onSuggestionsScroll($event)"
-        class="suggestions-dropdown absolute left-0 right-0 mt-1 bg-white dark:bg-gray-800 rounded-lg shadow-lg z-50 max-h-80 overflow-y-auto">
-        <!-- Loading indicator (initial load) -->
-        @if (isLoadingSuggestions && suggestions.length === 0) {
-          <div class="flex items-center justify-center p-4">
-            <div class="animate-spin inline-block w-5 h-5 border-2 border-current border-t-transparent text-blue-600 rounded-full" role="status">
-              <span class="sr-only">Loading...</span>
-            </div>
-            <span class="ml-2 text-gray-600 dark:text-gray-300">Loading suggestions...</span>
+  <!-- Suggestions Dropdown — still absolutely positioned inside form.relative,
+       so it keeps working wherever the host is mounted. z-50 beats the tab bar's
+       z-40 and nothing on the ancestor chain (form.relative, :host, header,
+       .container, main) creates a stacking context that would cap it.
+       max-height is set from search-box.component.css / --sf-dd-max. -->
+  @if ((showSuggestions || isLoadingSuggestions) && isFocused) {
+    <div
+      (scroll)="onSuggestionsScroll($event)"
+      class="suggestions-dropdown absolute inset-x-0 top-full z-50 mt-2 overflow-y-auto overscroll-contain
+             rounded-2xl border border-white/10 bg-[#121212] shadow-2xl">
+      <!-- Loading indicator (initial load) -->
+      @if (isLoadingSuggestions && suggestions.length === 0) {
+        <div class="flex items-center justify-center p-4">
+          <div class="animate-spin inline-block w-5 h-5 border-2 border-current border-t-transparent text-indigo-400 rounded-full" role="status">
+            <span class="sr-only">Loading...</span>
           </div>
-        }
-        <!-- Suggestions list -->
-        @if (suggestions.length > 0) {
-          <ul>
-            @for (suggestion of suggestions; track suggestion.id; let i = $index) {
-              <li
-                (mousedown)="selectSuggestion(suggestion)"
-                [ngClass]="{'bg-blue-50 dark:bg-gray-700': i === selectedSuggestionIndex}"
-                class="suggestion-item flex items-center p-3 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer transition-colors">
-                <!-- Poster / avatar thumbnail -->
-                <div class="flex-shrink-0 w-10 h-14 mr-3 overflow-hidden" [ngClass]="suggestion.kind === 'person' ? 'rounded-full self-center' : 'rounded'">
-                  @if (suggestion.poster) {
-                    <img [src]="suggestion.poster" [alt]="suggestion.title" class="w-full h-full object-cover bg-gray-200 dark:bg-gray-700"
-                      (error)="suggestion.poster = null"
-                      (load)="$event.target.naturalWidth < 20 ? suggestion.poster = null : null">
-                  } @else {
-                    <div class="w-full h-full flex items-center justify-center bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-bold leading-none text-center p-0.5" style="font-size: 0.5rem;">
-                      {{ suggestion.title.length <= 6 ? suggestion.title : suggestion.title.slice(0, 4) + '..' }}
-                    </div>
-                  }
-                </div>
-                <!-- Title and year -->
-                <div class="flex-grow min-w-0">
-                  <div class="font-medium text-gray-800 dark:text-white truncate">{{ suggestion.title }}</div>
-                  @if (suggestion.kind === 'person') {
-                    <div class="text-xs text-gray-500 dark:text-gray-400">{{ suggestion.year || 'Actor / Director' }}</div>
-                  } @else {
-                    <div class="text-xs text-gray-500 dark:text-gray-400">{{ suggestion.year }} · {{ suggestion.type | titlecase }}</div>
-                  }
-                </div>
-              </li>
-            }
-          </ul>
-          <!-- Loading more indicator -->
-          @if (isLoadingMore) {
-            <div class="flex items-center justify-center py-3">
-              <div class="animate-spin inline-block w-4 h-4 border-2 border-current border-t-transparent text-blue-600 rounded-full"></div>
-              <span class="ml-2 text-xs text-gray-500 dark:text-gray-400">Loading more...</span>
-            </div>
+          <span class="ml-2 text-sm text-gray-400">Loading suggestions...</span>
+        </div>
+      }
+      <!-- Suggestions list. role="listbox" is on the <ul> whose direct children
+           are the options — the spinner / "loading more" / "no results" blocks
+           are siblings outside it, because a listbox may only own options. -->
+      @if (suggestions.length > 0) {
+        <ul [id]="uid + '-listbox'" role="listbox" class="divide-y divide-white/5">
+          @for (suggestion of suggestions; track suggestion.id; let i = $index) {
+            <li
+              [id]="uid + '-opt-' + i"
+              role="option"
+              [attr.aria-selected]="i === selectedSuggestionIndex"
+              (mousedown)="selectSuggestion(suggestion)"
+              [ngClass]="{'bg-indigo-500/15 ring-1 ring-inset ring-indigo-400/25': i === selectedSuggestionIndex}"
+              class="suggestion-item flex min-h-[4rem] cursor-pointer items-center gap-3 px-3 py-2
+                     transition-colors duration-150 hover:bg-white/5 motion-reduce:transition-none">
+              <!-- Poster / avatar thumbnail. People are a true 40x40 circle now;
+                   rounded-full on the old 40x56 box rendered an ellipse. -->
+              <div class="flex-shrink-0 overflow-hidden bg-white/5 ring-1 ring-inset ring-white/10"
+                [ngClass]="suggestion.kind === 'person' ? 'h-10 w-10 rounded-full' : 'h-14 w-10 rounded-md'">
+                @if (suggestion.poster) {
+                  <img [src]="suggestion.poster" [alt]="suggestion.title" class="w-full h-full object-cover"
+                    (error)="suggestion.poster = null"
+                    (load)="$event.target.naturalWidth < 20 ? suggestion.poster = null : null">
+                } @else {
+                  <div class="w-full h-full flex items-center justify-center bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-bold leading-none text-center p-0.5" style="font-size: 0.5rem;">
+                    {{ suggestion.title.length <= 6 ? suggestion.title : suggestion.title.slice(0, 4) + '..' }}
+                  </div>
+                }
+              </div>
+              <!-- Title and year -->
+              <div class="flex-grow min-w-0">
+                <div class="truncate text-sm font-medium text-white">{{ suggestion.title }}</div>
+                @if (suggestion.kind === 'person') {
+                  <div class="mt-0.5 text-xs text-gray-400">{{ suggestion.year || 'Actor / Director' }}</div>
+                } @else {
+                  <div class="mt-0.5 text-xs text-gray-400">{{ suggestion.year }} &middot; {{ suggestion.type | titlecase }}</div>
+                }
+              </div>
+              <svg class="h-4 w-4 flex-none text-gray-600" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m9 18 6-6-6-6" />
+              </svg>
+            </li>
           }
-        }
-        <!-- No results -->
-        @if (!isLoadingSuggestions && suggestions.length === 0) {
-          <div class="p-4 text-center text-gray-500 dark:text-gray-400">
-            No results found for "{{ searchTerm }}"
+        </ul>
+        <!-- Loading more indicator -->
+        @if (isLoadingMore) {
+          <div class="flex items-center justify-center py-3">
+            <div class="animate-spin inline-block w-4 h-4 border-2 border-current border-t-transparent text-indigo-400 rounded-full"></div>
+            <span class="ml-2 text-xs text-gray-400">Loading more...</span>
           </div>
         }
-      </div>
-    }
-  </form>
-</div>
+      }
+      <!-- No results -->
+      @if (!isLoadingSuggestions && suggestions.length === 0) {
+        <div class="px-4 py-6 text-center text-sm text-gray-400">
+          No results found for "{{ searchTerm }}"
+        </div>
+      }
+    </div>
+  }
+</form>

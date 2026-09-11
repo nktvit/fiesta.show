@@ -5,3 +5,39 @@
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+
+/* The heading collapses when a query arrives, so the field — which is
+   byte-identical in both states and is never re-rendered — rises to the top of
+   the column on a continuous ramp.
+
+   grid-template-rows 1fr -> 0fr animates from the content's OWN height. The
+   obvious alternative, max-height, needs a ceiling that overshoots the content
+   (a 28px line + pb-4 is ~52px against a 96px max-h-24), which means nothing
+   moves for the first ~45% of the transition and then the element snaps — and
+   the ceiling has to be kept in sync with every future copy change.
+
+   Safari 15 (an explicit target — see the :has() note in src/styles.css) does
+   not interpolate grid-template-rows: there it cuts instead of ramping, which is
+   the same thing prefers-reduced-motion asks for, so the degradation is correct
+   rather than broken.
+
+   `overflow: hidden` is on the INNER wrapper in the template, never on an
+   ancestor of <app-search-box>: the suggestions dropdown is absolutely
+   positioned and would be clipped to zero height in the results state. */
+.sf-head {
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition: grid-template-rows 300ms ease-out, opacity 200ms ease-out;
+}
+
+.sf-head.is-collapsed {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sf-head {
+    transition: none;
+  }
+}

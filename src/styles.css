@@ -90,3 +90,16 @@ body.nav-sheet-open #bmc-close-btn {
     font-size: 16px;
   }
 }
+
+
+/* Hide the Buy-Me-a-Coffee widget while the search field is focused. It sits at
+   z-index 9999999, above every app layer, 48px at bottom: calc(4.75rem + safe) —
+   i.e. directly over the bottom-right of the last suggestion row, where it steals
+   the tap. Its greeting bubble covers the genre chip rail. Separate class from
+   `hide-bmc-widget` so the About page's own toggle is unaffected. */
+@media screen and (max-width: 639px) {
+  body.sf-suggest-open #bmc-wbtn,
+  body.sf-suggest-open > div[style*="bottom: 16px"] {
+    display: none !important;
+  }
+}

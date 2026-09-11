@@ -16,9 +16,6 @@ import { TmdbService } from "../../services/tmdb.service";
 export class NavbarComponent {
   readonly showSearchBox = input<boolean>(false);
   readonly transparent = input<boolean>(false);
-  /** Pages whose whole job is search (`/search`) keep the box on mobile too;
-      everywhere else mobile search lives in the bottom nav's Search tab. */
-  readonly mobileSearch = input<boolean>(false);
   isGenreOpen = false;
   currentPage = "/";
   scrolled = false;
