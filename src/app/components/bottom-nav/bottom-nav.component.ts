@@ -3,6 +3,7 @@ import { NavigationEnd, Router, RouterLink } from '@angular/router';
 import { filter } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TmdbService } from '../../services/tmdb.service';
+import { SCROLL_LOCK_CLASS } from '../../services/scroll-lock';
 
 interface NavTab {
   path: string;
@@ -88,7 +89,7 @@ export class BottomNavComponent implements OnDestroy {
     this.lockedScrollY = window.scrollY;
     this.genresOpen.set(true);
     document.body.style.top = `-${this.lockedScrollY}px`;
-    document.body.classList.add('nav-sheet-open');
+    document.body.classList.add(SCROLL_LOCK_CLASS);
 
     // The panel is behind @if, so it only exists once this signal write has
     // been rendered — and a microtask still runs *before* Angular commits that
@@ -140,8 +141,8 @@ export class BottomNavComponent implements OnDestroy {
   }
 
   private releaseScrollLock(): void {
-    if (!document.body.classList.contains('nav-sheet-open')) return;
-    document.body.classList.remove('nav-sheet-open');
+    if (!document.body.classList.contains(SCROLL_LOCK_CLASS)) return;
+    document.body.classList.remove(SCROLL_LOCK_CLASS);
     document.body.style.top = '';
     window.scrollTo(0, this.lockedScrollY);
   }
