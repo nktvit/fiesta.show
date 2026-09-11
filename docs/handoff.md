@@ -1,5 +1,149 @@
 # Session handoff
 
+## DONE, NOT COMMITTED: scroll-to-collapse + the search page composition
+
+Both of the "Requested but NOT started" items from the last entry are built and
+verified in a real browser. **Nothing is committed** — the whole change is in the
+working tree.
+
+### 1. Expanded cards collapse on a significant scroll
+
+`MovieCollectionComponent` now watches window scroll while a panel is open and
+closes it once the user has genuinely left. The listener is `passive`, registered
+inside `runOutsideAngular`, and attached only while a panel is open.
+
+**The three things that make it work, none of which are obvious:**
+
+- **Baseline is taken when scrolling stops, not at open.** The panel scrolls
+  *itself* into view (`scrollPanelIntoView`), so baselining any earlier charges
+  the app's own smooth scroll to the user and closes the panel on the frame it
+  appeared. The watch starts disarmed and arms after `SCROLL_REST_MS` (150ms) of
+  quiet, with `SCROLL_ARM_TIMEOUT_MS` (1500ms) as a ceiling so a slow continuous
+  drag — which never produces a quiet period — still arms.
+- **The threshold is 260px PLUS the panel's own overhang.** A flat 260px was
+  wrong and would have shipped a real bug. The panel is content-sized, so on a
+  360x640 Android it stands 1.2x the viewport and reaching *its own Play button*
+  costs **243px** — 17px short of dismissal. Overshooting by a thumb-width would
+  have collapsed the panel the user was reaching into. `armScrollWatch()` reads
+  the panel rect once and adds the off-screen overhang per direction. Where the
+  panel fits (desktop, iPhone 12+) both slacks are 0 and the threshold is exactly
+  260px, as originally specified. Measured: SE 375x667 needs 225px, small Android
+  360x640 needs 243px, iPhone 12 needs 40px, Max needs 4px.
+- **Scroll is ignored while the page is scroll-locked.** The genre sheet pins
+  `body { position: fixed }`, which snaps `window.scrollY` to 0 and reports the
+  whole offset as one scroll event — that closed the card underneath the sheet.
+  New `src/app/services/scroll-lock.ts` owns `SCROLL_LOCK_CLASS`; `bottom-nav`
+  now imports it instead of repeating the literal. Arming is also deferred while
+  locked, or the rect would be read off a pinned layout.
+
+Also fixed while in there: `close()` never cleared `scrollTimer`, so closing a
+card within 480ms of opening it left a stale timer that scrolled to the
+collapsing panel *and* started a watch nothing would ever stop.
+
+Horizontal shelf scrolling does not dismiss — element scroll events do not reach
+`window`, which is why the watcher is on `window` and not delegated.
+
+### 2. Search page: the field moved into the page body
+
+The input is out of the navbar entirely on `/search` (`<app-navbar>` with no
+inputs), and is now the first element of the page's own content column, with the
+heading above it and a single caption line below that rewrites itself: prompt ->
+"Searching..." -> "**48** results" -> "Nothing matched". That caption replaces
+the old stray `{{ totalResults }} results found` label. The heading collapses
+`grid-template-rows: 1fr -> 0fr` when a query arrives (not `max-height`, which
+needs a ceiling that overshoots the content and therefore stalls then snaps).
+
+The control itself was rebuilt as one continuous surface — the old markup was an
+input and a button glued edge to edge with **mismatched radii** (`rounded-s-lg`
+against `rounded-e-md`), `dark:bg-slate-900` (blue-grey) on a near-black page and
+`dark:text-gray-400` for typed text. It is now `#121212` with a 16px radius,
+concentric 10px inner buttons at a 6px inset, indigo focus ring, a clear button,
+and an indigo submit chip that is `hidden sm:flex` (on a phone `enterkeyhint`
+already puts Search under the thumb, and two opposite-outcome 44px targets 6px
+apart at the worst corner of the screen is a mis-tap generator).
+
+`[surface]="'glass' | 'sunken'"` is threaded from the navbar's own `transparent()`
+so the three hero pages (`/`, `/movie/:id`, `/person/:id`) get a translucent chip
+instead of a solid one punching a hole in the artwork. The navbar's
+non-transparent ground also changed from `bg-white dark:bg-gray-800` (#1f2937,
+the last Preline light-mode artefact) to `#0a0a0a` + a hairline.
+
+**Two real pre-existing bugs were found by the design review and fixed:**
+
+- **One dropped request bricked the search field forever.** `performSearch()`
+  sets `isLoading = true` then subscribes with `{next, error, complete}` — RxJS
+  does **not** fire `complete` after `error`, and the error handler only logged.
+  The input carried `[disabled]="isLoading"`, so a single failed request on
+  cellular left it permanently disabled with a spinning button and no recovery
+  short of a reload. The handler resets the flag, and the input no longer takes
+  `[disabled]` at all (disabling a focused input force-blurs it on iOS and drops
+  the keyboard mid-search); `aria-busy` carries the state.
+- **The Search tab showed the previous query's results.** `/search?query=dune ->
+  /search` is a queryParams-only change on the same route config, so the
+  component is reused and `ngOnInit` does not re-run; the reset lived inside
+  `if (query)`. The old markup hid this by accident because the empty prompt was
+  gated on `movies.length === 0`. There is now an `else` branch that clears
+  state, resets the title/meta and scrolls to top (`provideRouter` has no
+  `withInMemoryScrolling`, so a forward pushState leaves `scrollY` untouched).
+  `SearchBoxComponent` has the same reset, **scoped to `/search`** — a blanket
+  else is a cross-page regression, because `movie-page` navigates with
+  `queryParamsHandling: 'merge'` three times and each emission would wipe
+  whatever the user had typed into the header box.
+
+Smaller fixes in the same pass: a stale-response guard in `fetchSuggestions` (a
+slow page-1 "bat" could land on top of a newer "batman"); the dropdown sized from
+`visualViewport` via a `--sf-dd-max` custom property (a `vh` clamp cannot work —
+the iOS layout viewport does not shrink when the keyboard opens); `role="listbox"`
+moved onto the `<ul>` whose children are actually options; the BMC widget hidden
+while the field is focused (z-index 9999999, directly over the last suggestion
+row); per-instance ids replacing the hardcoded Preline one; and the suggestion
+scrollbar thumb, which was black behind `prefers-color-scheme: dark` even though
+this app is `darkMode: 'class'` with `<html class="dark">` always on.
+
+### Verification
+
+**213 browser checks, 0 failures** (up from 181) and **69 unit tests passing**.
+New `tools/e2e/scrolldismiss.mjs` (31 checks, run 3x for flakiness) covers the
+threshold in both directions, the panel's own scroll-into-view, card switching,
+horizontal shelf scroll, and reduced motion.
+
+The 5 `movie.service.spec.ts` failures are the same pre-existing ones (hardcoded
+OMDB key). `NG8113 PosterComponent is not used` on SearchPageComponent is also
+pre-existing — it was already unused before this change, as it is on genre,
+top-rated and tv.
+
+**Two e2e scripts had to be corrected, and both corrections are findings:**
+
+- `mergecheck.mjs` scrolled by centring the panel's Play button — a ~400px jump
+  no user makes, which the new dismissal correctly reads as leaving. It now
+  scrolls the *minimum* needed to clear the tab bar, which is the honest number.
+- Doing that exposed a latent wrinkle: **the panel grows ~30px about 600ms after
+  it settles**, when the deferred trailer iframe mounts, which slides the Play
+  button back under the bottom nav after a correctly-sized scroll. The old 400px
+  jump had enough slack to hide it. The test now waits for a full second of no
+  height change. Worth deciding whether the *app* should reserve that space.
+
+### Not verified
+
+- **Real iOS.** Everything here is Chromium at an iPhone viewport. The
+  `visualViewport` dropdown measurement, the keyboard interaction and the
+  `position: fixed` scroll-lock path all specifically want a real device.
+- The genre chips render from live TMDB data; the mock only returns two, so the
+  full ten-chip rail has not been seen.
+
+### Open items
+
+- `.claude/worktrees/expanding-cards` is confirmed redundant (clean, 0 commits
+  not in main) but was **left in place** — removing a worktree is destructive and
+  was not confirmed. Note there is a **second** worktree,
+  `.claude/worktrees/agent-a377ccbc76fc80dbe` on `feat/readmore-animation`, with
+  **two unmerged commits**. Do not delete that one.
+- `tools/e2e/node_modules` is a symlink to a scratchpad playwright install, added
+  so the ESM `import { chromium } from 'playwright'` resolves (`NODE_PATH` does
+  not work for ESM). `.gitignore` only anchors `/node_modules` at the root.
+- The `notfound` component's clip-art SVG is still light-mode illustration on a
+  black page. Its button is now indigo; the artwork was left alone.
+
 ## SHIPPED TO PRODUCTION: mobile bottom nav + expanding movie cards (`3fb9b35`)
 
 `main` was fast-forwarded to `3fb9b35` and pushed, so this is **live on
