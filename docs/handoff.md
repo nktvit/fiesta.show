@@ -1,5 +1,314 @@
 # Session handoff
 
+## DEPLOYED TO THE LIVE RELAY: playback stability fixes (2026-09-13)
+
+User reported **delayed audio, intermittently missing frames, and quality drops**,
+and said it did not feel like their connection. They were right that it wasn't
+bandwidth — measured mid-session: a 2.53 MB segment in 0.45 s (~45 Mbit/s), every
+upstream segment `cf-cache-status: HIT`.
+
+**CORRECTION, from the user after the investigation: the audio delay was
+Bluetooth.** Output latency, 150-250 ms and constant, not a software bug. So the
+A/V-desync line of inquiry below describes a real hls.js mechanism that was never
+actually biting anyone — do not let it justify work. Two symptoms remain:
+**missing frames** (best explained by the relay cache bug, now fixed) and **quality
+drops** (best explained by `abrEwmaDefaultEstimate`, still staged). On whether the
+glitch recurs at the same timecode, the user thinks so but can't be sure — weak
+supporting evidence for the cache bug, not proof.
+
+### The relay bug, reproduced on production before the fix
+
+`handleHls` copied the upstream status through and then stamped
+`Content-Type: video/mp2t` + `Cache-Control: public, max-age=31536000, immutable`
+**unconditionally**. Verified live against the real relay: a segment whose upstream
+401s came back as `HTTP/2 401`, `content-type: video/mp2t`,
+`cache-control: public, max-age=31536000, immutable` — a 9-byte error body
+labelled MPEG-TS and marked immutable for a year.
+
+Why that is the "missing frames at the same spot" symptom: an explicit `max-age`
+makes an error response storable (RFC 9111 §3), and **Chrome and Safari both store
+a 404 that carries one** (Firefox refuses; Edge caches only 200). So one transient
+upstream blip became a *permanently* broken segment at a fixed timecode —
+surviving reloads, working offline, and serving the same poisoned body to every
+hls.js retry until `fragLoadPolicy` gave up. And it was invisible: `[hls] upstream
+fail` only fires when `fetchUpstream` **throws**, but a 5xx-after-retries
+*returns*, so relay.log held **0 `[hls]` lines in 1879**.
+
+### Shipped to the box (one edit, one restart, verified)
+
+1. **Non-200 → uncacheable 502.** `text/plain`, `no-store`, logged as
+   `[hls] segment upstream=<code> path=…`. Collapsed rather than forwarded on
+   purpose: hls.js retries a 5xx, and 404 is the status browsers keep.
+2. **Upstream-token refresh on 403/401.** `getHostToken` returns a cached token
+   with as little as **60 s** left, and the resolve cache then serves that master
+   for up to 600 s, while our own `/hls` token lives 6 h — so the relay was
+   authorising requests whose upstream credential was already dead. Now it mints a
+   fresh one and retries once. **Storm-safe**: when a token expires every in-flight
+   segment arrives at once, so a request whose URL token is already older than the
+   cached one just re-stamps from cache and makes no upstream call. One
+   `generate.php` call per expiry event, which matters on an endpoint currently
+   rate-limiting this /24.
+3. **`[segstats] ok=N bad=N bad_rate=%` every 60 s** — the failure rate had no
+   denominator before. Counters are cumulative since process start, so read the
+   deltas between lines, not the absolute percentage.
+4. **Log timestamps**, via one wrap of `console.log/error/warn`. **This shifted
+   every awk field position and broke a `^\[resolve\]` anchor, so
+   `scripts/autofix-watchdog.sh` was patched in the same window** (grep is now
+   `^[^ ]+ \[resolve\] …`, awk reads `$3`/`$5..NF`). Proved with a synthetic log
+   that the old patterns match nothing and the new ones still group 3 distinct
+   titles. If you revert the timestamps, revert the watchdog too.
+5. **`keepAliveTimeout` 5 s → 120 s** (`headersTimeout` 125 s). cloudflared pools
+   idle origin connections ~90 s and reuses them; the player idles for seconds on a
+   full buffer, so Node's 5 s default meant cloudflared regularly sent a request
+   down a socket this process was closing. Go's transport retries an idempotent GET
+   in that race, which is why it was survivable rather than obvious.
+
+**Verification:** backed up both files (`*.bak-20260913T083551Z`); autofix agent
+`launchctl bootout`ed for the window and re-loaded after; `node --check` with the
+exact launchd interpreter; `launchctl kickstart -k`. Then: the same segment URL
+byte-identical before/after (**2,530,104 bytes**, same headers); the failing URL now
+`502` + `no-store`; `/resolve` still works for both a movie and a TV episode; and
+**60 s of real headless-browser playback on production: 33/33 segments 200, 0
+dropped frames of 1409, one buffered range throughout.**
+
+### Gotchas found the hard way
+
+- **`bash -n` cannot check `autofix-watchdog.sh`.** It is `#!/bin/zsh` and the
+  box's bash is 3.2 — `bash -n` reports a syntax error **on the pristine
+  original**. Use `zsh -n`. This briefly looked like my patch had broken it.
+- `node --check` refuses a `.new` extension (`ERR_UNKNOWN_FILE_EXTENSION`). Check
+  after the `mv`, not before.
+
+### NOT deployed — staged in the working tree, needs your call
+
+The player changes are the **bigger half** of the fix and are uncommitted
+(`src/app/components/movie-player/movie-player.component.ts`, typecheck + build
+clean). The working tree also holds unrelated uncommitted work, so this needs a
+scoped commit:
+
+- **`progressive: true` removed — PRECAUTIONARY, and the weakest item here.** It was
+  removed as the prime suspect for the accumulating audio delay; that symptom turned
+  out to be Bluetooth, so there is now **no observed problem attributable to it**.
+  Residual case: it is a non-default path feeding 128 KB partial chunks to the
+  transmuxer, whose own comments note it then has "no guarantee the fetch loader
+  gives us flush moof+mdat pairs", and whose A/V realignment only runs once it holds
+  enough samples of *both* tracks — and our responses are chunked with no
+  Content-Length, exactly that jagged-input case. Cost is a time-to-first-frame rise
+  of about one fragment transfer (143-592 ms measured). Reasonable either way; left
+  off to match the library's tested path.
+  **A claim I got wrong and corrected in the code:** I had written that progressive
+  inflates `parsing.end` and so depressed the bandwidth estimate. It is the
+  opposite — `parsing.end` is stamped when transmuxing completes, so *removing*
+  progressive pushes it later by one parse pass. Immaterial at these magnitudes
+  (tens of ms against a ~450 ms load), but the direction was backwards.
+  The hls.js audio-accumulator bug is real and recorded here for whoever hits it for
+  real: on a contiguous AAC chunk the first sample's true PTS is discarded for a
+  running accumulator (video re-derives from real DTS every fragment, audio never
+  does), and that accumulator has **no reset path** — `recoverMediaError()` does not
+  clear it, so it is forward-only for the session. Nobody has reported it.
+- **`abrEwmaDefaultEstimate: 8_000_000 → 5_000_000`** — this was itself a bug.
+  hls.js only auto-derives a start estimate when the option is *undefined*, so 8e6
+  survived into `firstAutoLevel`, where the only surviving gate is
+  `adjustedbw >= maxBitrate`: 8e6 ≥ 5,145,364. **Every session on every connection
+  started on 1920×1072 with an empty buffer and stepped down.** Bandwidth-
+  independent — which is exactly why it didn't look like a connection problem.
+- ABR margin restored (1.0/0.9 → 0.95/0.8), `maxBufferLength` 60 with
+  `maxMaxBufferLength` pinned to 60 (it is a *floor*, not a cap: the real target is
+  `min(max(8 × maxBufferSize / bitrate, maxBufferLength), maxMaxBufferLength)`),
+  `backBufferLength` 90 (default `Infinity` on a 2h film).
+- Non-fatal `BUFFER_STALLED_ERROR`/`BUFFER_SEEK_OVER_HOLE`/`BUFFER_NUDGE_ON_STALL`
+  now show the spinner — a stall inside a buffered range never fires `waiting`, so
+  the UI froze silently.
+- `recoverAttempts` resets on `FRAG_BUFFERED` — it was 3 recoveries for an entire
+  film.
+- `?hlsdebug` telemetry (`window.__fiestaTelemetry`): per-fragment audio/video PTS
+  skew, level switches, hole/nudge/stall counts. Without `debug` hls.js installs a
+  no-op logger, so the strings that name these failures were never emitted.
+
+**Deliberately rejected** (all considered and dropped on evidence): `maxBufferHole:
+0.5` and `nudgeMaxRetry: 6` — I had added both, then removed them. Raising
+`maxBufferHole` makes a gap of up to ~12 frames invisible to hls.js so it is never
+re-fetched: it manufactures the dropped-frame symptom while hiding the evidence.
+The 312-line relay readahead cache — **measured dead**: every upstream segment is
+already a CDN `HIT`, relay TTFB is flat across concurrency 1→24, and hls.js
+subtracts TTFB from its bandwidth sample by construction. A skew watchdog calling
+`recoverMediaError()` — disproven, it does not reset the audio accumulator.
+
+### Still open
+
+- **Both diagnostic questions are answered** (see the correction at the top): the
+  audio delay was Bluetooth, and same-timecode recurrence is a soft yes. The
+  remaining open symptom is **missing frames**, and `[segstats]` is how we find out
+  whether the cache fix addressed it.
+- **Read `[segstats]` over a full film.** A non-zero `bad_rate` on healthy playback
+  is the smoking gun for how often the cache bug was firing. That number has never
+  existed before today.
+- **Unbounded segment body**: `page-999999.html` returned upstream 200 and the relay
+  streamed **401 MB in 60 s, still flowing**, for a fragment the playlist calls 5 s.
+  No cap in `handleHls`. A 16 MB cap + TS-framing check (log-only first) is designed
+  and deliberately **not** bundled — it is the only change that could reject healthy
+  media, so it needs its own restart and its own verification.
+- `RELAY_TOKEN_TTL=14400` to match upstream would close the window properly, but
+  only after a player-side re-resolve path exists; the refresh in (2) covers it for
+  now.
+
+## DONE: extraction docs reconciled against the live relay (docs only, NOT COMMITTED)
+
+User asked whether the handoff mentioned "website analysis / tracing the stream".
+It didn't — the tracing was documented in `tools/fiesta-proxy/README.md`, and that
+doc plus `docs/stream-proxy-architecture.md` were both describing a system that
+stopped existing in 2026-08. Both are now rewritten against the **live** file.
+
+**Nothing on the Mac mini was touched.** Read-only inspection throughout: the live
+`relay.mjs` was `scp`'d to a scratchpad and read there. No edits, no restarts, no
+writes to the box. No code changed in this repo either — three doc files only.
+
+### The live relay is 1089 lines, not 975
+
+The prior entry's figure is out of date (the file grew again on 2026-09-09,
+39.5KB → 46.3KB; mtime says a hand edit, and the autofix agent still has never
+fired, so it wasn't that). Everything below was read first-hand from it.
+
+### What the docs were wrong about — the load-bearing items
+
+- **The chain in the old README does not exist.** `vidsrc → cloudnestra/rcp →
+  cloudnestra/prorcp → Playerjs file:"…tmstr5.{vN}/pl/{token}/master.m3u8"` was
+  killed by two upstream migrations, both recorded in the watchdog script's own
+  prompt: **2026-08-19** `cloudnestra.com` → `cloudorchestranova.com`, and
+  **2026-08-24** `#player_iframe` losing its static `src=` in favour of a
+  `data-api="/vs_src.php?…"` gate returning `{src}`. The real walk is now 8 hops
+  (front → `vs_src.php` gate → layer2 `window.CFG` → layer3 `window.CONFIG` →
+  data API → **WASM decrypt** → per-host `generate.php` token → probe).
+- **`stream_urls` is ChaCha20-encrypted and decrypted with a rotating WASM
+  module** (`vs.wasm_url`, ~5-min windows, mirrors the site's `vsdec.js`, run via
+  Node's `WebAssembly`). This is why "re-trace with a browser network capture" is
+  no longer adequate advice — a capture shows an opaque base64 blob. The README
+  now carries the hop-by-hop curl procedure that actually root-caused both
+  migrations.
+- **"The token is not IP-bound — segments fetch fine from any IP" is backwards,
+  and this is now measured, not inferred.** A live segment token decoded
+  2026-09-13 carries `exp`/`iat`/`ip_cidr`/`iss`/`nbf`, with `exp − iat = 14400`
+  (exactly 4h) and a **`/24`** mask. The relay only reads `exp`, so enforcement is
+  upstream's. This is *the* reason every byte must come from the box.
+- **No Webshare, anywhere.** No `STREAM_PROXY_URL`, no `STREAM_PROXY_RETRIES`, no
+  `undici`/`ProxyAgent`. The residential IP plus a Playwright Turnstile fallback
+  replaced it — **but that fallback is unexercised, not merely rare.** The log's
+  lifetime 536/9 split is an artifact: all 9 browser resolves predate log line
+  262 and the 2026-08 migrations, and since the last restart it is 65 plain, 0
+  browser, 0 Turnstile detections. `resolveMasterBrowser` now waits on
+  `window.CFG =`, a post-migration selector that has never run in anger. Proving
+  it works takes one deliberate `RELAY_FORCE_BROWSER=1` resolve.
+- **`api/hls.js` is gone** (`1955290`), so the old two-Lambda / all-video-through-
+  Vercel cost model described nothing real.
+
+### New things found while verifying, that nobody had written down
+
+- **The tunnel is Cloudflare Tunnel** — `cloudflared` as a root LaunchDaemon
+  (`/Library/LaunchDaemons/com.cloudflare.cloudflared.plist`), dialing out, TLS
+  terminating at the edge. The box's `~/.cloudflared` credentials are for a
+  *different* tunnel id than the running one, which uses an opaque `--token`, so
+  the tunnel can only be reconfigured from the Cloudflare dashboard.
+- **Nothing watches the tunnel.** `KeepAlive` only catches `cloudflared` exiting;
+  if its QUIC connections fail while the process lives, the site goes dark and
+  `relay.log` stays *silent* — so the autofix watchdog can't see it either.
+  External `/healthz` is the only detector.
+- **Cloudflare WARP is installed on the box and its daemon reports `Connected`**,
+  but `cdn-cgi/trace` says `warp=off` and egress is still the home ISP (colo DUB,
+  loc IE). If WARP ever starts routing, the residential IP — the foundation of the
+  whole design — silently becomes a Cloudflare datacenter IP and everything 403s,
+  looking exactly like an upstream redesign. Both docs now tell you to check
+  `warp=off` *before* debugging a total outage.
+- **The relay binds `*:8787`, not loopback** — LAN-reachable, bypassing Cloudflare.
+- **The `/hls` token authorises nothing specific.** `mintToken` HMACs *only* the
+  expiry, so any unexpired token proxies **any** public https URL through
+  `relay.fiesta.show` for 6h — and every viewer gets a valid one in the clear.
+  Binding the HMAC over `exp + u` looks like a small fix. Also: child playlist
+  URLs reuse the incoming token instead of re-minting, so sessions hard-403 at
+  T+6h; `assertPublicHttps` checks once while the fetch re-resolves DNS and
+  follows redirects unchecked; and `s`/`e` reach the embed path unvalidated from
+  public `/api/stream`.
+- **…and ~770 of those tokens sit in plaintext in a world-readable log.**
+  `/Library/Logs/com.cloudflare.cloudflared.err.log` (root:wheel but o+r, 4.1MB,
+  unrotated, back to 2026-05-17) logs `dest=…/hls?u=…&t=<token>&ua=N`. Any local
+  user on that shared box can lift a working open-proxy credential out of it.
+  Rotating `RELAY_SIGNING_KEY` kills the historical ones; binding the token fixes
+  the class.
+- **`maxDuration: 30` vs a 75s browser solve.** `api/stream.js`'s relay fetch has
+  no timeout/`AbortSignal`, while a Playwright resolve budgets 30s `goto` + 45s
+  `waitForFunction` plus unbounded global lock queueing. Vercel abandons it at 30s
+  → user sees 502 → but the relay finishes and caches, so their retry inside 600s
+  is instant. "First play failed, second was instant" is this, not a flake.
+- **`?srv=2` in the page URL does nothing.** `movie-page` reads it and binds
+  `[server]`/`(serverChange)`, but the player reads `server()` zero times and
+  emits `serverChange` zero times, so `onServerChange` is unreachable. The only
+  thing that ever sets `srv` is the player's automatic one-shot escalation.
+- **The autofix watchdog can misfire on a pure throttle**, and the only reason it
+  never has is an accident: it groups by error text, and the loudest current error
+  (`generate cooling globally <N>s`) hashes differently per second value, so it
+  fragments below the 3-distinct-title threshold. Its filter excludes only
+  `status_code 404` and turnstile, and historical counts like `embed status 429`
+  (11 titles) would clear it easily — dispatching a `claude -p` with Edit/Bash to
+  hunt a markup change that never happened, on the live file, with no git.
+- **`relay.log` has no timestamps** on any of its ~19 `console.*` lines, which
+  quietly limits every "grep the log" instruction in both docs. Cheapest available
+  improvement.
+- **No `Range` support anywhere** — fine for today's version-3 full-segment TS, but
+  an fMP4/byterange playlist would break outright and partial segments can't
+  resume.
+- **The documented local-dev flow could not have worked.**
+  `tools/fiesta-proxy/.env.local` holds exactly one var — the dead
+  `STREAM_PROXY_URL` Webshare credential — and not the `STREAM_RELAY_URL` /
+  `STREAM_RELAY_SECRET` the harness needs, so `/api/stream` would 500. The README
+  now says so. **That stale credential should be deleted and rotated upstream.**
+- **There is no deploy path from this repo to the box** — no rsync, scp script or
+  CI. The live file is hand-edited in place. That's the root cause of the drift.
+- **`tools/fiesta-proxy/relay.mjs` is worse than stale: it's dead.** It still
+  greps for `src="//cloudnestra.com/rcp/…"`, so it would fail on *every* title.
+  Both docs now say never to copy it over the live file.
+- Upstream is **rate-limiting this IP right now** (`generate cooling globally`,
+  `[breaker] srv=2 skipped` all over `relay.log`), which is why
+  `RELAY_RESOLVE_TRIES` sits at 1 instead of 2–3.
+
+### Files changed
+
+- `tools/fiesta-proxy/README.md` — full rewrite: the 8-hop chain, the two
+  different tokens, the browser fallback, every resilience mechanism with its
+  real default, the HTTP surface, the token gate's actual limits, the re-trace
+  procedure, and a dead-code warning on the repo snapshot.
+- `docs/stream-proxy-architecture.md` — full rewrite: retitled off "(Vercel)",
+  the real two-process model, the caching layers (including that Cloudflare
+  returns `cf-cache-status: DYNAMIC` so segments are **not** edge-cached), cost,
+  ops runbook, and a symptom → cause failure table.
+- `docs/handoff.md` — this entry; marked the old "still stale" note resolved; and
+  fixed a dead cross-reference in the RU/UA bullet (it pointed at research
+  findings "earlier in this doc" that were never written down).
+
+### Not done / open
+
+- **The `relay.mjs` code drift is untouched** — still the user's call whether to
+  reconcile the repo copy (several hundred lines) or delete it. Docs now describe
+  reality either way.
+- **Re-measured live after all** (one resolve through the public API, 2026-09-13),
+  so these are now dated facts in the README rather than open questions: 3 variants
+  (640×358 / 1280×714 / 1920×1072, 24fps), **zero** `EXT-X-KEY` in either playlist,
+  `VERSION:3` / `VOD` / `TARGETDURATION:6` / 1708 `EXTINF`, segments at
+  `/content/<32hex>/<32hex>/page-N.html?token=…` served as `video/mp2t` (570KB,
+  first byte `0x47`). The 2026-05 measurements held. Two in-code comments
+  overstate: "~1-2MB" segments (570KB observed) and "~5s" (`TARGETDURATION` is 6).
+- Still genuinely unverified: whether the Playwright fallback works against the
+  post-migration chain (needs one `RELAY_FORCE_BROWSER=1` run on the box), whether
+  the cached Chrome-for-Testing build still launches, and whether
+  `checkTurnstile`'s regex still matches what Cloudflare serves — if the challenge
+  markup changed, detection fails *silently* and you get
+  `CFG.playerUrl not found in layer2` instead, never reaching the fallback.
+- `RELAY_RESOLVE_TRIES` is still at 1, so the born-dead-master re-resolve is inert
+  (it logs `re-resolving (1/1)` and falls through). Raising it back to 2–3 is an
+  operator decision that's been pending since the throttling started.
+- A Cloudflare Cache Rule on `/hls` could offload repeat segments to the edge, but
+  it needs a cache key ignoring `t`/`ua`. Untested, noted as an opportunity only.
+- The `STREAM_PROXY_URL` credential in `tools/fiesta-proxy/.env.local` still needs
+  deleting/rotating — I did not touch the file (gitignored, never committed).
+
 ## DONE, NOT COMMITTED: scroll-to-collapse + the search page composition
 
 Both of the "Requested but NOT started" items from the last entry are built and
@@ -1137,10 +1446,15 @@ is now confirmed stale/non-representative of production and will keep
 drifting from whatever the autofix agent or manual edits do next. Worth
 asking the user whether they want the git copy properly reconciled with the
 real file (a much bigger diff than today's — the resolver chain alone is
-several hundred lines) or just left as a rough reference. Also still stale:
-`docs/stream-proxy-architecture.md` describes the old two-Lambda
-Webshare-proxy model and references `api/hls.js`, which no longer exists in
-the repo (confirmed deleted, not just moved — not in `vercel.json` either).
+several hundred lines) or just left as a rough reference.
+
+**(RESOLVED — docs only, see "DONE: extraction docs reconciled against the live
+relay" at the top of this file)** The two
+extraction docs were stale in the way described here;
+`docs/stream-proxy-architecture.md` and `tools/fiesta-proxy/README.md` have
+both now been rewritten against the live 1089-line file. The *code* drift —
+`tools/fiesta-proxy/relay.mjs` vs the box — is still open and still the
+user's call.
 
 ## Live and verified in production (prior session)
 
@@ -1207,9 +1521,12 @@ recurring).
   without the user explicitly asking again; here only so the context isn't
   lost.
   - RU/UA aggregators (HDRezka/UAKino/Filmix) were researched as a possible
-    vidsrc-style addition for non-English content — see the research
-    findings earlier in this doc (or ask; a background agent produced them,
-    they're not re-derived here). **Since then the user mentioned HDRezka
+    vidsrc-style addition for non-English content. **The findings are NOT in
+    this doc** — a background agent produced them in-conversation and they
+    were never written down anywhere, so they are effectively lost; an
+    earlier version of this bullet pointed at "the research findings earlier
+    in this doc", which was a dead reference. Re-run the research if this
+    comes back. **Since then the user mentioned HDRezka
     "recently introduced premium mode"** — i.e. it may no longer be as freely
     resolvable as the research assumed; treat that research as partially
     stale if this comes up again, re-verify before acting on it.
