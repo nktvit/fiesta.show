@@ -104,14 +104,15 @@ export class MovieService {
     }
   }
   formatMovieDetailsArray(details: any) {
+    // Director and Stars are deliberately absent: the Cast & Crew section above
+    // already renders both, from TMDB, with links to the person pages. Repeating
+    // OMDB's plain-text versions here was the same information twice, worse.
     return [
-      { label: 'Director', value: details.Director, show: this.hasValue(details.Director) },
       { label: 'Released', value: details.Released, show: this.hasValue(details.Released) },
       { label: 'Production', value: details.Production, show: this.hasValue(details.Production) },
       { label: 'Country', value: details.Country, show: this.hasValue(details.Country) },
       { label: 'Language', value: details.Language, show: this.hasValue(details.Language) },
       { label: 'Writers', value: details.Writer, show: this.hasValue(details.Writer) },
-      { label: 'Stars', value: details.Actors, show: true },
       { label: 'Awards', value: details.Awards, show: this.hasValue(details.Awards) },
       { label: 'Box Office', value: details.BoxOffice, show: this.hasValue(details.BoxOffice) },
     ];

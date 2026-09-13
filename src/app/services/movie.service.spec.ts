@@ -144,14 +144,14 @@ describe('MovieService', () => {
         Awards: '4 Oscars',
         BoxOffice: '$172,076,928'
       })
+      // Director and Stars are intentionally NOT in this list — the Cast & Crew
+      // section renders both from TMDB, so repeating them here was duplication.
     ).toEqual([
-      { label: 'Director', value: 'Lana Wachowski, Lilly Wachowski', show: true },
       { label: 'Released', value: '31 Mar 1999', show: true },
       { label: 'Production', value: 'N/A', show: false },
       { label: 'Country', value: 'USA', show: true },
       { label: 'Language', value: 'English', show: true },
       { label: 'Writers', value: 'The Wachowskis', show: true },
-      { label: 'Stars', value: 'Keanu Reeves', show: true },
       { label: 'Awards', value: '4 Oscars', show: true },
       { label: 'Box Office', value: '$172,076,928', show: true }
     ]);
