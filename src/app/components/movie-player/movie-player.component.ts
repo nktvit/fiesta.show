@@ -76,6 +76,10 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   private attachedUrl: string | null = null;
   private loadToken = 0;
   private recoverAttempts = 0;
+  // Gated on a query param so the verbose logger and the telemetry hooks cost
+  // nothing in normal playback.
+  private readonly hlsDebug =
+    typeof location !== 'undefined' && new URLSearchParams(location.search).has('hlsdebug');
   // Defer the buffering spinner so quick seeks/microstalls don't flash it.
   private bufferingTimer: ReturnType<typeof setTimeout> | null = null;
   // true once we've already escalated server 1 -> server 2, so we don't loop
@@ -216,26 +220,121 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     // can't tune. Native HLS is the fallback only when MSE is absent (iOS Safari).
     const Hls = (await import('hls.js')).default;
     if (Hls.isSupported()) {
-      // The relay passes the source through, so bandwidth has headroom — bias ABR
-      // toward higher quality instead of hls.js's conservative defaults, which
-      // otherwise park on a low variant (smooth but soft) and never climb back up.
+      // Tuned against how hls.js actually measures bandwidth. Its sample is
+      //   processingMs = parsing.end - loading.start - min(actualTTFB, ewmaTTFB)
+      // so it compensates for latency only up to its *running estimate* of it.
+      // Every segment here is a cold CDN fetch relayed through a home uplink, so
+      // TTFB VARIANCE — not latency — is what depresses the estimate and walks the
+      // quality down. The settings below give ABR margin to absorb that variance
+      // instead of reacting to it.
       const hls = new Hls({
         enableWorker: true,
+        debug: this.hlsDebug,
         capLevelToPlayerSize: false, // never downscale to the <video> element's pixel size
-        abrEwmaDefaultEstimate: 8_000_000, // start optimistic (~8 Mbit/s) instead of the 500 kbit/s floor
-        abrBandWidthFactor: 1.0, // trust the full measured bandwidth (default 0.95)
-        abrBandWidthUpFactor: 0.9, // upswitch readily (default 0.7)
-        progressive: true, // append fragment bytes to the buffer as they stream in
-        // rather than waiting for the whole segment response to finish
+        // Was 8_000_000, and that was itself a bug. level-controller only
+        // auto-derives a start estimate when this is left undefined, so an explicit
+        // 8e6 survives into firstAutoLevel — where the only surviving test is
+        // `adjustedbw >= maxBitrate`, and 8e6 >= 5,145,364. Every session on every
+        // connection therefore started on 1920x1072 with an empty buffer and stepped
+        // DOWN once the first real sample landed. Bandwidth-independent, which is
+        // exactly why it didn't look like a connection problem.
+        // At 5e6 the top variant's gate fails (5e6 < 5,145,364) and the middle one
+        // passes (5e6 >= 3,281,926): start at 1280x714 and climb on fragment 2.
+        // 5e6 is also exactly hls.js's own abrEwmaDefaultEstimateMax.
+        abrEwmaDefaultEstimate: 5_000_000,
+        // Previously 1.0/0.9 — maximally eager. With a spiky TTFB that produced
+        // upswitch -> underrun -> stall -> downswitch oscillation, which is the
+        // "quality drops" symptom. Back to a margin (library defaults: 0.95/0.7).
+        abrBandWidthFactor: 0.95,
+        abrBandWidthUpFactor: 0.8,
+        // `progressive: true` was removed, back to the library default of false.
+        // Honest status: this is PRECAUTIONARY, not a fix for an observed bug. It
+        // was removed while chasing an audio-delay report that turned out to be
+        // Bluetooth output latency, so nothing user-visible is known to have been
+        // caused by it. The case for leaving it off is that it is a non-default
+        // path which feeds 128KB partial chunks to the transmuxer — whose own
+        // comments note it then has "no guarantee the fetch loader gives us flush
+        // moof+mdat pairs" — and whose A/V realignment only runs once it holds
+        // enough samples of BOTH tracks. Our responses are chunked with no
+        // Content-Length, which is that jagged-input case.
+        // The cost is real: time-to-first-frame rises by about one fragment
+        // transfer (measured 143-592ms) because the fragment must land whole
+        // before transmux. Re-enable it if startup latency matters more than
+        // staying on the library's tested path.
+        // maxBufferLength is a FLOOR, not a cap: the effective forward target is
+        // min(max(8 * maxBufferSize / levelBitrate, maxBufferLength), maxMaxBufferLength),
+        // which at the declared top bitrate is min(93.3, maxMaxBufferLength). Pinning
+        // maxMaxBufferLength to 60 is what makes 60 actually mean 60.
+        maxBufferLength: 60, // default 30 — rides out an upstream hiccup
+        maxMaxBufferLength: 60, // default 600
+        backBufferLength: 90, // default Infinity — on a 2h film the back buffer grows
+        // until the browser hits its SourceBuffer quota, and the resulting eviction
+        // shows up as stalls and dropped frames late in a long watch.
+        // Deliberately NOT raising maxBufferHole or nudgeMaxRetry. Both were
+        // considered and rejected: buffer-helper merges any gap below maxBufferHole
+        // into a single range, so at 0.5 a hole of up to ~12 frames becomes invisible
+        // to hls.js, is never re-fetched, and the playhead is stepped across it with
+        // no event — it manufactures the dropped-frame symptom while hiding the
+        // evidence. nudgeMaxRetry already resets whenever playback advances, so
+        // raising it changes nothing, and each nudge moves currentTime by up to 0.6s.
       });
       this.hls = hls;
+
+      // Opt-in telemetry for diagnosing playback complaints: fiesta.show/...?hlsdebug
+      // Without `debug` hls.js installs a no-op logger, so the strings that actually
+      // name these failures ("Injecting N audio frames ... due to Y ms gap", "hole
+      // between fragments detected at") are never emitted — the evidence has been
+      // absent rather than the bug. Read window.__fiestaTelemetry after a watch.
+      if (this.hlsDebug) {
+        (window as unknown as Record<string, unknown>)['__hls'] = hls;
+        const t = {
+          skew: [] as { sn: number; ms: number }[],
+          levels: [] as { at: number; level: number }[],
+          holes: 0,
+          nudges: 0,
+          stalls: 0,
+        };
+        (window as unknown as Record<string, unknown>)['__fiestaTelemetry'] = t;
+        hls.on(Hls.Events.FRAG_PARSED, (_e, d) => {
+          const a = d.frag?.elementaryStreams?.audio;
+          const v = d.frag?.elementaryStreams?.video;
+          if (a && v) t.skew.push({ sn: d.frag.sn as number, ms: +((a.startPTS - v.startPTS) * 1000).toFixed(2) });
+        });
+        hls.on(Hls.Events.LEVEL_SWITCHED, (_e, d) =>
+          t.levels.push({ at: +performance.now().toFixed(0), level: d.level }),
+        );
+        hls.on(Hls.Events.ERROR, (_e, d) => {
+          if (d.details === Hls.ErrorDetails.BUFFER_SEEK_OVER_HOLE) t.holes++;
+          if (d.details === Hls.ErrorDetails.BUFFER_NUDGE_ON_STALL) t.nudges++;
+          if (d.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR) t.stalls++;
+        });
+      }
+
       hls.loadSource(master);
       hls.attachMedia(video);
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         this.restoreProgress(video);
         if (this.started()) void video.play().catch(() => {}); // resume after a mid-watch escalation
       });
+      // recoverAttempts was only ever reset on a fresh load, so the cap below was
+      // three recoveries for an entire film: a 2h watch that hiccupped three times
+      // in the first ten minutes had no budget left for the remaining 110. A
+      // fragment that buffers cleanly is proof the stream is healthy again, so
+      // spend the budget per-incident rather than per-session.
+      hls.on(Hls.Events.FRAG_BUFFERED, () => {
+        if (this.recoverAttempts !== 0) this.recoverAttempts = 0;
+      });
       hls.on(Hls.Events.ERROR, (_evt, data) => {
+        // A stall inside an already-buffered range never fires the media element's
+        // `waiting` event, so the spinner — driven only by onWaiting/onSeeking —
+        // stayed hidden through a visible freeze. These arrive non-fatal.
+        if (
+          data.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR ||
+          data.details === Hls.ErrorDetails.BUFFER_SEEK_OVER_HOLE ||
+          data.details === Hls.ErrorDetails.BUFFER_NUDGE_ON_STALL
+        ) {
+          this.beginBuffering();
+        }
         if (!data.fatal) return;
         // Try to recover transient fatal errors before giving up; only surface an
         // error once recovery is exhausted (or the failure is unrecoverable).
