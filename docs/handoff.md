@@ -1,5 +1,77 @@
 # Session handoff
 
+## DONE, NOT COMMITTED: legacy-TV (`/lite`) client rebuilt — routing, player, subtitles, design (2026-09-28)
+
+User's complaints, all against the `tv/` client served to Tizen / pre-Chrome-49
+UAs: (1) subtitles didn't work — the native CC button was tiny and unreachable
+with a remote, and the tracks never rendered; (2) Play should go fullscreen
+on its own; (3) routing was hash-based (`#/title/…`, `#/watch/…`) and unlike
+the main site; (4) the player and pages looked bad.
+
+### What changed (all under `tv/`, nothing outside it)
+
+- **Routing now mirrors `src/app/app.routes.ts` exactly** (`tv/src/router.ts`,
+  History API): `/`, `/search?query=`, `/movie/:id[?type=tv&s&e]`,
+  `/movie/:id?play=1` (player), `/person/:id`, `/genre/:id`, `/top-rated`,
+  `/tv`; everything else → home. Old `#/title` / `#/watch` hashes are
+  rewritten on load. **`middleware.js` needed no change**: it already rewrites
+  every non-`/lite`, non-`/api` path to `/lite/index.html` for legacy UAs and
+  keeps the query string, so a main-site link opened on a TV lands on the
+  same screen in the lite bundle.
+- **Player rewritten** (`tv/src/screens/Player.tsx`): no native controls.
+  Own D-pad-focusable bar (−10s / Play-Pause / +10s / Next episode / CC),
+  progress + time, title and "Season · Episode · name" top bar, 4 s auto-hide,
+  loading/error overlays on the backdrop. Tizen media keys handled
+  (415/19/10252/413/412/417). Fullscreen requested inside the Play click
+  handler on the details page (gesture-bound) and exited when leaving.
+- **Subtitles**: VTT fetched as text and drawn into our own overlay
+  (`tv/src/subtitles.ts`), no `<track>` at all. Side-panel picker (Off +
+  every track), default = saved `fiesta:subtitle-pref` → first English →
+  first; choice persisted under the same key the main site uses.
+- **Stream fallback**: resolve relay-auto first, then `srv=2` on a failed
+  resolve *or* a video `error`; "Try again" flips servers.
+- **Design**: new stylesheet (10-foot sizing, white 4px focus ring + tile
+  scale, hero with poster/chips/genres, episode cards with stills and
+  per-episode progress, cast row, person page). Still Chromium-47-safe: no
+  grid / custom properties / gap / clamp / sticky; bundle verified ES5-only.
+- New screens: `ListPage` (tv / top-rated / genre with Load more), `TvShows`,
+  `Person`; `Search` keeps the query in the URL (replaceState).
+- `tv/README.md` written (package.json referenced one that didn't exist).
+
+### Verified (real browser, Playwright against `tv/dist` + production `/api`)
+
+Local stand-in served `dist/` with the `/lite` rewrite and proxied `/api/*`
+to fiesta.show; `/api/stream` mocked with a generated 4-min MP4 because
+desktop Chromium has no native HLS. Checked end to end: home → tile → details
+(focus lands on Play) → Enter → `/movie/tt0111161?play=1`, fullscreen on,
+playing; real English cues from OpenSubtitles render in the overlay; CC menu
+opens on the current track, switching to "English 2" persists the pref; Back
+closes the menu only, next Back leaves the player, exits fullscreen and shows
+"Resume"; Breaking Bad (`/movie/1396?type=tv`) shows 5 seasons / episodes,
+Enter on an episode → `…?type=tv&s=1&e=1&play=1` with the episode title,
+"Next episode" → `e=2`; `srv=2` fallback fires when the first resolve 502s;
+`/tv`, `/top-rated`, `/genre/28`, `/person/17419`, `/about`(→home) all render;
+`#/watch/tv/tt0903747/2/3` → `/movie/tt0903747?type=tv&play=1&s=2&e=3`.
+
+### NOT verified — needs the real TV
+
+- Anything on an actual Tizen 3.0 set: native HLS playback of the relay
+  master through the new (control-less) `<video>`, whether the TV shell
+  honours `webkitRequestFullscreen`, media-key codes, overlay text size at
+  3 m. All coded defensively (every fullscreen call is try/catch,
+  best-effort) but not observed.
+- Root `npm run build` (Angular + the `tv/dist` → `/lite` asset copy) was not
+  re-run; only `tv`'s own `npm run build` + `tsc --noEmit` (clean).
+- Not deployed. Working tree only. Next: commit, preview deploy, then the
+  user checks on the TV.
+
+### Found on the side
+
+- **OMDB search is rate-limited on production right now** (`/api/omdb?
+  action=search` → `{"Response":"False","Error":"Request limit reached!"}`),
+  so search returns nothing on the main site too — not a lite bug. The lite
+  client now shows "Search failed" for that case instead of "No results".
+
 ## DEPLOYED TO THE LIVE RELAY: playback stability fixes (2026-09-13)
 
 User reported **delayed audio, intermittently missing frames, and quality drops**,

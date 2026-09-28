@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { getList } from '../api';
 import { Movie } from '../types';
 import PosterGrid from '../components/PosterGrid';
-import { navigate } from '../App';
+import Spinner from '../components/Spinner';
+import { focusFirstContent } from '../remote';
 
 const ROWS = [
   { key: 'trending', title: 'Trending Now' },
@@ -24,24 +25,18 @@ export default function Home() {
         .filter(function (r) { return r.movies.length > 0; });
       setRows(built);
       setLoading(false);
+      focusFirstContent();
     });
     return function () { cancelled = true; };
   }, []);
 
-  function openTitle(m: Movie) {
-    const type = m.mediaType === 'tv' ? 'tv' : 'movie';
-    const id = m.imdbID || String(m.tmdbId);
-    if (!id) return;
-    navigate('#/title/' + type + '/' + id);
-  }
-
-  if (loading) return <div className="tv-status">Loading…</div>;
+  if (loading) return <Spinner />;
   if (!rows.length) return <div className="tv-error">Couldn't load titles. Check your connection.</div>;
 
   return (
     <div>
       {rows.map(function (r) {
-        return <PosterGrid key={r.title} title={r.title} movies={r.movies} onSelect={openTitle} />;
+        return <PosterGrid key={r.title} title={r.title} movies={r.movies} />;
       })}
     </div>
   );

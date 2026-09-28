@@ -105,3 +105,20 @@ export function installRemoteNav(onBack: () => void): () => void {
     document.removeEventListener('keydown', handler);
   };
 }
+
+// Screens call this once their content has rendered: if the viewer hasn't
+// moved focus yet (it's still on <body> or parked on a nav link by the
+// initial auto-focus), put it on the first focusable thing in the content
+// so Enter/arrows act on the page rather than the menu bar.
+export function focusFirstContent(): void {
+  setTimeout(function () {
+    const active = document.activeElement as HTMLElement | null;
+    const parked = !active || active === document.body || active.className.indexOf('tv-nav-link') !== -1;
+    if (!parked) return;
+    const first = document.querySelector('.tv-content [data-focusable]') as HTMLElement | null;
+    if (first) {
+      first.focus();
+      window.scrollTo(0, 0);
+    }
+  }, 30);
+}

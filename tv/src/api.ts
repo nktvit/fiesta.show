@@ -35,9 +35,12 @@ export function getGenres(): Promise<{ id: number; name: string }[]> {
 export function searchTitles(query: string, page: number): Promise<{ results: any[]; totalResults: number }> {
   return getJSON('/api/omdb?action=search&q=' + encodeURIComponent(query) + '&page=' + page)
     .then(function (r) {
-      return r && r.Search ? { results: r.Search, totalResults: Number(r.totalResults) || 0 } : { results: [], totalResults: 0 };
-    })
-    .catch(function () { return { results: [], totalResults: 0 }; });
+      if (r && r.Search) return { results: r.Search, totalResults: Number(r.totalResults) || 0 };
+      // OMDB reports "no results" and "request limit reached" the same way
+      // (Response: False) — only the former is genuinely empty.
+      if (r && r.Error && !/not found/i.test(r.Error)) throw new Error(r.Error);
+      return { results: [], totalResults: 0 };
+    });
 }
 
 // TMDB list rows (trending/popular/etc.) only carry a numeric tmdbId — this
@@ -104,4 +107,30 @@ export function getSubtitles(type: MediaType, imdbId: string, season?: number | 
 // app's movie-page.component.ts uses.
 export function isImdbId(id: string): boolean {
   return /^tt\d+$/.test(id);
+}
+
+// Paginated lists behind the /tv, /top-rated and /genre pages.
+export function getListPage(list: string, page: number): Promise<{ movies: Movie[]; totalPages: number }> {
+  return getJSON('/api/tmdb?list=' + list + '&page=' + page)
+    .then(function (r) { return { movies: r.movies || [], totalPages: r.totalPages || 0 }; })
+    .catch(function () { return { movies: [], totalPages: 0 }; });
+}
+
+export interface Person {
+  id: number;
+  name: string;
+  biography: string;
+  profilePath: string | null;
+  birthday: string | null;
+  placeOfBirth: string | null;
+  knownForDepartment: string | null;
+  actingCredits: Movie[];
+  crewCredits: Movie[];
+}
+
+export function getPerson(personId: number): Promise<Person> {
+  return getJSON('/api/tmdb?list=person&id=' + personId).then(function (r) {
+    if (!r || !r.id) throw new Error('person not found');
+    return r;
+  });
 }
