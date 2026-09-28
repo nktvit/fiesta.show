@@ -1,5 +1,37 @@
 # Session handoff
 
+## SHIPPED TO PRODUCTION (2026-09-28, later the same day): lite client pushed, main-site subtitles + arrow keys
+
+Everything from the section below this one is now **committed and pushed**
+(`79b24d6`, `5b5f9f3`, `73adc07`), plus three follow-ups:
+
+- **Lite player fullscreen** (`5b5f9f3`): user reported the TV still showed
+  the browser's address bar after Play. Now the request is retried on the
+  player stage element, there is a Full screen button in the bar, and when
+  no request takes effect a toast tells the viewer to use the browser's own
+  Full Screen mode. Whether any of this actually hides Samsung's bar is
+  **unverified** — the user must report back; Tizen's browser may simply not
+  support element fullscreen at all.
+- **Lite subtitle timing** (`73adc07`): user reported cues lagging. Overlay
+  is now driven by a 100 ms interval instead of `timeupdate` (which some TVs
+  fire at ~1 Hz). If it still drifts, the source file is out of sync for that
+  release — the CC menu offers "English 2…5" variants for that.
+- **Main site player** (`6ab95da`, verified on preview
+  `streamfiesta-3t05efimt` with Playwright, then pushed to `main`):
+  - Subtitles no longer rely on `<track src>` at all. Every `<track>` gets an
+    inert `data:text/vtt,WEBVTT` src; the player fetches the VTT, parses it
+    (`src/app/utils/vtt.ts`) and calls `TextTrack.addCue()`. `vttCache`,
+    `trackSrc`, `assignTrackSrc` are gone; replaced by `cueCache`,
+    `fetchCues` (one retry, de-duplicated in-flight), `fillTrack`,
+    `ensureCues`. A 5 s notice shows if a file can't be fetched. Verified: 17
+    tracks listed, picking one via the native menu loads 890 cues, active cue
+    correct after a seek, choice persisted.
+  - Left/Right arrows seek ±10 s once playback started (document-level
+    listener, skips inputs/textareas/contenteditable and modifier combos).
+    Verified: +10 / −10 / no seek while a textarea is focused.
+  - NOT verified: iOS Safari native fullscreen rendering of script-added
+    cues (should work — they sit in the same TextTrack — but not observed).
+
 ## DONE, NOT COMMITTED: legacy-TV (`/lite`) client rebuilt — routing, player, subtitles, design (2026-09-28)
 
 User's complaints, all against the `tv/` client served to Tizen / pre-Chrome-49
