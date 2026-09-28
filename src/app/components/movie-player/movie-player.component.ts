@@ -86,6 +86,15 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   // Key of the track that was showing after the last reconciliation, so a
   // switch can tell the new pick from the old one (see enforceSingleShowing).
   private lastShowingKey: string | null = null;
+  // Tracks whose file could not be downloaded this load (OpenSubtitles'
+  // download host 502s individual files, sometimes for hours). Never
+  // auto-selected again until the next load; a same-language sibling is
+  // used instead (see ensureCues).
+  private failedCueKeys = new Set<string>();
+  // Timestamp of the last moment hls.js was known to be rewriting the text
+  // track list (see reassertSubtitles). A `change` event inside that window
+  // is hls.js's doing, not the viewer's, and must not be persisted.
+  private hlsTouchedTracksAt = 0;
 
   // which cloudnestra front actually served the current stream (1=vidsrc, 2=vsembed)
   readonly activeServer = signal<number>(1);
@@ -213,6 +222,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     this.cueFetches.clear();
     this.filledTracks = new WeakSet<TextTrack>();
     this.lastShowingKey = null;
+    this.failedCueKeys.clear();
     this.setSubtitleNotice(null);
     if (!keepStarted) {
       // Fresh load: full-screen loader covers the stage.
@@ -335,8 +345,34 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
         // no event — it manufactures the dropped-frame symptom while hiding the
         // evidence. nudgeMaxRetry already resets whenever playback advances, so
         // raising it changes nothing, and each nudge moves currentTime by up to 0.6s.
+        // Our subtitles are <track> elements we fill ourselves (see
+        // subtitleTracks). With this on, hls.js's subtitle-track-controller
+        // listens to the media's textTracks `change` event and, finding a
+        // showing track that is not one of *its* tracks, calls
+        // setSubtitleTrack(-1) -> toggleTrackModes(), which sets EVERY native
+        // subtitles/captions track to disabled — i.e. it switched the
+        // viewer's choice off again. These streams carry no in-band
+        // subtitles, so nothing is lost by turning it off.
+        renderTextTracksNatively: false,
       });
       this.hls = hls;
+
+      // hls.js still reaches into the media element's text tracks on its own
+      // lifecycle events: timeline-controller._cleanTracks() removes every cue
+      // from every track (ours included) on MEDIA_ATTACHING and
+      // MANIFEST_LOADING, and subtitle-track-controller.toggleTrackModes() can
+      // disable them. Reproduced with a stack trace: Turkish filled with 1683
+      // cues at 314 ms, emptied by _cleanTracks at 352 ms. After each of those
+      // events, put the chosen track back and refill it.
+      const reassert = () => {
+        this.hlsTouchedTracksAt = performance.now();
+        queueMicrotask(() => this.reassertSubtitles(video));
+      };
+      hls.on(Hls.Events.MEDIA_ATTACHED, reassert);
+      hls.on(Hls.Events.MANIFEST_LOADING, reassert);
+      hls.on(Hls.Events.MANIFEST_PARSED, reassert);
+      hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, reassert);
+      hls.on(Hls.Events.SUBTITLE_TRACK_SWITCH, reassert);
 
       // Opt-in telemetry for diagnosing playback complaints: fiesta.show/...?hlsdebug
       // Without `debug` hls.js installs a no-op logger, so the strings that actually
@@ -518,6 +554,62 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     return this.subtitleTracks().find((t) => this.subtitleKey(t) === key);
   }
 
+  private trackElementFor(video: HTMLVideoElement, key: string): HTMLTrackElement | null {
+    return (
+      Array.from(video.querySelectorAll('track')).find(
+        (el) => this.subtitleKey({ lang: el.srclang, label: el.label }) === key,
+      ) ?? null
+    );
+  }
+
+  // HTMLTrackElement.readyState: 0 NONE, 1 LOADING, 2 LOADED, 3 ERROR. A track
+  // element only starts loading (its inert stub) the first time it is set to
+  // showing/hidden — and Chromium empties the TextTrack's cue list when that
+  // first load completes, script-added cues included (reproduced in a blank
+  // page: 5 cues added before the load, 0 a second later; cues added after
+  // the load survive every later disable/show toggle). So cues are only ever
+  // pushed into a track whose element has finished loading; earlier than
+  // that they stay in cueCache and onTrackLoaded() pushes them.
+  private isTrackElementSettled(el: HTMLTrackElement | null): boolean {
+    return !el || el.readyState >= 2;
+  }
+
+  // Bound to (load)/(error) on every <track>: the element has just finished
+  // its first load, which is exactly when Chromium wipes whatever cues were
+  // already there. Re-fill from the cache if it did.
+  onTrackLoaded(event: Event) {
+    const el = event.target as HTMLTrackElement | null;
+    const tt = el?.track;
+    if (!el || !tt) return;
+    if (tt.cues && tt.cues.length > 0) {
+      this.filledTracks.add(tt); // nothing was lost
+      return;
+    }
+    this.filledTracks.delete(tt);
+    if (tt.mode === 'disabled') return; // ensureCues() fills it when it is shown
+    const cues = this.cueCache.get(this.subtitleKey({ lang: el.srclang, label: el.label }));
+    if (cues) this.fillTrack(tt, cues);
+  }
+
+  // The saved preference resolved against THIS title's track list: the same
+  // lang+label when it exists, otherwise the first track in that language.
+  // Labels carry a release tag ("English — Web", "English — DVD"), so an
+  // exact match across titles is the exception, not the rule.
+  private preferredKeyFor(video: HTMLVideoElement): string | null {
+    const pref = this.readSubtitlePref();
+    if (!pref) return null;
+    const list = video.textTracks;
+    for (let i = 0; i < list.length; i++) {
+      const key = this.subtitleKey({ lang: list[i].language, label: list[i].label });
+      if (list[i].language === pref.lang && list[i].label === pref.label && !this.failedCueKeys.has(key)) return key;
+    }
+    for (let i = 0; i < list.length; i++) {
+      const key = this.subtitleKey({ lang: list[i].language, label: list[i].label });
+      if (list[i].language === pref.lang && !this.failedCueKeys.has(key)) return key;
+    }
+    return null;
+  }
+
   private textTrackFor(video: HTMLVideoElement, key: string): TextTrack | null {
     const list = video.textTracks;
     for (let i = 0; i < list.length; i++) {
@@ -547,9 +639,13 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
       if (token !== this.loadToken) return; // superseded — episode/retry/server switch
       const cues = await this.fetchCues(token, t);
       if (token !== this.loadToken) return;
+      // Only a track whose element has already loaded can hold cues safely
+      // (see isTrackElementSettled); the rest wait in cueCache.
       const video = this.videoEl()?.nativeElement;
-      const tt = video && cues ? this.textTrackFor(video, this.subtitleKey(t)) : null;
-      if (tt && cues) this.fillTrack(tt, cues);
+      if (!video || !cues) continue;
+      const key = this.subtitleKey(t);
+      const tt = this.textTrackFor(video, key);
+      if (tt && this.isTrackElementSettled(this.trackElementFor(video, key))) this.fillTrack(tt, cues);
     }
   }
 
@@ -591,6 +687,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   private fillTrack(track: TextTrack, cues: VttCue[]) {
     if (this.filledTracks.has(track)) return;
     this.filledTracks.add(track);
+    if (track.cues && track.cues.length > 0) return; // already holds its cues (nothing was wiped)
     const CueCtor: typeof VTTCue | undefined =
       (window as unknown as { VTTCue?: typeof VTTCue }).VTTCue ??
       ((window as unknown as { TextTrackCue?: typeof VTTCue }).TextTrackCue as typeof VTTCue | undefined);
@@ -613,13 +710,85 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     const cues = await this.fetchCues(token, info);
     if (token !== this.loadToken) return;
     if (!cues) {
-      // Only complain if the viewer is still waiting on this very track.
-      if (track.mode === 'showing') this.setSubtitleNotice('Subtitles failed to load — try another version');
+      this.failedCueKeys.add(key);
+      // Only act if the viewer is still waiting on this very track.
+      if (track.mode !== 'showing') return;
+      await this.fallBackToSibling(token, video, info);
       return;
     }
     // The <track> may have been re-rendered while we were downloading.
     const current = this.textTrackFor(video, key) ?? track;
+    // Still loading its stub: onTrackLoaded() fills it the moment that ends.
+    if (!this.isTrackElementSettled(this.trackElementFor(video, key))) return;
     this.fillTrack(current, cues);
+  }
+
+  // After hls.js has rewritten the text tracks: re-show whichever track the
+  // viewer had (or the saved preference), and refill it from the cache
+  // (hls.js's wipe leaves the TextTrack objects in place but empty, so the
+  // "already filled" bookkeeping has to start over).
+  private reassertSubtitles(video: HTMLVideoElement) {
+    this.filledTracks = new WeakSet<TextTrack>();
+    const list = video.textTracks;
+    const showing: string[] = [];
+    for (let i = 0; i < list.length; i++) {
+      if (list[i].mode === 'showing') showing.push(this.subtitleKey({ lang: list[i].language, label: list[i].label }));
+    }
+    const prefKey = this.preferredKeyFor(video);
+    // Several showing at once here means Chromium's locale auto-selection
+    // joined in — the viewer's own choice (saved pref, then the last track
+    // we reconciled to) outranks it.
+    const wanted =
+      (prefKey && showing.indexOf(prefKey) !== -1 ? prefKey : null) ??
+      (this.lastShowingKey && showing.indexOf(this.lastShowingKey) !== -1 ? this.lastShowingKey : null) ??
+      showing[0] ??
+      this.lastShowingKey ??
+      prefKey;
+    if (!wanted) return;
+    this.hlsTouchedTracksAt = performance.now();
+    let target: TextTrack | null = null;
+    for (let i = 0; i < list.length; i++) {
+      const t = list[i];
+      const isMatch = this.subtitleKey({ lang: t.language, label: t.label }) === wanted;
+      if (t.mode !== (isMatch ? 'showing' : 'disabled')) t.mode = isMatch ? 'showing' : 'disabled';
+      if (isMatch) target = t;
+    }
+    if (!target) return;
+    this.lastShowingKey = wanted;
+    void this.ensureCues(this.loadToken, video, wanted, target);
+  }
+
+  // The chosen file is unavailable: try the other variants of the same
+  // language in list order and switch to the first that downloads, telling
+  // the viewer which one is on. The saved preference is left alone — this
+  // is a stand-in for one title, not a new choice.
+  private async fallBackToSibling(token: number, video: HTMLVideoElement, failed: { lang: string; label: string }) {
+    const failedKey = this.subtitleKey(failed);
+    const siblings = this.subtitleTracks().filter(
+      (t) => t.lang === failed.lang && this.subtitleKey(t) !== failedKey && !this.failedCueKeys.has(this.subtitleKey(t)),
+    );
+    for (const alt of siblings) {
+      const cues = await this.fetchCues(token, alt);
+      if (token !== this.loadToken) return;
+      const altKey = this.subtitleKey(alt);
+      if (!cues) {
+        this.failedCueKeys.add(altKey);
+        continue;
+      }
+      const failedTrack = this.textTrackFor(video, failedKey);
+      const altTrack = this.textTrackFor(video, altKey);
+      if (!altTrack) return;
+      // Still what the viewer wants? (They may have moved on meanwhile.)
+      if (failedTrack && failedTrack.mode !== 'showing') return;
+      this.hlsTouchedTracksAt = performance.now(); // our switch, not the viewer's: don't persist it
+      if (failedTrack) failedTrack.mode = 'disabled';
+      altTrack.mode = 'showing';
+      this.lastShowingKey = altKey;
+      this.setSubtitleNotice(`“${failed.label}” is unavailable — showing “${alt.label}” instead`);
+      void this.ensureCues(token, video, altKey, altTrack);
+      return;
+    }
+    this.setSubtitleNotice('Subtitles failed to load — try another version');
   }
 
   private setSubtitleNotice(msg: string | null) {
@@ -671,16 +840,17 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   // browsers don't reliably re-apply <track default> on a swapped track list
   // once the viewer has touched captions once, so this is the source of truth.
   private applySubtitlePreference(video: HTMLVideoElement) {
-    const pref = this.readSubtitlePref();
-    if (!pref) return;
+    if (!this.readSubtitlePref()) return;
     const token = this.loadToken;
     const apply = () => {
       if (token !== this.loadToken) return;
+      const key = this.preferredKeyFor(video);
+      if (!key) return;
       const list = video.textTracks;
       let matched: TextTrack | null = null;
       for (let i = 0; i < list.length; i++) {
         const t = list[i];
-        const isMatch = t.language === pref.lang && t.label === pref.label;
+        const isMatch = this.subtitleKey({ lang: t.language, label: t.label }) === key;
         t.mode = isMatch ? 'showing' : 'disabled';
         if (isMatch) matched = t;
       }
@@ -716,20 +886,23 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
       return null;
     }
 
-    // Several showing at once means a switch is in progress: the one that was
-    // showing before is the loser, whatever the browser's own auto-selection
-    // or the saved preference say — the viewer just asked for the other one.
+    // Several showing at once is never a viewer's doing — native captions
+    // menus disable the previous track before enabling the next — it is the
+    // browser's own automatic selection (Chromium enables a track matching
+    // its locale on load) colliding with ours. So the saved preference wins
+    // when it is among them; failing that, keep whichever was not already
+    // showing last time, so a script-driven switch still lands on the new one.
     let keepIdx = showingIdx[0];
-    const previous = this.lastShowingKey;
-    const fresh = showingIdx.find((i) => this.subtitleKey({ lang: list[i].language, label: list[i].label }) !== previous);
-    if (fresh !== undefined) {
-      keepIdx = fresh;
+    const prefKey = this.preferredKeyFor(video);
+    const prefIdx = prefKey
+      ? showingIdx.find((i) => this.subtitleKey({ lang: list[i].language, label: list[i].label }) === prefKey)
+      : undefined;
+    if (prefIdx !== undefined) {
+      keepIdx = prefIdx;
     } else {
-      const pref = this.readSubtitlePref();
-      if (pref) {
-        const match = showingIdx.find((i) => list[i].language === pref.lang && list[i].label === pref.label);
-        if (match !== undefined) keepIdx = match;
-      }
+      const previous = this.lastShowingKey;
+      const fresh = showingIdx.find((i) => this.subtitleKey({ lang: list[i].language, label: list[i].label }) !== previous);
+      if (fresh !== undefined) keepIdx = fresh;
     }
     for (const i of showingIdx) {
       if (i !== keepIdx) list[i].mode = 'disabled';
@@ -745,12 +918,16 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   // since this one's urgent — and persist the choice (or its absence).
   private wireSubtitlePersistence(video: HTMLVideoElement) {
     video.textTracks.onchange = () => {
+      // hls.js just rewrote the list (see reassertSubtitles), or the browser
+      // auto-selected a track on load: not the viewer's doing, so the saved
+      // preference must not follow it — but still collapse to one track.
+      const machineDriven = performance.now() - this.hlsTouchedTracksAt < 1000;
       const showing = this.enforceSingleShowing(video);
       if (showing) {
         const key = this.subtitleKey({ lang: showing.language, label: showing.label });
         void this.ensureCues(this.loadToken, video, key, showing);
       }
-      this.saveSubtitlePref(showing ? { lang: showing.language, label: showing.label } : null);
+      if (!machineDriven) this.saveSubtitlePref(showing ? { lang: showing.language, label: showing.label } : null);
     };
   }
 

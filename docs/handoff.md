@@ -37,6 +37,38 @@ Everything from the section below this one is now **committed and pushed**
   - `enforceSingleShowing` bug found by experiment and fixed (`lastShowingKey`):
     with two tracks showing at once it kept the *old* one (index 0 / saved
     pref) and silently disabled the viewer's new pick.
+  - **Root cause of "picked subtitles, nothing shows", found with a stack
+    trace and fixed (`hls.js` 1.6.16 interference)**: its
+    `timeline-controller._cleanTracks()` removes every cue from EVERY text
+    track of the media element on MEDIA_ATTACHING and MANIFEST_LOADING, and
+    its subtitle-track-controller's `change` listener calls
+    `setSubtitleTrack(-1)` -> `toggleTrackModes()` which sets every native
+    subtitles/captions track to disabled. Fix: `renderTextTracksNatively:
+    false` in the Hls config, plus `reassertSubtitles()` after
+    MEDIA_ATTACHED / MANIFEST_LOADING / MANIFEST_PARSED /
+    SUBTITLE_TRACKS_UPDATED / SUBTITLE_TRACK_SWITCH, and `change` events
+    within 1 s of those are treated as machine-driven (modes still
+    reconciled, preference NOT saved).
+  - **Second Chromium quirk, reproduced in a blank page**: cues added by
+    script to a `<track>` element's TextTrack are wiped when that element's
+    FIRST load completes (stub `data:` src or no src alike); cues added after
+    survive every later toggle. So `fillTrack` only runs once the element is
+    settled (`readyState >= 2`) and `(load)`/`(error)` on each `<track>`
+    (`onTrackLoaded`) refills from `cueCache`.
+  - Saved preference now resolves per title (`preferredKeyFor`): exact
+    lang+label, else first track of that language — labels carry release
+    tags ("English — DVD") so exact matches across titles are rare.
+  - **Sibling fallback** (`fallBackToSibling`): when the chosen file 502s
+    (observed live: Breaking Bad S1E2 "English" 502'd for a while, then
+    served fine), the player switches to the next same-language variant that
+    downloads and shows a 5 s notice; the preference is left alone. Verified
+    by forcing `file=36919` to 502 via a Playwright route: switched to
+    "English 2", 890 cues, correct active cue.
+  - Verification tooling: Playwright Node scripts (`trace-modes.mjs`,
+    `trace-series.mjs`, `trace-episode.mjs`, `trace-fallback.mjs`) lived in
+    the session scratchpad, not the repo. Lesson: `playwright-cli eval` with a
+    `;` in the expression fails silently — two "bugs" this session were the
+    harness not writing localStorage.
   - NOT verified: iOS Safari native fullscreen rendering of script-added
     cues (should work — they sit in the same TextTrack — but not observed).
 
