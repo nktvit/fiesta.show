@@ -12,6 +12,21 @@ export function requestFullscreen(el: HTMLElement): void {
   } catch (e) {}
 }
 
+// TV browsers differ in what they will put fullscreen: some only honour a
+// request on the stage element, some only on <html>, some on nothing at
+// all (Samsung's Tizen browser keeps its address bar unless the viewer uses
+// the browser's own Full Screen mode). Try in order, then report the result
+// to the caller after the browser has had a moment to react.
+export function requestFullscreenCascade(el: HTMLElement | null, done: (ok: boolean) => void): void {
+  if (isFullscreen()) { done(true); return; }
+  if (el) requestFullscreen(el);
+  setTimeout(function () {
+    if (isFullscreen()) { done(true); return; }
+    requestFullscreen(document.documentElement);
+    setTimeout(function () { done(isFullscreen()); }, 400);
+  }, 400);
+}
+
 export function exitFullscreen(): void {
   const doc: any = document;
   if (!isFullscreen()) return;

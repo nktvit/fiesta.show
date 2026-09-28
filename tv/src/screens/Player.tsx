@@ -3,7 +3,7 @@ import { getStream, getSubtitles, getMovieDetails, resolveImdbId, isImdbId, getT
 import { safePlay } from '../util';
 import { KEY } from '../remote';
 import { navigate, moviePath } from '../router';
-import { requestFullscreen, exitFullscreen, isFullscreen } from '../fullscreen';
+import { requestFullscreen, requestFullscreenCascade, exitFullscreen, isFullscreen } from '../fullscreen';
 import { fetchCues, activeCueText, Cue } from '../subtitles';
 import {
   progressKey, readSavedProgress, saveProgress, clearProgress,
@@ -71,6 +71,10 @@ export default function Player({ type, id, season, episode }: Props) {
   const [controlsVisible, setControlsVisible] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const [ended, setEnded] = useState(false);
+  // Shown when no fullscreen request took effect — the viewer then has to
+  // use the browser's own Full Screen mode (the only way on some TV shells).
+  const [fsHint, setFsHint] = useState(false);
+  const fsHintTimerRef = useRef<any>(null);
 
   menuOpenRef.current = menuOpen;
 
@@ -252,6 +256,7 @@ export default function Player({ type, id, season, episode }: Props) {
     // Best-effort: the Play button that brought us here already asked for
     // fullscreen inside its click handler; this covers deep links.
     if (!isFullscreen()) requestFullscreen(document.documentElement);
+    setFsHint(false);
 
     const t = setTimeout(function () { if (stageRef.current) stageRef.current.focus(); }, 80);
 
@@ -282,10 +287,25 @@ export default function Player({ type, id, season, episode }: Props) {
     scheduleHide();
     return function () {
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+      if (fsHintTimerRef.current) clearTimeout(fsHintTimerRef.current);
       exitFullscreen();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  function showFsHint() {
+    setFsHint(true);
+    if (fsHintTimerRef.current) clearTimeout(fsHintTimerRef.current);
+    fsHintTimerRef.current = setTimeout(function () { setFsHint(false); }, 8000);
+  }
+
+  // Called from a real key/click so the request carries a user gesture.
+  function goFullscreen() {
+    requestFullscreenCascade(stageRef.current, function (ok) {
+      if (ok) setFsHint(false); else showFsHint();
+    });
+    showControls();
+  }
 
   // ---- transport -----------------------------------------------------------
 
@@ -295,7 +315,7 @@ export default function Player({ type, id, season, episode }: Props) {
     if (video.paused || video.ended) {
       if (video.ended) { try { video.currentTime = 0; } catch (e) {} }
       safePlay(video);
-      if (!isFullscreen()) requestFullscreen(document.documentElement);
+      if (!isFullscreen()) goFullscreen();
     } else {
       video.pause();
     }
@@ -500,7 +520,14 @@ export default function Player({ type, id, season, episode }: Props) {
         onTimeUpdate={onTimeUpdate}
         onPlay={function () { setPaused(false); setEnded(false); }}
         onPause={function () { setPaused(true); setControlsVisible(true); }}
-        onPlaying={function () { setBuffering(false); setPhase('playing'); scheduleHide(); }}
+        onPlaying={function () {
+          setBuffering(false); setPhase('playing'); scheduleHide();
+          // Playback is running but the browser chrome is still there: tell the
+          // viewer how to get rid of it (one more try on the stage first).
+          if (!isFullscreen()) {
+            requestFullscreenCascade(stageRef.current, function (ok) { if (!ok) showFsHint(); });
+          }
+        }}
         onCanPlay={function () { setPhase(function (p) { return p === 'loading' ? 'playing' : p; }); }}
         onWaiting={function () { setBuffering(true); }}
         onEnded={onEnded}
@@ -583,6 +610,10 @@ export default function Player({ type, id, season, episode }: Props) {
                 </button>
               ) : null}
             </div>
+            <div className="tv-player-right">
+            <button type="button" className="tv-ctl tv-ctl-fs" data-focusable="true" onClick={goFullscreen} aria-label="Full screen">
+              <span className="tv-ctl-icon">&#x26F6;</span>
+            </button>
             <button
               type="button"
               className={'tv-ctl tv-ctl-subs' + (activeTrack >= 0 ? ' is-on' : '')}
@@ -596,9 +627,17 @@ export default function Player({ type, id, season, episode }: Props) {
                 {!tracks.length ? 'No subtitles' : (subsState === 'loading' ? 'Loading…' : (subsState === 'error' ? 'Unavailable' : activeLabel))}
               </span>
             </button>
+            </div>
           </div>
         </div>
       </div>
+
+      {fsHint ? (
+        <div className="tv-toast">
+          <span className="tv-toast-icon">&#x26F6;</span>
+          <span>This browser didn’t go full screen. Use the browser’s own <b>Full Screen</b> option (browser menu) to hide the address bar.</span>
+        </div>
+      ) : null}
 
       {menuOpen ? (
         <div className="tv-menu">
