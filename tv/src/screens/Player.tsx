@@ -438,6 +438,22 @@ export default function Player({ type, id, season, episode }: Props) {
     }
   }
 
+  // Cue timing runs off our own 100 ms tick, not `timeupdate`: TV browsers
+  // fire timeupdate anywhere from 4 Hz down to about once a second, which
+  // showed up as subtitles landing visibly late. The lookup is a binary
+  // search and setState only fires when the text actually changes, so the
+  // tick is cheap even on a 2017 TV CPU.
+  useEffect(function () {
+    if (phase !== 'playing') return;
+    const id = setInterval(function () {
+      const video = videoRef.current;
+      if (!video || video.paused || !cuesRef.current.length) return;
+      const text = activeCueText(cuesRef.current, video.currentTime);
+      setCueText(function (prev) { return prev === text ? prev : text; });
+    }, 100);
+    return function () { clearInterval(id); };
+  }, [phase]);
+
   // ---- video events --------------------------------------------------------
 
   function onLoadedMetadata() {
