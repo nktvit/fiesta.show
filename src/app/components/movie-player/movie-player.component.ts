@@ -1,6 +1,7 @@
 import {
   Component,
   ElementRef,
+  HostListener,
   computed,
   effect,
   input,
@@ -12,6 +13,7 @@ import {
   SimpleChanges,
 } from '@angular/core';
 import type Hls from 'hls.js';
+import { parseVtt, VttCue } from '../../utils/vtt';
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -55,19 +57,32 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   readonly isPreview = computed(() => this.env() === 'preview');
   readonly segmentSource = signal<string | null>(null);
 
-  // external subtitle tracks (best per language) from /api/subs, listed for
-  // the native captions menu. None get the raw network URL as their [src] —
-  // see trackSrc/vttCache: a <track> whose src is assigned dynamically after
-  // it already exists in the DOM can silently never fetch (observed: reliable
-  // for a blob: URL, not for a plain network URL — assign only once fetched).
-  // The default/preferred track is fetched before this list is even rendered
-  // (see loadSubtitles); every other language is fetched afterward in the
-  // background, one at a time (see preloadRemainingSubtitles) — OpenSubtitles'
-  // legacy download host rate-limits a burst of simultaneous requests hard.
+  // External subtitle tracks (best per language) from /api/subs, listed in
+  // the native captions menu. The <track> elements never point at the VTT
+  // file: a <track> whose src is (re)assigned once it is already in the DOM
+  // can silently never fetch (Chromium and WebKit both; reproduced with plain
+  // and blob: URLs alike — the blob: variant merely failed less often), which
+  // was the "picked a language, nothing appeared" bug. Instead every track is
+  // born with an empty stub and its cues are fetched by us, parsed, and pushed
+  // through TextTrack.addCue() — a path that does not depend on the element
+  // ever loading anything. The preferred track is filled first; the rest are
+  // fetched one at a time in the background (OpenSubtitles' legacy download
+  // host rate-limits bursts hard), so switching later is instant.
   readonly subtitleTracks = signal<{ lang: string; label: string; src: string; isDefault: boolean }[]>([]);
-  // subtitleKey -> blob: URL of the already-fetched VTT text — the only
-  // source of truth for whether a track has real, loadable content.
-  readonly vttCache = signal<Map<string, string>>(new Map());
+  // Every <track> gets this as its src so the browser considers it loaded
+  // (readiness "loaded", zero cues) and never tries a network fetch itself.
+  readonly stubVtt = 'data:text/vtt,WEBVTT';
+  // Brief in-player notice ("Subtitles failed to load"); null when nothing to say.
+  readonly subtitleNotice = signal<string | null>(null);
+  private subtitleNoticeTimer: ReturnType<typeof setTimeout> | null = null;
+  // subtitleKey -> parsed cues, so re-showing or re-filling a track never re-downloads.
+  private readonly cueCache = new Map<string, VttCue[]>();
+  // TextTrack objects that already hold their cues (a re-render that keeps
+  // the same <track> elements must not add every cue a second time).
+  private filledTracks = new WeakSet<TextTrack>();
+  // Fetches in flight, keyed like cueCache, so a viewer pick and the
+  // background queue never download the same file twice at once.
+  private readonly cueFetches = new Map<string, Promise<VttCue[] | null>>();
 
   // which cloudnestra front actually served the current stream (1=vidsrc, 2=vsembed)
   readonly activeServer = signal<number>(1);
@@ -98,6 +113,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   // fetched from an unrelated IP succeeded immediately — an IP-level
   // rate-limit/block, not a per-request fluke), so this errs conservative.
   private static readonly PRELOAD_GAP_MS = 800;
+  private static readonly SEEK_STEP = 10;
 
   constructor() {
     // Attach the stream once both the resolved master URL and the <video> exist.
@@ -138,7 +154,42 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   ngOnDestroy() {
     this.destroyHls();
     if (this.bufferingTimer) clearTimeout(this.bufferingTimer);
-    this.clearVttCache();
+    if (this.subtitleNoticeTimer) clearTimeout(this.subtitleNoticeTimer);
+    this.cueCache.clear();
+    this.cueFetches.clear();
+  }
+
+  // Keyboard transport for the native player: Left/Right step 10 s. The
+  // browser's own handling (Chromium: 5 s, only while the <video> itself is
+  // focused; Safari: nothing) is replaced so the keys work anywhere on the
+  // page once playback has started, but never while typing in a field.
+  @HostListener('document:keydown', ['$event'])
+  onDocumentKeydown(event: KeyboardEvent) {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    if (event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented) return;
+    if (!this.started() || !this.masterUrl()) return;
+    const target = event.target as HTMLElement | null;
+    if (target && this.isEditable(target)) return;
+    const video = this.videoEl()?.nativeElement;
+    if (!video) return;
+    event.preventDefault();
+    this.seekBy(video, event.key === 'ArrowLeft' ? -MoviePlayerComponent.SEEK_STEP : MoviePlayerComponent.SEEK_STEP);
+  }
+
+  private isEditable(el: HTMLElement): boolean {
+    const tag = el.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+    return !!el.closest('[contenteditable=""], [contenteditable="true"]');
+  }
+
+  private seekBy(video: HTMLVideoElement, delta: number) {
+    const duration = Number.isFinite(video.duration) ? video.duration : Infinity;
+    let t = video.currentTime + delta;
+    if (t < 0) t = 0;
+    if (t > duration - 0.5) t = Math.max(0, duration - 0.5);
+    try {
+      video.currentTime = t;
+    } catch {}
   }
 
   private async loadStream(srv?: 1 | 2, keepStarted = false) {
@@ -155,7 +206,10 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     // Critical for series: a stale cache entry surviving an episode switch
     // would collide on the same lang::label key and silently show the wrong
     // episode's subtitles, since the key carries no episode identity.
-    this.clearVttCache();
+    this.cueCache.clear();
+    this.cueFetches.clear();
+    this.filledTracks = new WeakSet<TextTrack>();
+    this.setSubtitleNotice(null);
     if (!keepStarted) {
       // Fresh load: full-screen loader covers the stage.
       this.loading.set(true);
@@ -441,21 +495,10 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
       if (token !== this.loadToken) return;
       const tracks = Array.isArray(data?.tracks) ? data.tracks : [];
       const marked = this.markPreferredSubtitle(tracks);
-      const preferred = marked.find((t) => t.isDefault);
 
-      // Fetch the default/restored track BEFORE the <track> list even
-      // renders. A <track> element born with its real (blob:) src loads
-      // reliably; one whose src is assigned after the fact — as this always
-      // was for the default, via the native [default]/mode="showing" path —
-      // can silently never fetch. Confirmed by direct repro: toggling mode
-      // and even re-touching the *same* network src attribute did nothing;
-      // only ever assigning a track a src it didn't already have (blob or
-      // otherwise) reliably kicks off a load.
-      if (preferred) {
-        await this.prefetchTrack(token, preferred);
-        if (token !== this.loadToken) return;
-      }
-
+      // The list renders right away (the captions menu shows every language
+      // immediately); applySubtitlePreference() fills and shows the preferred
+      // one as soon as its <track> exists, and the queue below fetches the rest.
       this.subtitleTracks.set(marked);
       void this.preloadRemainingSubtitles(token, marked);
     } catch {
@@ -467,52 +510,132 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     return `${t.lang}::${t.label}`;
   }
 
-  // A track only ever gets a real src once its VTT text has actually been
-  // fetched and cached as a blob: URL (see prefetchTrack) — never the raw
-  // network URL directly (see the loadSubtitles/subtitleTracks comment for
-  // why). Unloaded tracks still list in the native captions menu with no src.
-  trackSrc(t: { lang: string; label: string }): string | null {
-    return this.vttCache().get(this.subtitleKey(t)) ?? null;
+  private trackInfo(key: string): { lang: string; label: string; src: string } | undefined {
+    return this.subtitleTracks().find((t) => this.subtitleKey(t) === key);
   }
 
-  // Fetch every non-default language's VTT text in the background — one at a
-  // time, spaced out (see PRELOAD_GAP_MS) — so OpenSubtitles' legacy download
-  // host never sees a burst, caching each as a blob: URL so switching to it
-  // later is instant. Best-effort throughout: a fetch failure just leaves
-  // that track to load on demand when/if the viewer picks it (see
-  // wireSubtitlePersistence), never blocks or degrades playback.
+  private textTrackFor(video: HTMLVideoElement, key: string): TextTrack | null {
+    const list = video.textTracks;
+    for (let i = 0; i < list.length; i++) {
+      if (this.subtitleKey({ lang: list[i].language, label: list[i].label }) === key) return list[i];
+    }
+    return null;
+  }
+
+  // Fetch every language's VTT in the background — preferred first, then
+  // one at a time, spaced out (see PRELOAD_GAP_MS) — so OpenSubtitles' legacy
+  // download host never sees a burst, and push each into its TextTrack so a
+  // later pick in the captions menu is instant. Best-effort throughout: a
+  // failure leaves that track to be fetched on demand when/if the viewer
+  // picks it (see wireSubtitlePersistence), never blocks playback.
   private async preloadRemainingSubtitles(
     token: number,
     tracks: { lang: string; label: string; src: string; isDefault: boolean }[],
   ) {
-    if (!this.canPreloadSubtitles()) return;
-    for (const t of tracks) {
-      if (t.isDefault) continue; // already fetched up front in loadSubtitles
-      await sleep(MoviePlayerComponent.PRELOAD_GAP_MS);
+    const ordered = [...tracks.filter((t) => t.isDefault), ...tracks.filter((t) => !t.isDefault)];
+    let first = true;
+    for (const t of ordered) {
+      if (!first) {
+        if (!this.canPreloadSubtitles()) return;
+        await sleep(MoviePlayerComponent.PRELOAD_GAP_MS);
+      }
+      first = false;
       if (token !== this.loadToken) return; // superseded — episode/retry/server switch
-      await this.prefetchTrack(token, t);
+      const cues = await this.fetchCues(token, t);
+      if (token !== this.loadToken) return;
+      const video = this.videoEl()?.nativeElement;
+      const tt = video && cues ? this.textTrackFor(video, this.subtitleKey(t)) : null;
+      if (tt && cues) this.fillTrack(tt, cues);
     }
   }
 
-  private async prefetchTrack(token: number, t: { lang: string; label: string; src: string }) {
+  // Download + parse one subtitle file, once. Concurrent callers (viewer pick
+  // racing the preload queue) share the same in-flight promise. One retry
+  // after a short pause covers the download host's transient 502/403s.
+  private fetchCues(token: number, t: { lang: string; label: string; src: string }): Promise<VttCue[] | null> {
     const key = this.subtitleKey(t);
-    if (this.vttCache().has(key)) return; // already fetched (e.g. the viewer beat the preload queue to it)
-    try {
-      const res = await fetch(t.src);
-      if (token !== this.loadToken || !res.ok) return;
-      const text = await res.text();
-      if (token !== this.loadToken) return;
-      const url = URL.createObjectURL(new Blob([text], { type: 'text/vtt' }));
-      this.vttCache.update((cache) => new Map(cache).set(key, url));
-    } catch {
-      // best-effort — this track just stays unloaded until retried
+    const cached = this.cueCache.get(key);
+    if (cached) return Promise.resolve(cached);
+    const inflight = this.cueFetches.get(key);
+    if (inflight) return inflight;
+
+    const run = (async () => {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        if (attempt > 0) await sleep(1200);
+        if (token !== this.loadToken) return null;
+        try {
+          const res = await fetch(t.src);
+          if (token !== this.loadToken) return null;
+          if (!res.ok) continue;
+          const cues = parseVtt(await res.text());
+          if (token !== this.loadToken) return null;
+          if (cues.length === 0) continue;
+          this.cueCache.set(key, cues);
+          return cues;
+        } catch {
+          // retry once, then give up
+        }
+      }
+      return null;
+    })().finally(() => {
+      if (this.cueFetches.get(key) === run) this.cueFetches.delete(key);
+    });
+    this.cueFetches.set(key, run);
+    return run;
+  }
+
+  private fillTrack(track: TextTrack, cues: VttCue[]) {
+    if (this.filledTracks.has(track)) return;
+    this.filledTracks.add(track);
+    const CueCtor: typeof VTTCue | undefined =
+      (window as unknown as { VTTCue?: typeof VTTCue }).VTTCue ??
+      ((window as unknown as { TextTrackCue?: typeof VTTCue }).TextTrackCue as typeof VTTCue | undefined);
+    if (!CueCtor) return;
+    for (const c of cues) {
+      try {
+        track.addCue(new CueCtor(c.start, c.end, c.text));
+      } catch {
+        // a malformed cue must not take the rest of the file down with it
+      }
+    }
+  }
+
+  // Make sure a track that is (about to be) showing actually has its cues —
+  // fetching them now, ahead of the background queue, if it doesn't yet.
+  private async ensureCues(token: number, video: HTMLVideoElement, key: string, track: TextTrack) {
+    if (this.filledTracks.has(track)) return;
+    const info = this.trackInfo(key);
+    if (!info) return;
+    const cues = await this.fetchCues(token, info);
+    if (token !== this.loadToken) return;
+    if (!cues) {
+      // Only complain if the viewer is still waiting on this very track.
+      if (track.mode === 'showing') this.setSubtitleNotice('Subtitles failed to load — try another version');
+      return;
+    }
+    // The <track> may have been re-rendered while we were downloading.
+    const current = this.textTrackFor(video, key) ?? track;
+    this.fillTrack(current, cues);
+  }
+
+  private setSubtitleNotice(msg: string | null) {
+    if (this.subtitleNoticeTimer) {
+      clearTimeout(this.subtitleNoticeTimer);
+      this.subtitleNoticeTimer = null;
+    }
+    this.subtitleNotice.set(msg);
+    if (msg) {
+      this.subtitleNoticeTimer = setTimeout(() => {
+        this.subtitleNoticeTimer = null;
+        this.subtitleNotice.set(null);
+      }, 5000);
     }
   }
 
   // Data-saver or a genuinely slow connection: skip background preloading
-  // and leave every non-default track on the existing load-on-demand path.
-  // Subtitle files are tiny (tens of KB), so this is a light-touch guard, not
-  // real bandwidth probing — the Network Information API isn't universally
+  // and leave every non-default track on the load-on-demand path. Subtitle
+  // files are tiny (tens of KB), so this is a light-touch guard, not real
+  // bandwidth probing — the Network Information API isn't universally
   // supported (notably Safari/Firefox), and preloading is the safe default
   // when we simply can't tell.
   private canPreloadSubtitles(): boolean {
@@ -521,11 +644,6 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     if (conn.saveData) return false;
     if (typeof conn.effectiveType === 'string' && /2g/.test(conn.effectiveType)) return false;
     return true;
-  }
-
-  private clearVttCache() {
-    for (const url of this.vttCache().values()) URL.revokeObjectURL(url);
-    this.vttCache.set(new Map());
   }
 
   // Mark the track matching the viewer's last-picked language (and variant,
@@ -551,25 +669,24 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   private applySubtitlePreference(video: HTMLVideoElement) {
     const pref = this.readSubtitlePref();
     if (!pref) return;
-    const key = this.subtitleKey(pref);
+    const token = this.loadToken;
     const apply = () => {
-      const cached = this.vttCache().get(key);
+      if (token !== this.loadToken) return;
       const list = video.textTracks;
+      let matched: TextTrack | null = null;
       for (let i = 0; i < list.length; i++) {
         const t = list[i];
         const isMatch = t.language === pref.lang && t.label === pref.label;
-        if (isMatch && cached) {
-          // Assign directly rather than trust the reactive [attr.src]
-          // binding to have already committed (see assignTrackSrc).
-          this.assignTrackSrc(video, key, cached, t);
-        } else {
-          t.mode = isMatch ? 'showing' : 'disabled';
-        }
+        t.mode = isMatch ? 'showing' : 'disabled';
+        if (isMatch) matched = t;
       }
       // Chromium can independently auto-select a track matching the browser's
       // locale via its own "honor user preferences" algorithm, racing with the
       // assignment above — collapse back down to a single showing track.
-      this.enforceSingleShowing(video);
+      const showing = this.enforceSingleShowing(video) ?? matched;
+      if (showing) {
+        void this.ensureCues(token, video, this.subtitleKey({ lang: showing.language, label: showing.label }), showing);
+      }
     };
     apply();
     // This runs off a subtitleTracks() effect, which can fire before the
@@ -606,47 +723,18 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
 
   // Native <video> controls fire this on the track list whenever the viewer
   // toggles captions or switches language/variant (and whenever a browser's
-  // own automatic track selection kicks in). If the background preload queue
-  // hasn't reached this track yet, fetch it now — ahead of the queue, since
-  // this one's urgent — and persist the choice (or its absence) for future
-  // playback.
+  // own automatic track selection kicks in). Fill the chosen track with its
+  // cues if the background queue hasn't reached it yet — ahead of the queue,
+  // since this one's urgent — and persist the choice (or its absence).
   private wireSubtitlePersistence(video: HTMLVideoElement) {
     video.textTracks.onchange = () => {
       const showing = this.enforceSingleShowing(video);
       if (showing) {
         const key = this.subtitleKey({ lang: showing.language, label: showing.label });
-        const shownTrack = showing;
-        const cached = this.vttCache().get(key);
-        if (cached) {
-          this.assignTrackSrc(video, key, cached, shownTrack);
-        } else {
-          const token = this.loadToken;
-          const track = this.subtitleTracks().find((t) => this.subtitleKey(t) === key);
-          if (track) {
-            void this.prefetchTrack(token, track).then(() => {
-              if (token !== this.loadToken) return;
-              const url = this.vttCache().get(key);
-              if (url) this.assignTrackSrc(video, key, url, shownTrack);
-            });
-          }
-        }
+        void this.ensureCues(this.loadToken, video, key, showing);
       }
       this.saveSubtitlePref(showing ? { lang: showing.language, label: showing.label } : null);
     };
-  }
-
-  // Assigns a <track> element's src directly via the DOM rather than trusting
-  // that Angular's reactive [attr.src] binding (driven by the vttCache signal
-  // write that just happened) has already committed to the DOM by the time
-  // we act — confirmed unreliable in practice: mode can be (re)asserted
-  // before that render lands, and a mode change alone doesn't retrigger a
-  // fetch once the browser considers a track already "handled".
-  private assignTrackSrc(video: HTMLVideoElement, key: string, url: string, showTrack: TextTrack) {
-    const el = Array.from(video.querySelectorAll('track')).find(
-      (t) => this.subtitleKey({ lang: t.srclang, label: t.label }) === key,
-    );
-    if (el && el.getAttribute('src') !== url) el.setAttribute('src', url);
-    showTrack.mode = 'showing';
   }
 
   private readSubtitlePref(): { lang: string; label: string } | null {

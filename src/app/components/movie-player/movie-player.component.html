@@ -18,7 +18,7 @@
       (seeked)="onSeeked()"
     >
       @for (t of subtitleTracks(); track t.src) {
-        <track kind="subtitles" [attr.src]="trackSrc(t)" [attr.srclang]="t.lang" [attr.label]="t.label" [default]="t.isDefault" />
+        <track kind="subtitles" [src]="stubVtt" [attr.srclang]="t.lang" [attr.label]="t.label" [default]="t.isDefault" />
       }
     </video>
   }
@@ -138,6 +138,10 @@
       <span class="text-white/60">source:</span>
       <span [class]="segmentSource() === 'relay' ? 'text-emerald-400 font-semibold' : segmentSource() === 'proxy' ? 'text-amber-400 font-semibold' : segmentSource() === 'direct' ? 'text-sky-400 font-semibold' : 'text-white/40'">{{ segmentSource() ?? '…' }}</span>
     </div>
+  }
+
+  @if (subtitleNotice()) {
+    <div class="pointer-events-none absolute bottom-16 left-1/2 z-30 -translate-x-1/2 rounded-full bg-black/75 px-4 py-1.5 text-xs font-medium text-white ring-1 ring-white/15 backdrop-blur-md">{{ subtitleNotice() }}</div>
   }
 
   @if (activeServer() === 2 && masterUrl()) {
