@@ -83,6 +83,9 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   // Fetches in flight, keyed like cueCache, so a viewer pick and the
   // background queue never download the same file twice at once.
   private readonly cueFetches = new Map<string, Promise<VttCue[] | null>>();
+  // Key of the track that was showing after the last reconciliation, so a
+  // switch can tell the new pick from the old one (see enforceSingleShowing).
+  private lastShowingKey: string | null = null;
 
   // which cloudnestra front actually served the current stream (1=vidsrc, 2=vsembed)
   readonly activeServer = signal<number>(1);
@@ -209,6 +212,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     this.cueCache.clear();
     this.cueFetches.clear();
     this.filledTracks = new WeakSet<TextTrack>();
+    this.lastShowingKey = null;
     this.setSubtitleNotice(null);
     if (!keepStarted) {
       // Fresh load: full-screen loader covers the stage.
@@ -707,17 +711,30 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     for (let i = 0; i < list.length; i++) {
       if (list[i].mode === 'showing') showingIdx.push(i);
     }
-    if (showingIdx.length === 0) return null;
+    if (showingIdx.length === 0) {
+      this.lastShowingKey = null;
+      return null;
+    }
 
+    // Several showing at once means a switch is in progress: the one that was
+    // showing before is the loser, whatever the browser's own auto-selection
+    // or the saved preference say — the viewer just asked for the other one.
     let keepIdx = showingIdx[0];
-    const pref = this.readSubtitlePref();
-    if (pref) {
-      const match = showingIdx.find((i) => list[i].language === pref.lang && list[i].label === pref.label);
-      if (match !== undefined) keepIdx = match;
+    const previous = this.lastShowingKey;
+    const fresh = showingIdx.find((i) => this.subtitleKey({ lang: list[i].language, label: list[i].label }) !== previous);
+    if (fresh !== undefined) {
+      keepIdx = fresh;
+    } else {
+      const pref = this.readSubtitlePref();
+      if (pref) {
+        const match = showingIdx.find((i) => list[i].language === pref.lang && list[i].label === pref.label);
+        if (match !== undefined) keepIdx = match;
+      }
     }
     for (const i of showingIdx) {
       if (i !== keepIdx) list[i].mode = 'disabled';
     }
+    this.lastShowingKey = this.subtitleKey({ lang: list[keepIdx].language, label: list[keepIdx].label });
     return list[keepIdx];
   }
 

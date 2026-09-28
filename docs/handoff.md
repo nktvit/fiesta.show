@@ -29,6 +29,14 @@ Everything from the section below this one is now **committed and pushed**
   - Left/Right arrows seek ±10 s once playback started (document-level
     listener, skips inputs/textareas/contenteditable and modifier combos).
     Verified: +10 / −10 / no seek while a textarea is focused.
+  - Re-verified on production after deploy (`6ab95da`): same results, plus
+    the on-demand path (a track the preload queue hadn't reached yet loaded
+    1683 cues on pick). One earlier production run showed 0 cues for a pick
+    right after the deploy and did not reproduce — treat as a flake, but if
+    it comes back, the first thing to check is `enforceSingleShowing`.
+  - `enforceSingleShowing` bug found by experiment and fixed (`lastShowingKey`):
+    with two tracks showing at once it kept the *old* one (index 0 / saved
+    pref) and silently disabled the viewer's new pick.
   - NOT verified: iOS Safari native fullscreen rendering of script-added
     cues (should work — they sit in the same TextTrack — but not observed).
 
