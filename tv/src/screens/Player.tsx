@@ -322,7 +322,23 @@ export default function Player({ type, id, season, episode }: Props) {
     showControls();
   }
 
+  // Held/repeated presses add up into one seek (a held key repeats ~30×/s and
+  // every seek makes the TV's native HLS player rebuffer from scratch).
+  const pendingSeekRef = useRef(0);
+  const seekTimerRef = useRef<any>(null);
   function seekBy(delta: number) {
+    pendingSeekRef.current += delta;
+    showControls();
+    if (seekTimerRef.current) return;
+    seekTimerRef.current = setTimeout(function () {
+      seekTimerRef.current = null;
+      const d = pendingSeekRef.current;
+      pendingSeekRef.current = 0;
+      if (d) seekNow(d);
+    }, 160);
+  }
+
+  function seekNow(delta: number) {
     const video = videoRef.current;
     if (!video) return;
     const dur = isFinite(video.duration) ? video.duration : Infinity;

@@ -126,6 +126,12 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   // rate-limit/block, not a per-request fluke), so this errs conservative.
   private static readonly PRELOAD_GAP_MS = 800;
   private static readonly SEEK_STEP = 10;
+  // Repeated/held arrow presses inside this window add up into ONE seek: a
+  // held key auto-repeats ~30×/s and each seek makes hls.js abort and refetch,
+  // which is exactly the stutter-after-seeking complaint.
+  private static readonly SEEK_COALESCE_MS = 160;
+  private pendingSeek = 0;
+  private seekTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     // Attach the stream once both the resolved master URL and the <video> exist.
@@ -185,7 +191,14 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     const video = this.videoEl()?.nativeElement;
     if (!video) return;
     event.preventDefault();
-    this.seekBy(video, event.key === 'ArrowLeft' ? -MoviePlayerComponent.SEEK_STEP : MoviePlayerComponent.SEEK_STEP);
+    this.pendingSeek += event.key === 'ArrowLeft' ? -MoviePlayerComponent.SEEK_STEP : MoviePlayerComponent.SEEK_STEP;
+    if (this.seekTimer) return;
+    this.seekTimer = setTimeout(() => {
+      this.seekTimer = null;
+      const delta = this.pendingSeek;
+      this.pendingSeek = 0;
+      if (delta) this.seekBy(video, delta);
+    }, MoviePlayerComponent.SEEK_COALESCE_MS);
   }
 
   private isEditable(el: HTMLElement): boolean {

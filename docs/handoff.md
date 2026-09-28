@@ -1,5 +1,52 @@
 # Session handoff
 
+## CHECKED: relay state vs "seeking stutters" (2026-09-29, late night IST) — relay is healthy, not reproducible from here
+
+User: "films very often glitch and stall when seeking — check the relay."
+Checked live over `ssh mm` and from this Mac; **nothing on the relay explains it
+right now**:
+
+- Box: up 7h46 (rebooted ~16:30 IST on the 28th), load 1.3, memory free 81%
+  (a 3.6 GB `com.apple.Virtualization` VM + a supabase CLI run on the same
+  box — someone develops there; not hurting today), disk 10% used, Ethernet
+  `en0`, ping 1.1.1.1 jitter 0.3 ms. `show.fiesta.relay` pid 551, 235 MB RSS,
+  0% CPU. `[segstats] bad=0` all session.
+- Relay code (scp'd `relay.mjs`, 1219 lines, unchanged since 13 Sep):
+  `handleHls` aborts the upstream fetch on client `close` and streams via
+  `pipeline`, no concurrency cap on segments — so a seek storm cannot leave
+  orphan downloads. **Gap:** upstream segment `fetch()` has no timeout (only
+  hls.js's own fragLoadPolicy would end a hung upstream socket).
+- Measured through the relay from here: mid-film segments (cold for me)
+  TTFB 0.1–0.2 s, 12–25 Mbit/s; direct from the box to upstream 5.4 MB/s,
+  `cf-cache-status: HIT`.
+- **Seek reproduction on production with `?hlsdebug`** (`seek-test.mjs`,
+  `seek-rapid.mjs` in the scratchpad): 9 seeks across Shawshank: resume
+  74–608 ms, 0 stalls/nudges/holes, ≤2 dropped frames, top level, bandwidth
+  estimate ~50 Mbit/s, fragment TTFB p50 68 ms / max 139 ms. 6 seeks 120 ms
+  apart ×3: resume ≤1.3 s, 0 stalls. Lawrence of Arabia (cold): resume ≤481
+  ms, one non-fatal `fragParsingError` (a corrupt upstream fragment; hls.js
+  recovered) — the only blemish, and a plausible source of a visible hiccup.
+- cloudflared log: dozens of `stream N canceled by remote with error code 0`
+  = the client aborting fragment loads (seeks/level switches), benign. One
+  real outage: 2026-09-28T15:33Z cloudflared shut down on a local DNS failure
+  (`[::1]:53 connection refused`), before the reboot.
+- `relay.log`: a steady stream of `[resolve] ttNNN srv=1/2 api status_code
+  404` every ~10 s for random titles = something (a JS-rendering crawler?)
+  loading many movie pages; the player resolves the stream on page load, not
+  on Play. Load, not a seek problem — but worth throttling one day.
+
+**Shipped as a precaution (this commit):** repeated/held Left/Right presses
+now coalesce into ONE seek in both players (160 ms window). A held key
+auto-repeats ~30×/s; on the TV each seek makes native HLS rebuffer, on the
+web each makes hls.js abort+refetch.
+
+**To actually catch it:** ask the user WHERE it happens (TV vs Mac/phone,
+which browser, time of day) and try `?hlsdebug` on their device, then read
+`window.__fiestaTelemetry` after a seek. If it is the TV: native Tizen HLS
+seeking is out of our hands beyond coalescing. A `[slow]` log line in the
+relay for segments taking >2 s would give evidence for their sessions, but
+that is a relay edit + restart — the user's call.
+
 ## SHIPPED TO PRODUCTION (2026-09-28, later the same day): lite client pushed, main-site subtitles + arrow keys
 
 Everything from the section below this one is now **committed and pushed**
