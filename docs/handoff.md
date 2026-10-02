@@ -1,5 +1,84 @@
 # Session handoff
 
+## IN PROGRESS (2026-10-02): movie details fixed + shipped; subtitles + native HLS on preview, NOT committed
+
+**Shipped (`2d90980`, live, verified):** movie pages were nearly empty because
+the OMDB key is out of quota (`"Request limit reached!"`, free tier 1,000/day;
+the crawler noted below burns it). `api/movie.js` treated that as "not found",
+served a TMDB stub with every field `N/A`, and cached it 7 days. Now it pulls
+TMDB's full record (`/movie|tv/{id}?append_to_response=credits,release_dates|content_ratings`)
+and fills every missing field. It adds `_budget`, `_revenue` (worldwide),
+`_tagline`, `_network`, `_status`. A failed OMDB is cached 1 h (quota) or 1 day
+(title missing). The movie page shows new rows: Network, Status, Seasons, Budget,
+Box Office (US) (OMDB), Worldwide Gross (TMDB), Tagline. OMDB-only data (IMDb
+votes, RT/Metacritic, awards, US box office) returns when the quota resets.
+Decision for the user: a paid OMDB key ($1/mo patreon tier) would bring those back.
+
+**Uncommitted in the working tree (verified preview: `streamfiesta-bxrv0xiyw`):**
+
+1. **Native HLS in Chromium** (user asked to bring the TV player's approach to
+   Chromium; they chose "native playback only", keeping the main UI).
+   `movie-player.component.ts`: `preferNativeHls()` + `attachNative()`. Chrome
+   151/152 answer `canPlayType('application/vnd.apple.mpegurl') === "maybe"`, so
+   Chromium gets `video.src = master` and falls back to hls.js once on a media
+   error. Desktop Safari and Firefox keep hls.js. `?hls=js|native` forces an
+   engine. Verified on preview: plays, climbs to 1920x1072 on its own, seeks
+   land. NOT verified: long-watch stability, real users' seeks.
+   Test-harness quirk (not a bug, prod does it too): under Playwright Chrome
+   the video emits a native `pause` ~1.1 s after play, with either engine.
+2. **Subtitles ("fail ~80%", user)**. Root cause, measured: OpenSubtitles
+   caps downloads **per IP**. All Vercel functions share a few egress IPs, so
+   `/api/subs?file=` 401s (we relay as 502) for every file not already in the
+   CDN cache. Every deploy empties that cache. The player also preloaded ~17
+   files per title view. Production baseline with the new suite: **0/16 titles**.
+   Fixes:
+   - `utils/vtt.ts fetchSubtitleDirect()`: on proxy failure the browser fetches
+     `dl.opensubtitles.org/.../<file>.gz` itself (CORS `*`), then gunzips,
+     decodes and strips ads. This uses the viewer's own IP/allowance.
+   - Preload only the saved-preference track (`preloadPreferredSubtitle`); nothing
+     without a preference. Others load on pick.
+   - `api/subs.js`: a second `sublanguageid-eng` search when the general one has
+     no English **SRT** (LOTR and The Matrix had none).
+   - Pref-saving bugs: `hlsTouchedTracksAt` started at 0, so any pick in the
+     first second after page load was treated as machine-driven and never
+     saved (now `-Infinity`); the `change` listener is now wired when tracks
+     render, not at stream attach.
+   Results on preview: 13/16 titles got English cues (vs 0/16); with warm cache
+   7/7 saved-pref after the fix. **Blocked:** this Mac's IP is now CAPTCHA-walled
+   by OpenSubtitles (301 -> http captcha page, shows as ERR_ABORTED) after ~80
+   test downloads in 10 minutes. That cap applies to viewers too (a heavy viewer could hit it).
+   Next: rerun `tools/e2e/subtitles.mjs` from a clean IP. Options: Tailscale is
+   **stopped** on this Mac, so `ssh mm` (relay box) times out. Start it and use
+   `ssh -D` as a SOCKS proxy for Playwright, or a Webshare proxy
+   (`WEBSHARE_API_TOKEN` is not set here).
+   Longer-term options if the per-IP cap still bites: persist VTTs once
+   downloaded (Vercel Blob keyed by file id) so each file is fetched once ever,
+   or the official api.opensubtitles.com with an API key.
+   Not touched: the lite/TV client still uses only the proxy (Tizen's Chrome 47
+   has no `DecompressionStream`).
+
+**Verified 2026-10-03 from a clean IP** (`ssh -f -N -D 1080 mm`, then
+`--proxy=socks5://127.0.0.1:1080`; Tailscale/Cloudflare back on): normal run 12/16,
+with the 4 failures explained (3 were test seek timing, since fixed and re-passed;
+Inside Out 2's player intermittently never got a video mid-run, and it passes
+alone). With `--block-proxy` (every `/api/subs?file=` forced to 502, so only the
+direct fallback works): **15/16**. The 16th failed because mm's IP got
+CAPTCHA-walled after ~50 downloads in ~10 min, so the per-IP cap is roughly
+50 per short window. Do not run the full suite twice in a row from one IP.
+
+**Cache lifetimes raised (uncommitted, user request: "cache for 30 days"):**
+`api/movie.js` 30 d, or 1 d for releases under 90 days old (gross still
+changing), or 1 h while OMDB is failing. `api/tmdb.js` movie/find/credits/person/videos
+30 d. `api/subs.js` list 30 d if English found, 1 d if not, 1 h if empty.
+Vercel purges the CDN cache on every deploy, so this only holds between deploys.
+
+**New test:** `tools/e2e/subtitles.mjs <baseUrl> [--only=tt..] [--json=out]`.
+Each title runs in a fresh Chrome context: list, pick English -> cues, cue on
+screen at 25%, reload -> remembered, pick non-English -> cues. It also logs proxy
+vs direct downloads. ESM ignores `NODE_PATH`: run it from a dir whose
+`node_modules/playwright` exists (symlinking `playwright-core` works).
+
+
 ## CHECKED: relay state vs "seeking stutters" (2026-09-29, late night IST) — relay is healthy, not reproducible from here
 
 User: "films very often glitch and stall when seeking — check the relay."
