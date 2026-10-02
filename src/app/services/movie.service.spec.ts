@@ -142,7 +142,9 @@ describe('MovieService', () => {
         Writer: 'The Wachowskis',
         Actors: 'Keanu Reeves',
         Awards: '4 Oscars',
-        BoxOffice: '$172,076,928'
+        BoxOffice: '$172,076,928',
+        _budget: '$63,000,000',
+        _revenue: '$463,517,383'
       })
       // Director and Stars are intentionally NOT in this list — the Cast & Crew
       // section renders both from TMDB, so repeating them here was duplication.
@@ -153,7 +155,13 @@ describe('MovieService', () => {
       { label: 'Language', value: 'English', show: true },
       { label: 'Writers', value: 'The Wachowskis', show: true },
       { label: 'Awards', value: '4 Oscars', show: true },
-      { label: 'Box Office', value: '$172,076,928', show: true }
+      { label: 'Network', value: undefined, show: false },
+      { label: 'Status', value: undefined, show: false },
+      { label: 'Seasons', value: undefined, show: false },
+      { label: 'Budget', value: '$63,000,000', show: true },
+      { label: 'Box Office (US)', value: '$172,076,928', show: true },
+      { label: 'Worldwide Gross', value: '$463,517,383', show: true },
+      { label: 'Tagline', value: undefined, show: false }
     ]);
   });
 });
