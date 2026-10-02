@@ -13,7 +13,7 @@ import {
   SimpleChanges,
 } from '@angular/core';
 import type Hls from 'hls.js';
-import { parseVtt, VttCue } from '../../utils/vtt';
+import { fetchSubtitleDirect, parseVtt, VttCue } from '../../utils/vtt';
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -81,7 +81,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   // the same <track> elements must not add every cue a second time).
   private filledTracks = new WeakSet<TextTrack>();
   // Fetches in flight, keyed like cueCache, so a viewer pick and the
-  // background queue never download the same file twice at once.
+  // background preload never download the same file twice at once.
   private readonly cueFetches = new Map<string, Promise<VttCue[] | null>>();
   // Key of the track that was showing after the last reconciliation, so a
   // switch can tell the new pick from the old one (see enforceSingleShowing).
@@ -94,7 +94,9 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   // Timestamp of the last moment hls.js was known to be rewriting the text
   // track list (see reassertSubtitles). A `change` event inside that window
   // is hls.js's doing, not the viewer's, and must not be persisted.
-  private hlsTouchedTracksAt = 0;
+  // -Infinity, not 0: performance.now() starts near 0, so 0 would mark every
+  // pick in the first second after a page load as machine-driven (never saved).
+  private hlsTouchedTracksAt = -Infinity;
 
   // which cloudnestra front actually served the current stream (1=vidsrc, 2=vsembed)
   readonly activeServer = signal<number>(1);
@@ -107,6 +109,13 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   // nothing in normal playback.
   private readonly hlsDebug =
     typeof location !== 'undefined' && new URLSearchParams(location.search).has('hlsdebug');
+  // ?hls=js / ?hls=native force an engine, for comparing the two.
+  private readonly hlsEngine =
+    typeof location !== 'undefined' ? new URLSearchParams(location.search).get('hls') : null;
+  // Set once native playback has failed for the current title, so the retry
+  // goes through hls.js instead of repeating the same native attempt.
+  private nativeFailed = false;
+  private nativeErrorHandler: (() => void) | null = null;
   // Defer the buffering spinner so quick seeks/microstalls don't flash it.
   private bufferingTimer: ReturnType<typeof setTimeout> | null = null;
   // true once we've already escalated server 1 -> server 2, so we don't loop
@@ -117,14 +126,6 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   private static readonly UNAVAILABLE = 'This title isn’t available to stream right now';
   private static readonly PROGRESS_PREFIX = 'fiesta:playback-progress:';
   private static readonly SUBTITLE_PREF_KEY = 'fiesta:subtitle-pref';
-  // Gap between the start of one background subtitle prefetch and the next —
-  // keeps our own preloading well clear of OpenSubtitles' burst rate limit.
-  // This host is genuinely fragile under volume (observed: their download
-  // host, dl.opensubtitles.org, started 502ing every request from this
-  // project's Vercel egress IP under sustained testing, while the same file
-  // fetched from an unrelated IP succeeded immediately — an IP-level
-  // rate-limit/block, not a per-request fluke), so this errs conservative.
-  private static readonly PRELOAD_GAP_MS = 800;
   private static readonly SEEK_STEP = 10;
   // Repeated/held arrow presses inside this window add up into ONE seek: a
   // held key auto-repeats ~30×/s and each seek makes hls.js abort and refetch,
@@ -161,6 +162,10 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
       const tracks = this.subtitleTracks();
       const ref = this.videoEl();
       if (!ref || tracks.length === 0) return;
+      // The track list usually renders before the stream resolves; listen for
+      // the viewer's pick from now, not from attach(), or a pick made in that
+      // gap is never saved.
+      this.wireSubtitlePersistence(ref.nativeElement);
       this.applySubtitlePreference(ref.nativeElement);
     });
   }
@@ -249,7 +254,10 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
       this.beginBuffering();
     }
     this.recoverAttempts = 0;
-    if (!srv) this.escalated = false; // fresh, unforced load — reset escalation state
+    if (!srv) {
+      this.escalated = false; // fresh, unforced load — reset escalation state
+      this.nativeFailed = false;
+    }
     const savedProgress = this.readSavedProgress();
     this.resumeTime.set(!keepStarted ? savedProgress : null);
     this.pendingResumeTime = keepStarted ? savedProgress : null;
@@ -295,10 +303,20 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     this.destroyHls();
     this.wireSubtitlePersistence(video);
 
-    // Prefer hls.js wherever MSE is available — including desktop Safari — so we
-    // drive ABR/quality and error recovery ourselves. Safari's native HLS would
-    // otherwise pick its own (conservative) quality through the relay, which we
-    // can't tune. Native HLS is the fallback only when MSE is absent (iOS Safari).
+    // Chromium now plays HLS natively (Chrome 151+ answers canPlayType "maybe"),
+    // and the TV client has shown the native path is the steadier one through
+    // the relay — no transmux, no hls.js tampering with our TextTracks. If it
+    // errors, fall back to hls.js once before treating it as a dead stream.
+    if (this.preferNativeHls(video)) {
+      this.attachNative(video, master, true);
+      return;
+    }
+
+    // Everywhere else prefer hls.js wherever MSE is available — including desktop
+    // Safari — so we drive ABR/quality and error recovery ourselves. Safari's
+    // native HLS would otherwise pick its own (conservative) quality through the
+    // relay, which we can't tune. Native HLS is the fallback only when MSE is
+    // absent (iOS Safari).
     const Hls = (await import('hls.js')).default;
     if (Hls.isSupported()) {
       // Tuned against how hls.js actually measures bandwidth. Its sample is
@@ -464,13 +482,36 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
 
     // Native HLS fallback (iOS Safari, or anywhere MSE is unavailable). The
     // browser drives quality here; surface a friendly message if it can't load.
+    this.attachNative(video, master, false);
+  }
+
+  private preferNativeHls(video: HTMLVideoElement): boolean {
+    if (this.hlsEngine === 'js' || this.nativeFailed) return false;
+    if (!video.canPlayType('application/vnd.apple.mpegurl')) return false;
+    if (this.hlsEngine === 'native') return true;
+    const brands: { brand: string }[] = (navigator as any).userAgentData?.brands ?? [];
+    return brands.some((b) => b.brand === 'Chromium') || /Chrome\/|CriOS\/|Edg\//.test(navigator.userAgent);
+  }
+
+  private attachNative(video: HTMLVideoElement, master: string, canFallBack: boolean) {
     const native = video.canPlayType('application/vnd.apple.mpegurl');
     video.src = master;
     this.restoreProgress(video);
     if (this.started()) void video.play().catch(() => {}); // resume after a mid-watch escalation
-    video.addEventListener('error', () => this.failPlayback(native ? 'native: media error' : 'unsupported: media error'), {
-      once: true,
-    });
+    this.nativeErrorHandler = () => {
+      this.nativeErrorHandler = null;
+      if (canFallBack) {
+        // Keep the position: restoreProgress() reads the saved progress, and a
+        // mid-watch failure has been saving it all along.
+        this.nativeFailed = true;
+        this.destroyHls();
+        this.attachedUrl = null;
+        void this.attach(video, master);
+        return;
+      }
+      this.failPlayback(native ? 'native: media error' : 'unsupported: media error');
+    };
+    video.addEventListener('error', this.nativeErrorHandler, { once: true });
   }
 
   // Mid-playback stall: hold the spinner off briefly so quick seeks/microstalls
@@ -551,9 +592,9 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
 
       // The list renders right away (the captions menu shows every language
       // immediately); applySubtitlePreference() fills and shows the preferred
-      // one as soon as its <track> exists, and the queue below fetches the rest.
+      // one as soon as its <track> exists; the rest load when picked.
       this.subtitleTracks.set(marked);
-      void this.preloadRemainingSubtitles(token, marked);
+      void this.preloadPreferredSubtitle(token, marked);
     } catch {
       if (token === this.loadToken) this.subtitleTracks.set([]);
     }
@@ -631,39 +672,32 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     return null;
   }
 
-  // Fetch every language's VTT in the background — preferred first, then
-  // one at a time, spaced out (see PRELOAD_GAP_MS) — so OpenSubtitles' legacy
-  // download host never sees a burst, and push each into its TextTrack so a
-  // later pick in the captions menu is instant. Best-effort throughout: a
-  // failure leaves that track to be fetched on demand when/if the viewer
-  // picks it (see wireSubtitlePersistence), never blocks playback.
-  private async preloadRemainingSubtitles(
+  // Fetch the viewer's preferred track in the background so it is on screen
+  // the moment playback starts. Nothing else is preloaded: every file is an
+  // OpenSubtitles download against a per-IP cap (Vercel's shared IPs for the
+  // proxy, the viewer's own for the direct fallback), and preloading every
+  // language (~17 per title view) is what exhausted it. With no saved
+  // preference the viewer hasn't used subtitles, so nothing is fetched until a
+  // pick; other tracks load on demand (see wireSubtitlePersistence).
+  private async preloadPreferredSubtitle(
     token: number,
     tracks: { lang: string; label: string; src: string; isDefault: boolean }[],
   ) {
-    const ordered = [...tracks.filter((t) => t.isDefault), ...tracks.filter((t) => !t.isDefault)];
-    let first = true;
-    for (const t of ordered) {
-      if (!first) {
-        if (!this.canPreloadSubtitles()) return;
-        await sleep(MoviePlayerComponent.PRELOAD_GAP_MS);
-      }
-      first = false;
-      if (token !== this.loadToken) return; // superseded — episode/retry/server switch
-      const cues = await this.fetchCues(token, t);
-      if (token !== this.loadToken) return;
-      // Only a track whose element has already loaded can hold cues safely
-      // (see isTrackElementSettled); the rest wait in cueCache.
-      const video = this.videoEl()?.nativeElement;
-      if (!video || !cues) continue;
-      const key = this.subtitleKey(t);
-      const tt = this.textTrackFor(video, key);
-      if (tt && this.isTrackElementSettled(this.trackElementFor(video, key))) this.fillTrack(tt, cues);
-    }
+    const t = tracks.find((x) => x.isDefault);
+    if (!t) return;
+    const cues = await this.fetchCues(token, t);
+    if (token !== this.loadToken || !cues) return; // superseded — episode/retry/server switch
+    // Only a track whose element has already loaded can hold cues safely
+    // (see isTrackElementSettled); otherwise it waits in cueCache.
+    const video = this.videoEl()?.nativeElement;
+    if (!video) return;
+    const key = this.subtitleKey(t);
+    const tt = this.textTrackFor(video, key);
+    if (tt && this.isTrackElementSettled(this.trackElementFor(video, key))) this.fillTrack(tt, cues);
   }
 
   // Download + parse one subtitle file, once. Concurrent callers (viewer pick
-  // racing the preload queue) share the same in-flight promise. One retry
+  // racing the background preload) share the same in-flight promise. One retry
   // after a short pause covers the download host's transient 502/403s.
   private fetchCues(token: number, t: { lang: string; label: string; src: string }): Promise<VttCue[] | null> {
     const key = this.subtitleKey(t);
@@ -676,15 +710,31 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
       for (let attempt = 0; attempt < 2; attempt++) {
         if (attempt > 0) await sleep(1200);
         if (token !== this.loadToken) return null;
+        // Our proxy first: a file it has served before comes from Vercel's
+        // cache in ~50 ms without touching OpenSubtitles.
         try {
           const res = await fetch(t.src);
           if (token !== this.loadToken) return null;
-          if (!res.ok) continue;
-          const cues = parseVtt(await res.text());
+          if (res.ok) {
+            const cues = parseVtt(await res.text());
+            if (token !== this.loadToken) return null;
+            if (cues.length > 0) {
+              this.cueCache.set(key, cues);
+              return cues;
+            }
+          }
+        } catch {
+          // fall through to the direct download
+        }
+        // Uncached and the proxy's shared IPs are over OpenSubtitles' download
+        // cap (it answers 401, we relay 502): fetch from the viewer's own IP.
+        try {
+          const cues = await fetchSubtitleDirect(t.src);
           if (token !== this.loadToken) return null;
-          if (cues.length === 0) continue;
-          this.cueCache.set(key, cues);
-          return cues;
+          if (cues) {
+            this.cueCache.set(key, cues);
+            return cues;
+          }
         } catch {
           // retry once, then give up
         }
@@ -715,7 +765,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   }
 
   // Make sure a track that is (about to be) showing actually has its cues —
-  // fetching them now, ahead of the background queue, if it doesn't yet.
+  // fetching them now if it doesn't yet.
   private async ensureCues(token: number, video: HTMLVideoElement, key: string, track: TextTrack) {
     if (this.filledTracks.has(track)) return;
     const info = this.trackInfo(key);
@@ -818,20 +868,6 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     }
   }
 
-  // Data-saver or a genuinely slow connection: skip background preloading
-  // and leave every non-default track on the load-on-demand path. Subtitle
-  // files are tiny (tens of KB), so this is a light-touch guard, not real
-  // bandwidth probing — the Network Information API isn't universally
-  // supported (notably Safari/Firefox), and preloading is the safe default
-  // when we simply can't tell.
-  private canPreloadSubtitles(): boolean {
-    const conn = (navigator as any)?.connection;
-    if (!conn) return true;
-    if (conn.saveData) return false;
-    if (typeof conn.effectiveType === 'string' && /2g/.test(conn.effectiveType)) return false;
-    return true;
-  }
-
   // Mark the track matching the viewer's last-picked language (and variant,
   // when the same label exists) with the native <track default> attribute —
   // a harmless first-paint hint; applySubtitlePreference() below is what
@@ -927,8 +963,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   // Native <video> controls fire this on the track list whenever the viewer
   // toggles captions or switches language/variant (and whenever a browser's
   // own automatic track selection kicks in). Fill the chosen track with its
-  // cues if the background queue hasn't reached it yet — ahead of the queue,
-  // since this one's urgent — and persist the choice (or its absence).
+  // cues if it doesn't have them yet, and persist the choice (or its absence).
   private wireSubtitlePersistence(video: HTMLVideoElement) {
     video.textTracks.onchange = () => {
       // hls.js just rewrote the list (see reassertSubtitles), or the browser
@@ -1172,6 +1207,16 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     if (this.hls) {
       this.hls.destroy();
       this.hls = null;
+    }
+    const video = this.videoEl()?.nativeElement;
+    if (this.nativeErrorHandler) {
+      video?.removeEventListener('error', this.nativeErrorHandler);
+      this.nativeErrorHandler = null;
+    }
+    // Drop a native src so hls.js (or the next native attach) starts clean.
+    if (video?.getAttribute('src')) {
+      video.removeAttribute('src');
+      video.load();
     }
   }
 }

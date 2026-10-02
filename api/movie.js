@@ -11,7 +11,7 @@ module.exports = async function handler(req, res) {
     return res.status(200).end();
   }
 
-  res.setHeader('Cache-Control', 's-maxage=604800, stale-while-revalidate=86400');
+  res.setHeader('Cache-Control', 's-maxage=86400, stale-while-revalidate=86400');
 
   var id = req.query.id;
   if (!id || !/^tt\d+$/.test(id)) {
@@ -79,6 +79,14 @@ module.exports = async function handler(req, res) {
       // A title OMDB genuinely lacks is re-checked daily.
       var transient = /limit|api key/i.test(omdbError);
       res.setHeader('Cache-Control', 's-maxage=' + (transient ? 3600 : 86400) + ', stale-while-revalidate=600');
+    }
+
+    if (!omdbError) {
+      // Per-title data barely changes: 30 days. A film still in cinemas keeps
+      // collecting (Worldwide Gross), so its first 90 days refresh daily.
+      var released = Date.parse((tmdbFull && (tmdbFull.release_date || tmdbFull.first_air_date)) || '');
+      var recent = !released || Date.now() - released < 90 * 86400000;
+      res.setHeader('Cache-Control', 's-maxage=' + (recent ? 86400 : 2592000) + ', stale-while-revalidate=86400');
     }
 
     return res.status(200).json(omdbData);

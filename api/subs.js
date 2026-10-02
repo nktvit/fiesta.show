@@ -130,6 +130,21 @@ async function handleList(req, res) {
     return res.status(200).json({ tracks: [] });
   }
 
+  // The search returns at most 100 results across all languages; for very
+  // popular titles (LOTR, The Matrix) those 100 can hold no English SRT at all.
+  // A second, English-only search fills that gap. Best-effort.
+  const usableEn = (s) => s.ISO639 === 'en' && (!s.SubFormat || s.SubFormat.toLowerCase() === 'srt');
+  if (!list.some(usableEn)) {
+    try {
+      const enUrl = SEARCH_BASE + '/' + parts.concat('sublanguageid-eng').sort().join('/');
+      const r = await fetchWithRetry(enUrl, TRANSIENT_STATUS);
+      const json = await r.json();
+      if (Array.isArray(json)) list = list.concat(json);
+    } catch (e) {
+      console.error('subs english search error:', e);
+    }
+  }
+
   const mkSrc = (s) =>
     '/api/subs?file=' + encodeURIComponent(s.IDSubtitleFile) + '&enc=' + encodeURIComponent(s.SubEncoding || '');
 
@@ -189,7 +204,10 @@ async function handleList(req, res) {
 
   const tracks = [...enTracks, ...others];
 
-  res.setHeader('Cache-Control', 's-maxage=86400, stale-while-revalidate=86400');
+  // A list with English is settled: 30 days. Without it (often a just-aired
+  // episode, subtitles not uploaded yet) look again in an hour or a day.
+  const ttl = enTracks.length ? 2592000 : tracks.length ? 86400 : 3600;
+  res.setHeader('Cache-Control', 's-maxage=' + ttl + ', stale-while-revalidate=86400');
   return res.status(200).json({ tracks });
 }
 
