@@ -157,7 +157,6 @@ describe('MovieService', () => {
       { label: 'Awards', value: '4 Oscars', show: true },
       { label: 'Network', value: undefined, show: false },
       { label: 'Status', value: undefined, show: false },
-      { label: 'Seasons', value: undefined, show: false },
       { label: 'Budget', value: '$63,000,000', show: true },
       { label: 'Box Office (US)', value: '$172,076,928', show: true },
       { label: 'Worldwide Gross', value: '$463,517,383', show: true },

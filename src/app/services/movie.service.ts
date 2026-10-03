@@ -116,7 +116,6 @@ export class MovieService {
       { label: 'Awards', value: details.Awards, show: this.hasValue(details.Awards) },
       { label: 'Network', value: details._network, show: this.hasValue(details._network) },
       { label: 'Status', value: details._status, show: this.hasValue(details._status) },
-      { label: 'Seasons', value: details.totalSeasons, show: this.hasValue(details.totalSeasons) },
       // OMDB's BoxOffice is the US gross; TMDB's revenue is worldwide.
       { label: 'Budget', value: details._budget, show: this.hasValue(details._budget) },
       { label: 'Box Office (US)', value: details.BoxOffice, show: this.hasValue(details.BoxOffice) },
