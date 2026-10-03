@@ -1,3 +1,5 @@
+var tmdbSearch = require('./_tmdb-search');
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -21,19 +23,35 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ suggestions: [], message: 'Query too short' });
     }
 
-    if (!apiKey) {
-      return res.status(400).json({ error: 'API key is required', suggestions: [] });
-    }
-
     var page = parseInt(req.query.page) || 1;
 
-    var response = await fetch(
-      'https://www.omdbapi.com/?apikey=' + apiKey + '&s=' + encodeURIComponent(query) + '&page=' + page
-    );
-    var data = await response.json();
+    var data = null;
+    if (apiKey) {
+      try {
+        var response = await fetch(
+          'https://www.omdbapi.com/?apikey=' + apiKey + '&s=' + encodeURIComponent(query) + '&page=' + page
+        );
+        data = await response.json();
+      } catch (e) {
+        console.error('OMDB suggestions error:', e);
+      }
+    }
 
-    if (data.Response === 'False') {
-      return res.status(200).json({ suggestions: [], totalResults: 0, message: data.Error || 'No results found' });
+    if (!data || data.Response !== 'True') {
+      // OMDB out of quota (or no match): TMDB. Ids are TMDB ids, so each
+      // suggestion says its type for the movie page (?type=tv).
+      var tmdb = await tmdbSearch(query, page).catch(function() { return null; });
+      if (tmdb && tmdb.items.length) {
+        res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=600');
+        return res.status(200).json({
+          suggestions: tmdb.items.map(function(x) {
+            return { id: String(x.tmdbId), title: x.title, year: x.year, type: x.mediaType === 'tv' ? 'series' : 'movie', poster: x.poster, source: 'tmdb' };
+          }),
+          // 0 on the last page stops the dropdown asking for more
+          totalResults: tmdb.lastPage ? 0 : tmdb.total,
+        });
+      }
+      return res.status(200).json({ suggestions: [], totalResults: 0, message: (data && data.Error) || 'No results found' });
     }
 
     var suggestions = data.Search.map(function(item) {

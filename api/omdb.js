@@ -1,3 +1,5 @@
+var tmdbSearch = require('./_tmdb-search');
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -29,11 +31,39 @@ module.exports = async function handler(req, res) {
         return res.status(200).json({ Search: [], totalResults: '0', Response: 'False' });
       }
 
-      var response = await fetch(
-        'https://www.omdbapi.com/?apikey=' + apiKey + '&s=' + encodeURIComponent(query) + '&page=' + page
-      );
-      var data = await response.json();
-      return res.status(200).json(data);
+      var data = null;
+      try {
+        var response = await fetch(
+          'https://www.omdbapi.com/?apikey=' + apiKey + '&s=' + encodeURIComponent(query) + '&page=' + page
+        );
+        data = await response.json();
+      } catch (e) {
+        console.error('OMDB search error:', e);
+      }
+      if (data && data.Response === 'True') return res.status(200).json(data);
+
+      // OMDB out of quota (or no match): answer from TMDB in OMDB's shape.
+      var tmdb = await tmdbSearch(query, page).catch(function() { return null; });
+      if (tmdb && tmdb.items.length) {
+        res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=600');
+        return res.status(200).json({
+          Response: 'True',
+          totalResults: String(tmdb.total),
+          _lastPage: tmdb.lastPage,
+          Search: tmdb.items.map(function(x) {
+            return {
+              Title: x.title,
+              Year: x.year,
+              imdbID: '',
+              tmdbId: x.tmdbId,
+              mediaType: x.mediaType,
+              Type: x.mediaType === 'tv' ? 'series' : 'movie',
+              Poster: x.poster || 'N/A',
+            };
+          }),
+        });
+      }
+      return res.status(200).json(data || { Search: [], totalResults: '0', Response: 'False' });
     }
 
     if (action === 'episodes') {

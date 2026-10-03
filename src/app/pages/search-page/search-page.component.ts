@@ -102,7 +102,8 @@ export class SearchPageComponent {
           const newMovies: IMovie[] = response.Search;
           this.movies = append ? [...this.movies, ...newMovies] : newMovies;
           this.totalResults = parseInt(response.totalResults) || 0;
-          this.hasMore = this.movies.length < this.totalResults;
+          // TMDB fallback results: its total counts people we drop, so it says when to stop
+          this.hasMore = !response._lastPage && this.movies.length < this.totalResults;
         } else {
           if (!append) this.movies = [];
           this.hasMore = false;

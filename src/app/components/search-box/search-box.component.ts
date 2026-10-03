@@ -258,6 +258,9 @@ export class SearchBoxComponent implements OnDestroy {
     this.hideSuggestions();
     if (suggestion.kind === 'person') {
       this.router.navigate(['/person', suggestion.id]);
+    } else if (/^\d+$/.test(suggestion.id) && suggestion.type === 'series') {
+      // a TMDB id (OMDB out of quota): TV and movie ids overlap, so say which
+      this.router.navigate(['/movie', suggestion.id], { queryParams: { type: 'tv' } });
     } else {
       this.router.navigate(['/movie', suggestion.id]);
     }
