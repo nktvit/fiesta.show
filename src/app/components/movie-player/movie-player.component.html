@@ -1,10 +1,12 @@
-<div class="w-full relative bg-black overflow-hidden" style="aspect-ratio: 16 / 9;">
-  @if (masterUrl()) {
+<div class="group/player w-full relative bg-black overflow-hidden" style="aspect-ratio: 16 / 9;">
+  <!-- One <video> definition for both UIs. Subtitles stay native TextTracks
+       (cues added by script); the Video.js captions menu lists and toggles them. -->
+  <ng-template #videoTpl>
     <video
       #videoEl
       class="block w-full h-full transition-[filter] duration-300 ease-out"
       [class.player-paused]="started() && paused()"
-      controls
+      [attr.controls]="playerUi() === 'native' ? '' : null"
       playsinline
       (loadedmetadata)="onMetadataLoaded(videoEl)"
       (timeupdate)="onTimeUpdate(videoEl)"
@@ -21,6 +23,20 @@
         <track kind="subtitles" [src]="stubVtt" [attr.srclang]="t.lang" [attr.label]="t.label" [default]="t.isDefault" (load)="onTrackLoaded($event)" (error)="onTrackLoaded($event)" />
       }
     </video>
+  </ng-template>
+
+  @if (masterUrl()) {
+    @if (playerUi() === 'custom') {
+      <!-- Video.js v10: <video-player> owns state, <video-skin> draws the
+           controls around our own <video> (hls.js stays ours). -->
+      <video-player class="block h-full w-full">
+        <video-skin class="fiesta-skin block h-full w-full">
+          <ng-container [ngTemplateOutlet]="videoTpl" />
+        </video-skin>
+      </video-player>
+    } @else {
+      <ng-container [ngTemplateOutlet]="videoTpl" />
+    }
   }
 
   <!-- Backdrop / episode-still cover shown until playback starts -->
@@ -37,8 +53,9 @@
   }
 
   <!-- Mid-playback buffering: the video holds the last decoded frame; spinner
-       floats over it without blocking the native controls. -->
-  @if (started() && buffering() && !errorMsg()) {
+       floats over it without blocking the native controls. The Video.js skin
+       draws its own, so this one is for the native UI only. -->
+  @if (started() && buffering() && !errorMsg() && playerUi() === 'native') {
     <div class="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
       <div class="flex h-16 w-16 sm:h-20 sm:w-20 items-center justify-center rounded-full bg-black/55 backdrop-blur-md ring-1 ring-white/10 shadow-2xl">
         <svg class="h-7 w-7 sm:h-8 sm:w-8 animate-spin text-white" fill="none" viewBox="0 0 24 24" aria-hidden="true">
@@ -132,6 +149,18 @@
     </button>
   }
 
+  <!-- Top-left: on narrow screens the Video.js skin puts Cast/PiP top-right. -->
+  @if (started() && masterUrl() && !errorMsg()) {
+    <button
+      type="button"
+      (click)="togglePlayerUi()"
+      class="absolute top-2 left-2 z-30 rounded-full bg-black/60 px-3 py-1.5 text-xs font-semibold text-white ring-1 ring-white/20 backdrop-blur-md transition-opacity duration-200 hover:bg-black/80
+             opacity-0 group-hover/player:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-80"
+      [class.opacity-100]="paused()"
+      [attr.aria-label]="playerUi() === 'custom' ? 'Switch to the browser\'s native player' : 'Switch to the Fiesta player'"
+    >{{ playerUi() === 'custom' ? 'Native player' : 'Fiesta player' }}</button>
+  }
+
   @if (isPreview() && masterUrl()) {
     <div class="absolute top-2 right-2 z-30 flex items-center gap-1.5 rounded-md bg-black/75 px-2 py-1 font-mono text-[10px] leading-none text-white/90 ring-1 ring-white/10">
       <span class="rounded bg-emerald-500/90 px-1 py-0.5 font-semibold uppercase tracking-wide text-black">{{ env() }}</span>
@@ -145,6 +174,6 @@
   }
 
   @if (activeServer() === 2 && masterUrl()) {
-    <div class="absolute top-2 left-2 z-30 rounded-md bg-black/70 px-2 py-1 text-[11px] font-medium leading-none text-white/90 ring-1 ring-white/10">Server 2</div>
+    <div class="absolute left-2 z-30 rounded-md bg-black/70 px-2 py-1 text-[11px] font-medium leading-none text-white/90 ring-1 ring-white/10" [class.top-2]="!started()" [class.top-11]="started()">Server 2</div>
   }
 </div>

@@ -33,6 +33,12 @@
                 "glob": "**/*",
                 "input": "tv/dist",
                 "output": "/lite"
+              },
+              {
+                "glob": "**/*.{js,css}",
+                "input": "node_modules/@videojs/cdn",
+                "output": "/vendor/videojs-10.0.1",
+                "ignore": ["**/*.dev.*", "**/*.map", "media/**", "extensions/**", "locales/**"]
               }
             ],
             "styles": [

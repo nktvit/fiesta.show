@@ -1,5 +1,41 @@
 # Session handoff
 
+## SHIPPED (2026-10-03): Video.js v10 player replaces native controls
+
+Last verified preview: `streamfiesta-iynksh5g6-nktvit.vercel.app`. Committed and pushed to `main`
+on 2026-10-03 (user: "merge the changes for new player"). Pre-push: `ng build` OK,
+unit tests 74/79 (the 5 known `MovieService` apikey failures only). Production
+deploy NOT yet re-verified after the push.
+
+- **UI**: Video.js v10 (`@videojs/*` 10.0.1, released 2026-10-02; the npm `video.js`
+  package is still v8) Default skin around OUR `<video>` + OUR tuned hls.js.
+  `src/app/utils/hls-renditions.ts` (+spec) exposes hls.js levels as
+  `video.videoRenditions` for the Quality menu (`manualLevel` = the pin; NOT
+  `nextLevel`). Captions menu reads our TextTracks, so the subtitle pipeline is unchanged.
+- **Video.js is NOT bundled by Angular.** `@videojs/cdn` (devDep, exact 10.0.1)
+  is copied by angular.json to `/vendor/videojs-10.0.1/` (immutable cache header
+  in vercel.json) and loaded at runtime (`VIDEOJS_URL`). Reason (verified): with
+  zone.js, Angular downlevels async/await in node_modules too, and Video.js
+  elements then ran their first update before they were wired. Every tooltip
+  became an empty pill and the bar could stay hidden. Bump all three places together.
+- Engine: hls.js wherever supported; native only for `?hls=native`, or after
+  hls.js fails fatally (new `hlsFailed`), before server-2 escalation. A fatal
+  MANIFEST_* error now skips the pointless `startLoad()` retries (it used to hang).
+- "Native player" / "Fiesta player" toggle (top-left), persisted in
+  `fiesta:player-ui`. It keeps position, play/pause and subtitles.
+- Arrow keys: capture-phase document listener + preventDefault, so the skin's
+  own arrow hotkeys skip and a press seeks 10 s once.
+- Subtitle lift: global rule in `src/styles.css` applies the skin's
+  `--media-caption-track-y` to our slotted video's cue container (-56 px with
+  the bar, -8 px without). Chromium/Safari only; Firefox can't style it.
+- Tests: `tools/e2e/player.mjs <url> [--browsers=chrome,webkit,firefox]`: 10/10
+  Chrome, 10/10 WebKit, 8/8 Firefox. `subtitles.mjs`: 4/4. Not checked: a real
+  iPhone/Safari, the Samsung TV (lite client untouched), long viewing sessions.
+- Gotchas: test URLs must use `hlsdebug=1` (a bare flag gets rewritten by the
+  router, which re-renders the page). Bar must be visible before clicks
+  (`wakeControls`). "Auto (720p)" matches `name: '720p'` unless `exact: true`.
+
+
 ## IN PROGRESS (2026-10-02): movie details fixed + shipped; subtitles + native HLS on preview, NOT committed
 
 **Shipped (`2d90980`, live, verified):** movie pages were nearly empty because

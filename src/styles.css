@@ -103,3 +103,18 @@ body.nav-sheet-open #bmc-close-btn {
     display: none !important;
   }
 }
+
+/* Video.js v10: lift subtitles above the control bar while it is showing.
+   The skin sets --media-caption-track-y (an upward offset whenever its controls
+   are visible) and its own rule applies it to the cue container — but that rule
+   lives in the skin's shadow DOM and only matches a <video> inside it. Ours is
+   slotted in from the light DOM; custom properties still inherit through the
+   slot, so the same rule here picks the offset up. Chromium/Safari only: Firefox
+   has no stylable cue container. */
+video-skin video::-webkit-media-text-track-container {
+  z-index: 1;
+  scale: 0.98;
+  translate: 0 var(--media-caption-track-y, 0);
+  transition: translate var(--media-caption-track-duration, 0s) ease-out;
+  transition-delay: var(--media-caption-track-delay, 0s);
+}

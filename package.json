@@ -52,6 +52,7 @@
     "@types/jasmine": "~5.1.4",
     "@types/jest": "^29.5.14",
     "@types/node": "^22.9.3",
+    "@videojs/cdn": "10.0.1",
     "autoprefixer": "^10.4.20",
     "jasmine-core": "~5.4.0",
     "karma": "~6.4.4",

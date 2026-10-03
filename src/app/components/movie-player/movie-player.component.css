@@ -24,3 +24,12 @@ iframe {
 video.player-paused {
   filter: grayscale(1);
 }
+
+/* Video.js v10 Default skin, through its public custom properties only
+   (everything else inside a packaged skin is private). Indigo = the site accent. */
+.fiesta-skin {
+  --media-accent-color: #6366f1;
+  --media-accent-text-color: #ffffff;
+  --media-border-color: transparent;
+  --media-border-radius: 0;
+}

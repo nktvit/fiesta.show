@@ -1,7 +1,7 @@
 import {
+  CUSTOM_ELEMENTS_SCHEMA,
   Component,
   ElementRef,
-  HostListener,
   computed,
   effect,
   input,
@@ -12,14 +12,18 @@ import {
   OnDestroy,
   SimpleChanges,
 } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import type Hls from 'hls.js';
 import { fetchSubtitleDirect, parseVtt, VttCue } from '../../utils/vtt';
+import { installRenditions } from '../../utils/hls-renditions';
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 @Component({
   selector: 'app-movie-player',
-  imports: [],
+  imports: [NgTemplateOutlet],
+  // <video-player> / <video-skin> are Video.js v10 custom elements.
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
   templateUrl: `./movie-player.component.html`,
   styleUrl: './movie-player.component.css',
 })
@@ -41,6 +45,13 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   readonly serverChange = output<number>();
 
   readonly videoEl = viewChild<ElementRef<HTMLVideoElement>>('videoEl');
+
+  // 'custom' = Video.js v10 skin around our <video>; 'native' = the browser's
+  // own controls. Same engine (hls.js) either way; the viewer's pick persists.
+  readonly playerUi = signal<'custom' | 'native'>(MoviePlayerComponent.readPlayerUi());
+  private static readonly PLAYER_UI_KEY = 'fiesta:player-ui';
+  // Paused when the viewer switched UI: the re-attached stream must not start playing.
+  private holdPaused = false;
 
   readonly loading = signal(false);
   readonly errorMsg = signal<string | null>(null);
@@ -115,6 +126,11 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   // Set once native playback has failed for the current title, so the retry
   // goes through hls.js instead of repeating the same native attempt.
   private nativeFailed = false;
+  // Set once hls.js has exhausted its recovery for the current title, so the
+  // one native attempt that follows isn't repeated.
+  private hlsFailed = false;
+  // Removes the `videoRenditions` list the quality menu reads (see hls-renditions).
+  private removeRenditions: (() => void) | null = null;
   private nativeErrorHandler: (() => void) | null = null;
   // Defer the buffering spinner so quick seeks/microstalls don't flash it.
   private bufferingTimer: ReturnType<typeof setTimeout> | null = null;
@@ -135,6 +151,9 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   private seekTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
+    document.addEventListener('keydown', this.onDocumentKeydown, true);
+    if (this.playerUi() === 'custom') MoviePlayerComponent.loadVideoJs();
+
     // Attach the stream once both the resolved master URL and the <video> exist.
     effect(() => {
       const url = this.masterUrl();
@@ -175,6 +194,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   }
 
   ngOnDestroy() {
+    document.removeEventListener('keydown', this.onDocumentKeydown, true);
     this.destroyHls();
     if (this.bufferingTimer) clearTimeout(this.bufferingTimer);
     if (this.subtitleNoticeTimer) clearTimeout(this.subtitleNoticeTimer);
@@ -182,12 +202,14 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     this.cueFetches.clear();
   }
 
-  // Keyboard transport for the native player: Left/Right step 10 s. The
-  // browser's own handling (Chromium: 5 s, only while the <video> itself is
-  // focused; Safari: nothing) is replaced so the keys work anywhere on the
-  // page once playback has started, but never while typing in a field.
-  @HostListener('document:keydown', ['$event'])
-  onDocumentKeydown(event: KeyboardEvent) {
+  // Keyboard transport: Left/Right step 10 s, anywhere on the page once playback
+  // has started, never while typing in a field. Held or repeated presses
+  // coalesce into ONE seek (each seek makes the engine abort and refetch).
+  // Bound on `document` in the CAPTURE phase (see constructor) and
+  // preventDefault()ed: that runs before the browser's own handling and before
+  // the Video.js skin's arrow hotkeys, which skip defaultPrevented events — so
+  // a press seeks once, not twice.
+  onDocumentKeydown = (event: KeyboardEvent) => {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
     if (event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented) return;
     if (!this.started() || !this.masterUrl()) return;
@@ -204,6 +226,53 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
       this.pendingSeek = 0;
       if (delta) this.seekBy(video, delta);
     }, MoviePlayerComponent.SEEK_COALESCE_MS);
+  };
+
+  // Video.js v10 is loaded from its own prebuilt browser bundle (@videojs/cdn,
+  // copied to /vendor by angular.json), NOT bundled by Angular. Angular's build
+  // downlevels every async/await to generators for zone.js, and that reorders
+  // Video.js's element update cycle: tooltips and popovers ran their first
+  // update before they were wired, so every tooltip rendered as an empty pill
+  // and the controls bar could stay hidden. Same package version both places;
+  // bump VIDEOJS_URL together with @videojs/cdn in package.json and angular.json.
+  private static readonly VIDEOJS_URL = '/vendor/videojs-10.0.1/video.js';
+  private static videoJsLoad: Promise<unknown> | null = null;
+  private static loadVideoJs() {
+    const url = MoviePlayerComponent.VIDEOJS_URL; // a variable, so the bundler leaves the import alone
+    MoviePlayerComponent.videoJsLoad ??= import(/* @vite-ignore */ url).catch((err) => {
+      MoviePlayerComponent.videoJsLoad = null; // allow a retry on the next player
+      console.error('Video.js failed to load', err);
+    });
+  }
+
+  private static readPlayerUi(): 'custom' | 'native' {
+    try {
+      return window.localStorage.getItem(MoviePlayerComponent.PLAYER_UI_KEY) === 'native' ? 'native' : 'custom';
+    } catch {
+      return 'custom';
+    }
+  }
+
+  // Swap between the Video.js skin and the browser's own controls. The <video>
+  // element is re-created, so carry the position and play state across and let
+  // the normal attach path (restoreProgress, subtitle effects) rebuild the rest.
+  togglePlayerUi() {
+    const next = this.playerUi() === 'custom' ? 'native' : 'custom';
+    const video = this.videoEl()?.nativeElement;
+    if (video) {
+      if (Number.isFinite(video.currentTime) && video.currentTime > 0) {
+        this.pendingResumeTime = video.currentTime;
+        this.saveProgress(video);
+      }
+      this.holdPaused = video.paused;
+    }
+    this.destroyHls();
+    this.attachedUrl = null;
+    if (next === 'custom') MoviePlayerComponent.loadVideoJs();
+    this.playerUi.set(next);
+    try {
+      window.localStorage.setItem(MoviePlayerComponent.PLAYER_UI_KEY, next);
+    } catch {}
   }
 
   private isEditable(el: HTMLElement): boolean {
@@ -257,6 +326,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     if (!srv) {
       this.escalated = false; // fresh, unforced load — reset escalation state
       this.nativeFailed = false;
+      this.hlsFailed = false;
     }
     const savedProgress = this.readSavedProgress();
     this.resumeTime.set(!keepStarted ? savedProgress : null);
@@ -303,22 +373,20 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     this.destroyHls();
     this.wireSubtitlePersistence(video);
 
-    // Chromium now plays HLS natively (Chrome 151+ answers canPlayType "maybe"),
-    // and the TV client has shown the native path is the steadier one through
-    // the relay — no transmux, no hls.js tampering with our TextTracks. If it
-    // errors, fall back to hls.js once before treating it as a dead stream.
+    // ?hls=native forces the browser's own HLS (falling back to hls.js once if
+    // it errors); otherwise native is only the fallback, below.
     if (this.preferNativeHls(video)) {
       this.attachNative(video, master, true);
       return;
     }
 
-    // Everywhere else prefer hls.js wherever MSE is available — including desktop
-    // Safari — so we drive ABR/quality and error recovery ourselves. Safari's
-    // native HLS would otherwise pick its own (conservative) quality through the
-    // relay, which we can't tune. Native HLS is the fallback only when MSE is
-    // absent (iOS Safari).
+    // Prefer hls.js wherever MSE is available — Chrome, Firefox, desktop Safari,
+    // iOS 17.1+ (ManagedMediaSource) — so we drive ABR/quality, the quality menu
+    // and error recovery ourselves. Native HLS picks its own (conservative)
+    // quality through the relay, which we can't tune or offer a menu for; it is
+    // the fallback where MSE is absent, or once hls.js has given up.
     const Hls = (await import('hls.js')).default;
-    if (Hls.isSupported()) {
+    if (Hls.isSupported() && !this.hlsFailed) {
       // Tuned against how hls.js actually measures bandwidth. Its sample is
       //   processingMs = parsing.end - loading.start - min(actualTTFB, ewmaTTFB)
       // so it compensates for latency only up to its *running estimate* of it.
@@ -435,11 +503,19 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
         });
       }
 
+      // The quality menu reads video.videoRenditions; install it before
+      // attachMedia because Video.js re-reads it on `loadstart`.
+      const renditions = installRenditions(video, hls);
+      this.removeRenditions = renditions.remove;
+      hls.on(Hls.Events.MANIFEST_PARSED, () => renditions.list.sync());
+      hls.on(Hls.Events.LEVELS_UPDATED, () => renditions.list.sync());
+      hls.on(Hls.Events.LEVEL_SWITCHED, (_e, d) => renditions.list.setActive(d.level));
+
       hls.loadSource(master);
       hls.attachMedia(video);
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         this.restoreProgress(video);
-        if (this.started()) void video.play().catch(() => {}); // resume after a mid-watch escalation
+        if (this.started() && !this.holdPaused) void video.play().catch(() => {}); // resume after a mid-watch escalation
       });
       // recoverAttempts was only ever reset on a fresh load, so the cap below was
       // three recoveries for an entire film: a 2h watch that hiccupped three times
@@ -465,7 +541,14 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
         // error once recovery is exhausted (or the failure is unrecoverable).
         // The video element keeps the last decoded frame on screen during this
         // window — overlay a buffering spinner instead of an error message.
-        if (data.type === Hls.ErrorTypes.NETWORK_ERROR && this.recoverAttempts < 3) {
+        // A fatal manifest error means hls.js has already used its own retries
+        // and holds no playlist; startLoad() would reload nothing and the player
+        // would hang without a further error. Go straight to the fallbacks.
+        const manifestFailed =
+          data.details === Hls.ErrorDetails.MANIFEST_LOAD_ERROR ||
+          data.details === Hls.ErrorDetails.MANIFEST_LOAD_TIMEOUT ||
+          data.details === Hls.ErrorDetails.MANIFEST_PARSING_ERROR;
+        if (!manifestFailed && data.type === Hls.ErrorTypes.NETWORK_ERROR && this.recoverAttempts < 3) {
           this.recoverAttempts++;
           this.beginBuffering();
           hls.startLoad();
@@ -473,6 +556,13 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
           this.recoverAttempts++;
           this.beginBuffering();
           hls.recoverMediaError();
+        } else if (!this.hlsFailed && video.canPlayType('application/vnd.apple.mpegurl')) {
+          // hls.js gave up, but this browser can play HLS itself: try that once
+          // before failPlayback()'s server escalation. Position comes back from
+          // the saved progress, as on any re-attach.
+          this.hlsFailed = true;
+          this.destroyHls();
+          this.attachNative(video, master, false);
         } else {
           this.failPlayback(data.details || 'playback error');
         }
@@ -486,18 +576,15 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   }
 
   private preferNativeHls(video: HTMLVideoElement): boolean {
-    if (this.hlsEngine === 'js' || this.nativeFailed) return false;
-    if (!video.canPlayType('application/vnd.apple.mpegurl')) return false;
-    if (this.hlsEngine === 'native') return true;
-    const brands: { brand: string }[] = (navigator as any).userAgentData?.brands ?? [];
-    return brands.some((b) => b.brand === 'Chromium') || /Chrome\/|CriOS\/|Edg\//.test(navigator.userAgent);
+    if (this.hlsEngine !== 'native' || this.nativeFailed) return false;
+    return !!video.canPlayType('application/vnd.apple.mpegurl');
   }
 
   private attachNative(video: HTMLVideoElement, master: string, canFallBack: boolean) {
     const native = video.canPlayType('application/vnd.apple.mpegurl');
     video.src = master;
     this.restoreProgress(video);
-    if (this.started()) void video.play().catch(() => {}); // resume after a mid-watch escalation
+    if (this.started() && !this.holdPaused) void video.play().catch(() => {}); // resume after a mid-watch escalation
     this.nativeErrorHandler = () => {
       this.nativeErrorHandler = null;
       if (canFallBack) {
@@ -562,6 +649,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     // escalate to server 2 once, preserving the play state mid-watch.
     if (!this.escalated && this.activeServer() === 1) {
       this.escalated = true;
+      this.hlsFailed = false; // server 2 is a different stream: hls.js gets a fresh try
       void this.loadStream(2, true);
       return;
     }
@@ -1101,6 +1189,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   onPlaybackStarted() {
     this.started.set(true);
     this.paused.set(false);
+    this.holdPaused = false;
   }
 
   onPlaybackPaused(video: HTMLVideoElement) {
@@ -1208,6 +1297,8 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
       this.hls.destroy();
       this.hls = null;
     }
+    this.removeRenditions?.();
+    this.removeRenditions = null;
     const video = this.videoEl()?.nativeElement;
     if (this.nativeErrorHandler) {
       video?.removeEventListener('error', this.nativeErrorHandler);
