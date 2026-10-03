@@ -1,11 +1,105 @@
 # Session handoff
 
+## SHIPPED (2026-10-03): search works again when OMDB is out of quota; "$7" budget fix; paid OMDB key
+
+- **Search was dead on production**: `/api/omdb?action=search` and `/api/suggestions` both
+  returned OMDB's `"Request limit reached!"` (free key, 1,000/day). New `api/_tmdb-search.js`
+  (`_` = not a route) runs TMDB `/search/multi` whenever OMDB has no answer; both
+  endpoints return it in their usual shapes (results: `imdbID: ''` + `tmdbId` +
+  `mediaType`, like the home lists; cached 10 min). Client: search-box passes `?type=tv`
+  for TMDB TV ids (ids overlap between movie/tv); search page stops paging on
+  `_lastPage` (TMDB's total counts people, which are dropped, so the count is an
+  upper bound). Verified on preview `streamfiesta-kh8h6fc5p` with
+  `tools/e2e/searchcheck.mjs`: dropdown, suggestion -> Breaking Bad page, results page.
+- **"$7" budget/gross**: TMDB user data had 7 for both. `usd()` in `api/movie.js` now hides
+  amounts under $1,000.
+- **Paid OMDB key** (user bought it) is set in Vercel (Production/Preview/Development)
+  and in the gitignored `.env`, `.env.local`, `src/environments/environment.ts`. Verified
+  live: OMDB search, and Shawshank shows IMDb votes, Metascore, awards, US box office.
+  The TMDB search fallback now only runs if OMDB fails again.
+
+## SHIPPED (2026-10-03): subtitle sync in Settings + controls 10% smaller
+
+User tried the prototype ("works pretty good") and asked for (1) a normal on/off in the
+player's Settings, no URL flags, and (2) a smaller control panel via the skin's own
+size option, not hand-tuned sizes. Both done, verified on preview
+`streamfiesta-dureqf109-nktvit.vercel.app`. Pushed to `main` 2026-10-03.
+
+- **Settings > "Subtitle sync"**: Video.js's own `<media-menu-checkbox-item>` (loaded
+  from `/vendor/videojs-10.0.1/ui/menu-checkbox-item.js`, a separate UI entry, with the
+  main bundle in `loadVideoJs`). The skin has no slot, so `installSubsyncItem()` appends
+  it to the Settings menu's top-level content inside the skin's shadow root, with the
+  skin's menu classes, a check indicator and an inline sync SVG icon. **On by default**;
+  `fiesta:subsync` = '0'/'1' in localStorage; `?subsync=0|1` still overrides (tests).
+  Off = `SubtitleSync.destroy()`, which puts the cues back at file times (verified:
+  cue 29.109 -> 29.764 = file time). Only on the hls.js path; not shown for native HLS.
+- **Size**: `--media-scale-unit: 14.4px` (16px default * 0.9) on `.fiesta-skin`. The skin
+  computes every size as `--media-spacing = var(--media-scale-unit,16px) * --media-scale / 4`
+  and never declares the unit, so it inherits into the shadow DOM and also shrinks the
+  fullscreen steps (1.25/1.5/1.75 at 1280/1536/1920 px). `--media-scale` itself does NOT
+  work from outside: Chrome fullscreens the inner `media-container` in the shadow root,
+  which re-declares it. Measured: control 36 -> 32.4 px; fullscreen 1920 px 63 -> 56.7 px.
+- Tests: `tools/e2e/subsync-menu.mjs <url> [--browser=]`: Chrome 7/7, WebKit 7/7,
+  Firefox 5/7. Firefox's 2 failures are a reload-after-opening-the-menu quirk that
+  production shows identically (player appears ~15 s late in Playwright Firefox), not
+  this change. Unit tests 83 + the 5 known MovieService failures; build clean.
+- Sync engine details (still accurate):
+- Audio: copies hls.js `BUFFER_APPENDING` audio (fMP4), `decodeAudioData(init+frag)` at
+  16 kHz (verified Chrome/WebKit/Firefox), 300–3400 Hz biquads, log energy per 10 ms.
+  Media time = tfdt/timescale + append `offset`. No extra requests; playback audio untouched.
+- Every 10 s: speech mask over [now−150, now+60] vs showing track's cues; searches
+  offset ±90 s × slope ±5% (41 steps) cold, ±4 s × slope ±0.2% when locked. Lock needs
+  two agreeing confident estimates ≥20 s apart. Locked: points → least-squares line
+  `audio = a·file + b` (outliers >1 s dropped, local 15 min), applied to ALL cues
+  (original times in a WeakMap), so seeks extrapolate. A point >1 s off the line
+  needs a second agreeing one before the line is replaced.
+- Live results (2× playback): Oppenheimer default −0.8 s → locked −0.83 in ~35 s (Chrome),
+  −0.55..−0.61 (Firefox); Shawshank default (file 36919) **+13 s** → locked +13.0 (Chrome,
+  WebKit); Breaking Bad "English" (1.85% drift) tracked within ±0.4 s, lock ~35 s, seek
+  13→38 min landed 0.3 s from truth; Matrix control held 0 ± 0.06.
+- Cost (M1 Max): worst cold estimate 41 ms, decode ~10 ms per 5 s fragment, main thread.
+  Slow TVs may need a Worker. Energy VAD misfires on loud scores (Inception offline);
+  the agreement rules absorbed it in trials, but Silero (ML VAD) is the fallback.
+- Live track lists differ from fresh searches: production's Shawshank "English" is the
+  +13 s file and "English 2–5" look like CD1/CD2 pairs.
+
+## RESEARCH (2026-10-03): subtitle sync vs our stream audio
+
+User: "poor synchronization for subtitles … constantly". Measured 9 titles (Shawshank,
+Matrix, Inception, Oppenheimer, Dune 2, GoT/BB/The Bear S1E1), 68 English candidates,
+by transcribing 2-min fragments of OUR stream (faster-whisper, word timestamps) and
+voting each subtitle file's offset. Tools: `tools/subsync/` (uncommitted; README there).
+Precision ~0.3 s (ASR and VAD-only methods agree to that).
+
+- **Default pick (most downloaded) is badly wrong sometimes**: Shawshank's is a 25 fps
+  DVD file: +28 s early at 6 min, +341 s by the end. Oppenheimer's default is ~0.8 s
+  late, Breaking Bad's ~1.4 s late. Matrix/Inception/Dune 2/GoT/Bear defaults fine.
+- **Alternates (English 2–5) are often worse**: constant offsets (+13, +23, +57 s
+  CAM), linear drift (Bear r=1.0045 −10→−6 s; BB r=1.0185 to +41 s; Shawshank's
+  Blu-ray files r≈0.9992 → −4.5 s by the end), CD1/CD2 halves (CD2 restarts at 0),
+  truncated or wrong files.
+- Error is always constant offset + linear scale (fit residual ≤0.6 s), so
+  `t' = r·t + c` per file fixes every non-garbage file.
+- `MovieFPS` tag is unreliable (Matrix file tagged 25 fps is timed right); `MovieTimeMS`
+  is always 0. Ranking by metadata cannot fix this; it must be measured.
+- Both stream servers serve the identical encode (same duration/segments): a
+  correction measured once per title applies to every viewer.
+- A cheap energy VAD (300–3400 Hz band, no ML) gives the same offsets as ASR on 2-min
+  windows, so a browser or the relay can measure without a speech model. VAD alone
+  can't reject garbage files; cross-file agreement or ASR match rate does.
+- Player hook point: `fillTrack()` (movie-player.component.ts ~838) — every cue goes
+  through it.
+- OpenSubtitles per-IP download cap hit from this Mac after ~40 files (401).
+- Also this session: removed the duplicate "Seasons" row from movie details
+  (`movie.service.ts`), pushed with the player.
+
 ## SHIPPED (2026-10-03): Video.js v10 player replaces native controls
 
 Last verified preview: `streamfiesta-iynksh5g6-nktvit.vercel.app`. Committed and pushed to `main`
 on 2026-10-03 (user: "merge the changes for new player"). Pre-push: `ng build` OK,
 unit tests 74/79 (the 5 known `MovieService` apikey failures only). Production
-deploy NOT yet re-verified after the push.
+verified after deploy: `player.mjs` 10/10 Chrome, WebKit, Firefox (first WebKit/Firefox
+run had flaky captions/quality checks, clean on rerun).
 
 - **UI**: Video.js v10 (`@videojs/*` 10.0.1, released 2026-10-02; the npm `video.js`
   package is still v8) Default skin around OUR `<video>` + OUR tuned hls.js.
