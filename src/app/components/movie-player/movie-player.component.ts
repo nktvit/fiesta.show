@@ -16,6 +16,7 @@ import { NgTemplateOutlet } from '@angular/common';
 import type Hls from 'hls.js';
 import { fetchSubtitleDirect, parseVtt, VttCue } from '../../utils/vtt';
 import { installRenditions } from '../../utils/hls-renditions';
+import { SubtitleSync } from '../../utils/subsync';
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -120,6 +121,13 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   // nothing in normal playback.
   private readonly hlsDebug =
     typeof location !== 'undefined' && new URLSearchParams(location.search).has('hlsdebug');
+  // Live subtitle sync (utils/subsync.ts): a Settings menu checkbox, on by
+  // default, saved in localStorage. hls.js only; native HLS exposes no audio.
+  private static readonly SUBSYNC_KEY = 'fiesta:subsync';
+  private subsyncOn = MoviePlayerComponent.readSubsync();
+  private subsyncHls: { hls: Hls; appendEvent: string; video: HTMLVideoElement } | null = null;
+  private subsyncItem: HTMLElement | null = null;
+  private subsync: SubtitleSync | null = null;
   // ?hls=js / ?hls=native force an engine, for comparing the two.
   private readonly hlsEngine =
     typeof location !== 'undefined' ? new URLSearchParams(location.search).get('hls') : null;
@@ -239,10 +247,88 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   private static videoJsLoad: Promise<unknown> | null = null;
   private static loadVideoJs() {
     const url = MoviePlayerComponent.VIDEOJS_URL; // a variable, so the bundler leaves the import alone
-    MoviePlayerComponent.videoJsLoad ??= import(/* @vite-ignore */ url).catch((err) => {
+    // The checkbox menu item ships as its own UI entry, outside the skin bundle.
+    const checkbox = MoviePlayerComponent.VIDEOJS_URL.replace(/video\.js$/, 'ui/menu-checkbox-item.js');
+    MoviePlayerComponent.videoJsLoad ??= Promise.all([
+      import(/* @vite-ignore */ url),
+      import(/* @vite-ignore */ checkbox),
+    ]).catch((err) => {
       MoviePlayerComponent.videoJsLoad = null; // allow a retry on the next player
       console.error('Video.js failed to load', err);
     });
+  }
+
+  private static readSubsync(): boolean {
+    if (typeof location === 'undefined') return false;
+    const q = new URLSearchParams(location.search).get('subsync'); // ?subsync=0|1 for tests
+    if (q === '0' || q === '1') return q === '1';
+    try {
+      return window.localStorage.getItem(MoviePlayerComponent.SUBSYNC_KEY) !== '0';
+    } catch {
+      return true;
+    }
+  }
+
+  private startSubsync() {
+    const h = this.subsyncHls;
+    if (!this.subsyncOn || !h || this.subsync) return;
+    this.subsync = new SubtitleSync(h.video, h.hls as never, h.appendEvent);
+    if (this.hlsDebug) (window as unknown as Record<string, unknown>)['__fiestaSubsync'] = this.subsync.state;
+  }
+
+  private stopSubsync() {
+    this.subsync?.destroy(); // puts the cues back at their file times
+    this.subsync = null;
+  }
+
+  private setSubsync(on: boolean) {
+    this.subsyncOn = on;
+    try {
+      window.localStorage.setItem(MoviePlayerComponent.SUBSYNC_KEY, on ? '1' : '0');
+    } catch {
+      // private mode: the choice lasts for this page only
+    }
+    if (on) this.startSubsync();
+    else this.stopSubsync();
+    this.subsyncItem?.toggleAttribute('checked', on);
+    this.subsyncItem?.querySelector('media-menu-item-indicator')?.toggleAttribute('checked', on);
+  }
+
+  // The skin's Settings menu has no slot for extra items, so the "Subtitle
+  // sync" checkbox (Video.js's own <media-menu-checkbox-item>) is appended to
+  // the menu's top level inside the skin's shadow root, styled with the skin's
+  // own menu-item classes. The skin renders after Video.js loads, so wait for
+  // the menu to exist (a few frames, or seconds on a cold load).
+  private installSubsyncItem(video: HTMLVideoElement) {
+    const deadline = performance.now() + 15_000;
+    const tryInstall = () => {
+      if (this.subsyncHls?.video !== video) return; // detached meanwhile
+      const root = video.closest('video-skin')?.shadowRoot;
+      const content = root?.querySelector('media-menu > media-menu-content');
+      if (!content || !customElements.get('media-menu-checkbox-item')) {
+        if (performance.now() < deadline) requestAnimationFrame(tryInstall);
+        return;
+      }
+      if (content.querySelector('.fiesta-subsync-item')) return;
+      const item = document.createElement('media-menu-checkbox-item');
+      item.className = 'media-menu-item media-menu-radio-item fiesta-subsync-item';
+      item.innerHTML =
+        // two-arrow sync glyph (the skin's icon set has none), sized by the skin's icon class
+        '<svg class="media-menu-trigger-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+        'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+        '<path d="M20 11a8 8 0 0 0-14.6-4.5L4 8"/><path d="M4 3v5h5"/>' +
+        '<path d="M4 13a8 8 0 0 0 14.6 4.5L20 16"/><path d="M20 21v-5h-5"/></svg>' +
+        '<span>Subtitle sync</span>' +
+        '<media-menu-item-indicator class="media-menu-item-indicator">' +
+        '<media-icon name="check" class="media-menu-radio-item-icon"></media-icon>' +
+        '</media-menu-item-indicator>';
+      item.toggleAttribute('checked', this.subsyncOn);
+      item.querySelector('media-menu-item-indicator')?.toggleAttribute('checked', this.subsyncOn);
+      item.addEventListener('checked-change', (e) => this.setSubsync((e as CustomEvent<{ checked: boolean }>).detail.checked));
+      content.appendChild(item);
+      this.subsyncItem = item;
+    };
+    tryInstall();
   }
 
   private static readPlayerUi(): 'custom' | 'native' {
@@ -510,6 +596,10 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
       hls.on(Hls.Events.MANIFEST_PARSED, () => renditions.list.sync());
       hls.on(Hls.Events.LEVELS_UPDATED, () => renditions.list.sync());
       hls.on(Hls.Events.LEVEL_SWITCHED, (_e, d) => renditions.list.setActive(d.level));
+
+      this.subsyncHls = { hls, appendEvent: Hls.Events.BUFFER_APPENDING, video };
+      this.startSubsync();
+      if (this.playerUi() === 'custom') this.installSubsyncItem(video);
 
       hls.loadSource(master);
       hls.attachMedia(video);
@@ -1293,6 +1383,10 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   }
 
   private destroyHls() {
+    this.stopSubsync();
+    this.subsyncHls = null;
+    this.subsyncItem?.remove();
+    this.subsyncItem = null;
     if (this.hls) {
       this.hls.destroy();
       this.hls = null;

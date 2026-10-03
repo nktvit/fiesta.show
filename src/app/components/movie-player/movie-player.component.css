@@ -33,3 +33,13 @@ video.player-paused {
   --media-border-color: transparent;
   --media-border-radius: 0;
 }
+
+/* Controls 10% smaller through the skin's own size unit. Every control size,
+   gap and font is --media-spacing = var(--media-scale-unit, 16px) * scale / 4,
+   and the skin only reads the unit (16px is a fallback), so it inherits into
+   the skin's shadow DOM and shrinks its fullscreen steps (1.25-1.75x) too.
+   --media-scale itself is re-declared inside the shadow DOM and can't be set
+   from here. */
+.fiesta-skin {
+  --media-scale-unit: 14.4px; /* 16px * 0.9 */
+}
