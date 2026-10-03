@@ -104,8 +104,11 @@ function names(list) {
   return (list || []).map(function(x) { return x.english_name || x.name; }).filter(Boolean).join(', ');
 }
 
+// TMDB budget/revenue are user-entered and sometimes junk: "7" meant as $7M
+// shows as "$7". No real release has a budget or gross under $1,000, and a
+// guessed unit is worse than an empty row, so treat those as missing.
 function usd(n) {
-  return n > 0 ? '$' + Math.round(n).toLocaleString('en-US') : null;
+  return n >= 1000 ? '$' + Math.round(n).toLocaleString('en-US') : null;
 }
 
 // "1994-09-23" -> "23 Sep 1994", the format OMDB uses.
