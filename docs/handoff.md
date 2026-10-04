@@ -29,8 +29,8 @@
     repo, re-apply the 2-line patch.
   - Vercel: `lib/tidal.js` `userToken()` asks the relay only when the request has `X-Music-Key` ==
     `MUSIC_OWNER_KEY`; `api/music.js` retries once on a rejected cached token. `MUSIC_OWNER_KEY` is set on
-    Vercel PREVIEW only (add to Production before merging; the unlock key itself is in the job tmp and was
-    shown to the user once). Preview: `streamfiesta-dfcs2v08n-nktvit.vercel.app`. Verified: no key / wrong key /
+    Vercel PREVIEW only (add to Production before merging; the unlock key was generated into the job tmp only;
+    give it to the user via clipboard (`pbcopy`), never retype it - an earlier session printed an invented key by mistake). Preview: `streamfiesta-dfcs2v08n-nktvit.vercel.app`. Verified: no key / wrong key /
     owner key with no session all fall back to previews; `X-Tidal-Token` still gives FULL.
   - Setup (done once): TIDAL's web SDK ENCRYPTS the refresh token in localStorage, so it was caught from the
     login token exchange response in DevTools (the numeric `cid` 8049 inside the JWT is NOT the OAuth
