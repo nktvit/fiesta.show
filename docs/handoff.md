@@ -11,6 +11,14 @@
   control in a strip BELOW the video inside `movie-player.component`. Verified on a preview: player e2e 10/10
   Chrome and WebKit (e2e helper `wakeControls` hovers the `<video>`, not `#player`), unit 85 + the 5 known
   MovieService failures. NOT checked on a real iPhone. Production deploy not re-verified after the merge.
+- **Sticky footer is on `main` + live** (`4f052d4`, standalone branch `fix/sticky-footer`): verified on 30
+  page/viewport combos and on production. The same rule also exists in `feature/music-tab`'s `styles.css`
+  (different position in the file): when merging the music branch keep ONE copy.
+- **Mac mini caveat:** `relay.mjs` on the mini is edited over time by an automated "autofix" watchdog
+  (launchd `show.fiesta.relay.autofix`, `.autofix/autofix.log`; backups `relay.mjs.bak-*` on Sep 7, 9, 13 are its
+  edits). It has not run since Sep 29 and left the file alone then. If it ever rewrites or restores `relay.mjs`,
+  the 2 music lines (import + `/tidal/token` route) can disappear -> music silently falls back to previews.
+  Check with `ssh mm 'grep -n tidal /Users/ms/Server/relay.fiesta.show/relay.mjs'` (expect 2 lines).
 - **Music automation (`feature/music-tab`): WORKING END TO END on the preview (2026-10-05).** The mini holds
   the owner's TIDAL web session (client_id `49YxDN9a2aFV6RTG` = "Tidal Web Player - HiRes", token host
   auth.tidal.com) and renews it itself; TIDAL DOES rotate the refresh token (the module persists the new
