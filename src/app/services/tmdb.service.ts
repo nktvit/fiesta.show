@@ -96,12 +96,17 @@ export class TmdbService {
       : this.http.get<any>(
           `https://api.themoviedb.org/3/tv/${tmdbId}?api_key=${(environment as any).TMDB_API_KEY}&language=en-US`
         ).pipe(
-          map(res => ({
-            totalSeasons: res.number_of_seasons || 0,
-            seasons: (res.seasons || [])
-              .filter((s: any) => s.season_number > 0)
-              .map((s: any) => ({ number: s.season_number, name: s.name, episodeCount: s.episode_count }))
-          })),
+          map(res => {
+            // Mirror of api/tmdb.js (lib/seasons.js): skip announced seasons with no episodes yet.
+            const real = (res.seasons || []).filter((s: any) => s.season_number > 0);
+            const aired = real.filter((s: any) => s.episode_count > 0);
+            const seasons = (aired.length ? aired : real)
+              .map((s: any) => ({ number: s.season_number, name: s.name, episodeCount: s.episode_count }));
+            return {
+              totalSeasons: seasons.length ? Math.max(...seasons.map((s: any) => s.number)) : (res.number_of_seasons || 0),
+              seasons,
+            };
+          }),
           catchError(() => of({ totalSeasons: 0, seasons: [] }))
         )
     );

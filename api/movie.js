@@ -1,3 +1,5 @@
+const { lastSeason } = require('../lib/seasons');
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -171,7 +173,12 @@ function fillFromTmdb(data, match, full, isTv) {
     set('Country', names(full.production_countries) || (full.origin_country || []).join(', '));
     set('Production', names((full.production_companies || []).slice(0, 3)));
     if (isTv) {
-      set('totalSeasons', full.number_of_seasons ? String(full.number_of_seasons) : null);
+      // Season count from the seasons that actually have episodes. This
+      // deliberately overrides OMDB (set() only fills gaps): OMDB counts
+      // announced seasons too - it says 12 for Rick and Morty, which has 9.
+      var seasonCount = lastSeason(full.seasons, 0);
+      if (seasonCount) data.totalSeasons = String(seasonCount);
+      else set('totalSeasons', full.number_of_seasons ? String(full.number_of_seasons) : null);
       data._network = names(full.networks) || null;
       data._status = full.status || null;
     }

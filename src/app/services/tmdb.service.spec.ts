@@ -75,4 +75,40 @@ describe('TmdbService', () => {
 
     expect(imdbId).toBe('tt0944947');
   });
+
+  describe('getTVDetails', () => {
+    function load(tmdbId: number, body: object) {
+      let result: any;
+      service.getTVDetails(tmdbId).subscribe(r => (result = r));
+      httpMock
+        .expectOne(r => r.urlWithParams.startsWith(`https://api.themoviedb.org/3/tv/${tmdbId}?`))
+        .flush(body);
+      return result;
+    }
+
+    it('skips announced seasons that have no episodes yet (Rick and Morty season 10)', () => {
+      const result = load(60625, {
+        number_of_seasons: 10,
+        seasons: [
+          { season_number: 0, name: 'Specials', episode_count: 5 },
+          { season_number: 8, name: 'Season 8', episode_count: 10 },
+          { season_number: 9, name: 'Season 9', episode_count: 10 },
+          { season_number: 10, name: 'Season 10', episode_count: 0 },
+        ],
+      });
+
+      expect(result.seasons.map((s: any) => s.number)).toEqual([8, 9]);
+      expect(result.totalSeasons).toBe(9);
+    });
+
+    it('keeps every season when TMDB has no episode counts at all (brand-new show)', () => {
+      const result = load(1, {
+        number_of_seasons: 1,
+        seasons: [{ season_number: 1, name: 'Season 1', episode_count: 0 }],
+      });
+
+      expect(result.seasons.map((s: any) => s.number)).toEqual([1]);
+      expect(result.totalSeasons).toBe(1);
+    });
+  });
 });

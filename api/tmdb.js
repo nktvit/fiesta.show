@@ -1,3 +1,5 @@
+const { seasonsWithEpisodes, lastSeason } = require('../lib/seasons');
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -104,10 +106,9 @@ module.exports = async function handler(req, res) {
     if (list === 'tv_details' && id) {
       var response = await fetch(TMDB_BASE + '/tv/' + id + '?api_key=' + apiKey + '&language=en-US');
       var data = await response.json();
-      var seasons = (data.seasons || [])
-        .filter(function(s) { return s.season_number > 0; })
+      var seasons = seasonsWithEpisodes(data.seasons)
         .map(function(s) { return { number: s.season_number, name: s.name, episodeCount: s.episode_count }; });
-      return res.status(200).json({ totalSeasons: data.number_of_seasons || 0, seasons: seasons });
+      return res.status(200).json({ totalSeasons: lastSeason(data.seasons, data.number_of_seasons || 0), seasons: seasons });
     }
 
     if (list === 'tv_episodes' && id) {

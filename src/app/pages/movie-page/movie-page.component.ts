@@ -482,6 +482,20 @@ export class MoviePageComponent implements AfterViewChecked, OnDestroy {
         this.totalSeasons = details.totalSeasons;
         this.seasonNumbers = details.seasons.map(s => s.number);
         details.seasons.forEach(s => this.seasonNames.set(s.number, s.name));
+
+        // A shared link or saved position can name a season with no episodes
+        // (an announced one such as ?s=10, or one that was removed). Land on
+        // the latest real season instead of an empty player.
+        if (this.season && this.seasonNumbers.length && !this.seasonNumbers.includes(this.season)) {
+          this.season = this.seasonNumbers[this.seasonNumbers.length - 1];
+          this.episode = 1;
+          this.router.navigate([], {
+            relativeTo: this.route,
+            queryParams: { s: this.season, e: this.episode },
+            queryParamsHandling: 'merge',
+            replaceUrl: true,
+          });
+        }
         this.loadEpisodes(this.season!);
       });
     } else {
