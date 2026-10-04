@@ -1,14 +1,16 @@
-import { Component, inject } from '@angular/core';
+import { Component, effect, inject } from '@angular/core';
 import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs';
 import { NavigationService } from './services/navigation.service';
 import { FooterComponent } from './components/footer/footer.component';
 import { BottomNavComponent } from './components/bottom-nav/bottom-nav.component';
+import { MusicPlayerBarComponent } from './components/music-player-bar/music-player-bar.component';
+import { MusicPlayerService } from './services/music-player.service';
 import { computeRoute, injectSpeedInsights } from '@vercel/speed-insights';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, FooterComponent, BottomNavComponent],
+  imports: [RouterOutlet, FooterComponent, BottomNavComponent, MusicPlayerBarComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.css',
   host: { class: 'block min-h-screen' },
@@ -16,6 +18,12 @@ import { computeRoute, injectSpeedInsights } from '@vercel/speed-insights';
 export class AppComponent {
   private nav = inject(NavigationService);
   private router = inject(Router);
+  protected readonly player = inject(MusicPlayerService);
+
+  constructor() {
+    // Lets styles.css lift the donation widget clear of the mini player.
+    effect(() => document.body.classList.toggle('has-music-bar', !!this.player.track()));
+  }
 
   ngOnInit() {
     this.nav.init();

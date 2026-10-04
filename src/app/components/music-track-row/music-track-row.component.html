@@ -1,0 +1,42 @@
+<div class="group flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-white/5 motion-reduce:transition-none"
+  [class]="current() ? 'bg-white/5' : ''">
+  <button type="button" (click)="play()"
+    class="relative flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded bg-gray-800 text-gray-400"
+    [attr.aria-label]="(active() ? 'Pause ' : 'Play ') + track().title">
+    @if (showCover() && track().cover) {
+      <img [src]="track().cover" alt="" width="48" height="48" loading="lazy" class="h-full w-full object-cover" />
+    } @else {
+      <span class="text-sm tabular-nums">{{ number() ?? '' }}</span>
+    }
+    <span class="absolute inset-0 flex items-center justify-center bg-black/55 text-white transition-opacity motion-reduce:transition-none"
+      [class.opacity-0]="!current()" [class.group-hover:opacity-100]="!current()">
+      @if (active()) {
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1" /><rect x="14" y="5" width="4" height="14" rx="1" /></svg>
+      } @else {
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" /></svg>
+      }
+    </span>
+  </button>
+
+  <div class="min-w-0 flex-1">
+    <p class="truncate text-sm font-medium" [class.text-indigo-400]="current()">
+      {{ track().title }}
+      @if (track().explicit) {
+        <span class="ml-1 rounded-sm bg-white/15 px-1 text-[10px] font-semibold text-gray-300" title="Explicit">E</span>
+      }
+    </p>
+    <p class="truncate text-xs text-gray-400">
+      @if (track().artistId) {
+        <a [routerLink]="['/music/artist', track().artistId]" class="hover:text-white hover:underline">{{ track().artist }}</a>
+      } @else {
+        {{ track().artist }}
+      }
+    </p>
+  </div>
+
+  @if (showAlbum() && track().albumId) {
+    <a [routerLink]="['/music/album', track().albumId]"
+      class="hidden w-1/4 truncate text-xs text-gray-400 hover:text-white hover:underline md:block">{{ track().album }}</a>
+  }
+  <span class="w-10 flex-shrink-0 text-right text-xs tabular-nums text-gray-400">{{ time(track().duration) }}</span>
+</div>

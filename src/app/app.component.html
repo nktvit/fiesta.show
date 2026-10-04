@@ -1,5 +1,10 @@
 <div class="flex flex-col min-h-screen bg-[#0a0a0a]">
   <router-outlet></router-outlet>
   <app-footer></app-footer>
+  @if (player.track()) {
+    <!-- The mini player is fixed; this keeps the footer from sliding under it. -->
+    <div class="h-20" aria-hidden="true"></div>
+  }
+  <app-music-player-bar></app-music-player-bar>
   <app-bottom-nav></app-bottom-nav>
 </div>

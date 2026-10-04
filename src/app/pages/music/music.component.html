@@ -1,0 +1,92 @@
+<main class="flex-grow bg-[#0a0a0a] text-white">
+  <app-navbar [showSearchBox]="false" [transparent]="false"></app-navbar>
+
+  <div class="px-4 py-8 md:px-12 lg:px-16">
+    <h1 class="mb-1 text-2xl font-bold md:text-3xl">Music</h1>
+    <p class="mb-6 text-sm text-gray-400">Search millions of songs, in lossless where available.</p>
+
+    <form (submit)="submit($event)" role="search" class="mb-6 flex max-w-2xl gap-2">
+      <input type="search" name="q" [value]="text()" (input)="onInput($event)" enterkeyhint="search"
+        placeholder="Songs, albums, artists" aria-label="Search music" autocomplete="off"
+        class="min-w-0 flex-1 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-gray-500 focus:border-indigo-400 focus:outline-none" />
+      <button type="submit" class="rounded-lg bg-indigo-600 px-5 py-3 text-sm font-semibold text-white hover:bg-indigo-500">Search</button>
+    </form>
+
+    @switch (status()) {
+      @case ('idle') {
+        <p class="mb-3 text-sm text-gray-400">Try one of these:</p>
+        <div class="flex flex-wrap gap-2">
+          @for (s of suggestions; track s) {
+            <button type="button" (click)="search(s)"
+              class="rounded-full border border-white/10 px-4 py-2 text-sm text-gray-200 hover:border-indigo-400 hover:text-white">{{ s }}</button>
+          }
+        </div>
+      }
+      @case ('loading') {
+        <div class="max-w-4xl space-y-2" aria-busy="true" aria-label="Loading results">
+          @for (_ of [1,2,3,4,5,6,7,8]; track $index) {
+            <div class="h-16 animate-pulse rounded-lg bg-white/5"></div>
+          }
+        </div>
+      }
+      @case ('error') {
+        <p class="text-sm text-amber-400">Couldn't reach the music service. Try again in a moment.</p>
+      }
+      @case ('done') {
+        @if (result(); as r) {
+          <div class="mb-4 flex gap-2" role="tablist" aria-label="Result type">
+            @for (t of ['songs', 'albums', 'artists']; track t) {
+              <button type="button" role="tab" [attr.aria-selected]="tab() === t" (click)="tab.set($any(t))"
+                class="rounded-full px-4 py-1.5 text-sm font-medium capitalize transition-colors"
+                [class]="tab() === t ? 'bg-white text-black' : 'bg-white/5 text-gray-300 hover:text-white'">
+                {{ t }}
+              </button>
+            }
+          </div>
+
+          @switch (tab()) {
+            @case ('songs') {
+              <div class="max-w-4xl">
+                @for (t of r.tracks; track t.id) {
+                  <app-music-track-row [track]="t" [queue]="r.tracks"></app-music-track-row>
+                } @empty {
+                  <p class="text-sm text-gray-400">No songs found.</p>
+                }
+              </div>
+            }
+            @case ('albums') {
+              <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                @for (a of r.albums; track a.id) {
+                  <a [routerLink]="['/music/album', a.id]" class="group block">
+                    <img [src]="a.cover" alt="" width="320" height="320" loading="lazy"
+                      class="aspect-square w-full rounded bg-gray-800 object-cover transition-transform group-hover:scale-[1.02] motion-reduce:transition-none" />
+                    <p class="mt-2 truncate text-sm font-medium">{{ a.title }}</p>
+                    <p class="truncate text-xs text-gray-400">{{ a.artist }}@if (a.year) {<span> · {{ a.year }}</span>}</p>
+                  </a>
+                } @empty {
+                  <p class="col-span-full text-sm text-gray-400">No albums found.</p>
+                }
+              </div>
+            }
+            @case ('artists') {
+              <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                @for (a of r.artists; track a.id) {
+                  <a [routerLink]="['/music/artist', a.id]" class="group block text-center">
+                    @if (a.picture) {
+                      <img [src]="a.picture" alt="" width="320" height="320" loading="lazy" class="mx-auto aspect-square w-full rounded-full bg-gray-800 object-cover" />
+                    } @else {
+                      <div class="mx-auto aspect-square w-full rounded-full bg-gray-800"></div>
+                    }
+                    <p class="mt-2 truncate text-sm font-medium group-hover:underline">{{ a.name }}</p>
+                  </a>
+                } @empty {
+                  <p class="col-span-full text-sm text-gray-400">No artists found.</p>
+                }
+              </div>
+            }
+          }
+        }
+      }
+    }
+  </div>
+</main>

@@ -7,7 +7,8 @@
     "build": "npm install --prefix tv && npm run build --prefix tv && ng build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
-    "eval:moderation": "node --env-file=.env.local scripts/moderation-evals.mjs"
+    "eval:moderation": "node --env-file=.env.local scripts/moderation-evals.mjs",
+    "tidal:token": "node scripts/tidal-token.mjs"
   },
   "browserslist": [
     "last 2 versions",

@@ -1,0 +1,59 @@
+<main class="flex-grow bg-[#0a0a0a] text-white">
+  <app-navbar [showSearchBox]="false" [transparent]="false"></app-navbar>
+
+  <div class="px-4 py-8 md:px-12 lg:px-16">
+    <a routerLink="/music" class="mb-6 inline-block text-sm text-gray-400 hover:text-white">&larr; Music</a>
+
+    @switch (status()) {
+      @case ('loading') {
+        <div class="h-40 animate-pulse rounded bg-white/5" aria-busy="true"></div>
+      }
+      @case ('error') {
+        <p class="text-sm text-amber-400">Couldn't load this artist.</p>
+      }
+      @case ('done') {
+        @if (artist(); as a) {
+          <div class="mb-8 flex items-center gap-5">
+            @if (a.picture) {
+              <img [src]="a.picture" alt="" width="144" height="144" class="h-28 w-28 rounded-full bg-gray-800 object-cover md:h-36 md:w-36" />
+            }
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Artist</p>
+              <h1 class="my-1 text-2xl font-bold md:text-4xl">{{ a.name }}</h1>
+              @if (topTracks().length) {
+                <button type="button" (click)="playTop()"
+                  class="mt-2 inline-flex items-center gap-2 rounded-full bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-indigo-500">
+                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" /></svg>
+                  Play top songs
+                </button>
+              }
+            </div>
+          </div>
+
+          @if (topTracks().length) {
+            <h2 class="mb-2 text-lg font-semibold">Popular</h2>
+            <div class="mb-10 max-w-4xl">
+              @for (t of topTracks(); track t.id) {
+                <app-music-track-row [track]="t" [queue]="topTracks()"></app-music-track-row>
+              }
+            </div>
+          }
+
+          @if (albums().length) {
+            <h2 class="mb-3 text-lg font-semibold">Albums</h2>
+            <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+              @for (al of albums(); track al.id) {
+                <a [routerLink]="['/music/album', al.id]" class="group block">
+                  <img [src]="al.cover" alt="" width="320" height="320" loading="lazy"
+                    class="aspect-square w-full rounded bg-gray-800 object-cover transition-transform group-hover:scale-[1.02] motion-reduce:transition-none" />
+                  <p class="mt-2 truncate text-sm font-medium">{{ al.title }}</p>
+                  <p class="truncate text-xs text-gray-400">{{ al.year }}</p>
+                </a>
+              }
+            </div>
+          }
+        }
+      }
+    }
+  </div>
+</main>

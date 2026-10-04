@@ -8,7 +8,7 @@ import { SCROLL_LOCK_CLASS } from '../../services/scroll-lock';
 interface NavTab {
   path: string;
   label: string;
-  icon: 'home' | 'search' | 'tv' | 'star';
+  icon: 'home' | 'search' | 'tv' | 'star' | 'music';
   /** `/` matches only itself; the rest also match their child routes. */
   exact: boolean;
 }
@@ -28,6 +28,7 @@ export class BottomNavComponent implements OnDestroy {
     { path: '/search', label: 'Search', icon: 'search', exact: false },
     { path: '/tv', label: 'TV Shows', icon: 'tv', exact: false },
     { path: '/top-rated', label: 'Top Rated', icon: 'star', exact: false },
+    { path: '/music', label: 'Music', icon: 'music', exact: false },
   ];
 
   readonly genres = signal<{ id: number; name: string }[]>([]);

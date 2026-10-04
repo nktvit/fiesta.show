@@ -10,6 +10,9 @@ export const routes: Routes = [
   {path: 'genre/:id', loadComponent: () => import('./pages/genre/genre.component').then(m => m.GenreComponent)},
   {path: 'top-rated', loadComponent: () => import('./pages/top-rated/top-rated.component').then(m => m.TopRatedComponent)},
   {path: 'tv', loadComponent: () => import('./pages/tv/tv.component').then(m => m.TvComponent)},
+  {path: 'music', loadComponent: () => import('./pages/music/music.component').then(m => m.MusicComponent)},
+  {path: 'music/album/:id', loadComponent: () => import('./pages/music-album/music-album.component').then(m => m.MusicAlbumComponent)},
+  {path: 'music/artist/:id', loadComponent: () => import('./pages/music-artist/music-artist.component').then(m => m.MusicArtistComponent)},
 
   {path: '**', redirectTo: '', pathMatch: 'full'},
 ]
