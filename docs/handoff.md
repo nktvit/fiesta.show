@@ -11,7 +11,15 @@
   control in a strip BELOW the video inside `movie-player.component`. Verified on a preview: player e2e 10/10
   Chrome and WebKit (e2e helper `wakeControls` hovers the `<video>`, not `#player`), unit 85 + the 5 known
   MovieService failures. NOT checked on a real iPhone. Production deploy not re-verified after the merge.
-- **Music automation (`feature/music-tab`, built + deployed to the mini, WAITING ON ONE USER STEP):**
+- **Music automation (`feature/music-tab`): WORKING END TO END on the preview (2026-10-05).** The mini holds
+  the owner's TIDAL web session (client_id `49YxDN9a2aFV6RTG` = "Tidal Web Player - HiRes", token host
+  auth.tidal.com) and renews it itself; TIDAL DOES rotate the refresh token (the module persists the new
+  one). `tools/e2e/music.mjs --unlock-file=<key file>` passes 14/14 on `streamfiesta-dfcs2v08n-nktvit` with no
+  pasted token (seek to 200 s = FULL lossless). Not yet merged; before merging add `MUSIC_OWNER_KEY` and the
+  `TIDAL_CLIENT_ID/SECRET` to Vercel PRODUCTION. Watch: TIDAL may revoke the web session or expire the refresh
+  token after long idle; symptom = `/tidal/token` 502 `refresh_failed` and `/music` falling back to previews
+  (check `relay.log` for `[tidal-session]`); fix = rerun `npm run tidal:relay-setup` (see script header: the
+  client_id is in the `login.tidal.com/api/refreshlogin?...client_id=` URL). History below kept for context:
   - Mini (`ssh mm`, `/Users/ms/Server/relay.fiesta.show`, launchd `show.fiesta.relay`): the mini's `relay.mjs`
     is a divergent 1,219-line copy (NOT the repo's `tools/fiesta-proxy/relay.mjs`; it has a `.autofix`
     watchdog). Patched with ONE import + ONE route (`/tidal/token` -> `handleTidalToken(req,res,SECRET)`),
@@ -24,11 +32,10 @@
     Vercel PREVIEW only (add to Production before merging; the unlock key itself is in the job tmp and was
     shown to the user once). Preview: `streamfiesta-dfcs2v08n-nktvit.vercel.app`. Verified: no key / wrong key /
     owner key with no session all fall back to previews; `X-Tidal-Token` still gives FULL.
-  - **Remaining user step:** copy the `auth.tidal.com/v1/oauth2/token` refresh request ("Copy as cURL") from
-    listen.tidal.com DevTools and run `npm run tidal:relay-setup` (script reads the clipboard, sends
-    client_id + refresh_token to the mini over SSH, has the mini fetch a token and prints only OK/country/
-    minutes). Then open `/music?unlock=<key>` once per browser. UNTESTED end to end until then. Unknowns:
-    whether TIDAL rotates the refresh token (the module handles both) and whether TIDAL revokes the session.
+  - Setup (done once): TIDAL's web SDK ENCRYPTS the refresh token in localStorage, so it was caught from the
+    login token exchange response in DevTools (the numeric `cid` 8049 inside the JWT is NOT the OAuth
+    client_id). `npm run tidal:relay-setup` parses cURL, JSON or DevTools-tree paste, `--client-id=`
+    overrides. Then open `/music?unlock=<key>` once per browser.
 - **Angular modernization audit (research only, no code changed):** full report at
   `docs/angular-refactor-report-2026-10-04.md`.
   Headlines: latest stable is Angular 22.2 and v20 LTS ends 2026-11-28; only 4 of 22 components are OnPush;

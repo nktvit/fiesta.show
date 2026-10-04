@@ -16,9 +16,14 @@ const base = process.argv.find((a) => a.startsWith('http')) || 'http://localhost
 const shots = (process.argv.find((a) => a.startsWith('--shots=')) || '').slice(8);
 const tokenFile = (process.argv.find((a) => a.startsWith('--token-file=')) || '').slice(13);
 const userToken = tokenFile ? (await import('node:fs')).readFileSync(tokenFile, 'utf8').trim() : '';
-const withToken = (c) => userToken
-  ? c.route('**/api/music*', (r) => r.continue({ headers: { ...r.request().headers(), 'x-tidal-token': userToken } }))
-  : Promise.resolve();
+// --unlock-file=path: the owner's unlock key, stored the way /music?unlock=<key>
+// stores it, so the server uses the relay-held TIDAL session (no token pasted).
+const unlockFile = (process.argv.find((a) => a.startsWith('--unlock-file=')) || '').slice(14);
+const unlockKey = unlockFile ? (await import('node:fs')).readFileSync(unlockFile, 'utf8').trim() : '';
+const withToken = async (c) => {
+  if (unlockKey) await c.addInitScript((k) => { try { localStorage.setItem('fiesta:music-key', k); } catch {} }, unlockKey);
+  if (userToken) await c.route('**/api/music*', (r) => r.continue({ headers: { ...r.request().headers(), 'x-tidal-token': userToken } }));
+};
 const results = [];
 const check = (name, ok, extra = '') => { results.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${extra ? '  ' + extra : ''}`); };
 
