@@ -8,8 +8,8 @@
 //             videoRenditions shim); 720p pins hls.js, Auto releases it
 //   speed     picking 1.5× sets playbackRate
 //   captions  picking English shows a track with cues and saves the pref
-//   native    "Native player" swaps to browser controls at the same position,
-//             survives a reload, and "Fiesta player" swaps back
+//   native    the Native switch swaps to browser controls at the same position,
+//             survives a reload, and the Fiesta switch swaps back
 //   fallback  ?hls=native plays natively; with hls.js's requests blocked the
 //             player falls back to native HLS (WebKit/Chromium only)
 //
@@ -185,7 +185,7 @@ async function run(name) {
     await check('native', async () => {
       const before = (await page.evaluate(videoState)).t;
       await wakeControls(page);
-      await page.getByRole('button', { name: /native player/i }).click();
+      await page.getByRole('radio', { name: 'Native' }).click();
       await page.waitForFunction(() => { const v = document.querySelector('video'); return v && v.hasAttribute('controls') && v.readyState >= 2; }, null, { timeout: 30_000 });
       await page.waitForTimeout(1500);
       const native = await page.evaluate(videoState);
@@ -209,7 +209,7 @@ async function run(name) {
       await page.evaluate(() => localStorage.setItem('fiesta:player-ui', 'native'));
       await openPlayer(page);
       await wakeControls(page);
-      await page.getByRole('button', { name: /fiesta player/i }).click();
+      await page.getByRole('radio', { name: 'Fiesta' }).click();
       await page.waitForFunction(() => !!document.querySelector('video-skin video'), null, { timeout: 30_000 });
       return (await page.evaluate(videoState)).skin;
     });

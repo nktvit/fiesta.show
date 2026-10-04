@@ -1,3 +1,7 @@
+:host {
+  display: block;
+}
+
 .video-container {
   @apply aspect-video; /* Maintain 16:9 aspect ratio */
 }

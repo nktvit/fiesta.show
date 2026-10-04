@@ -223,6 +223,8 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     if (!this.started() || !this.masterUrl()) return;
     const target = event.target as HTMLElement | null;
     if (target && this.isEditable(target)) return;
+    // The Fiesta/Native switch is a radio group: arrows move its selection.
+    if (target?.closest?.('[role="radiogroup"]')) return;
     const video = this.videoEl()?.nativeElement;
     if (!video) return;
     event.preventDefault();
@@ -337,6 +339,22 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     } catch {
       return 'custom';
     }
+  }
+
+  /** The Fiesta/Native switch under the video (a two-option radio group). */
+  setPlayerUi(mode: 'custom' | 'native') {
+    if (mode !== this.playerUi()) this.togglePlayerUi();
+  }
+
+  onPlayerUiKeydown(event: KeyboardEvent) {
+    const order: ('custom' | 'native')[] = ['custom', 'native'];
+    let next: number;
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') next = 0;
+    else if (event.key === 'ArrowRight' || event.key === 'ArrowDown') next = 1;
+    else return;
+    event.preventDefault();
+    this.setPlayerUi(order[next]);
+    (event.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('[role="radio"]')[next]?.focus();
   }
 
   // Swap between the Video.js skin and the browser's own controls. The <video>
