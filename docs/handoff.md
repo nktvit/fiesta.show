@@ -1,5 +1,36 @@
 # Session handoff
 
+## STATE AT END OF SESSION (2026-10-04, late) - read this first
+
+- **Merged to `main` + live on production (user: "merge it"):** `c3626a5` hides seasons with no
+  episodes (`lib/seasons.js`, used by `api/tmdb.js`, `api/movie.js`, `tmdb.service.ts`). Verified live:
+  Rick and Morty shows seasons 1-9, header "9 Seasons" (OMDB said 12); a stale `?s=10` link redirects
+  to the latest real season.
+- **Pushed, NOT merged:** `fix/player-switch` (`5b403c3`, `de9ac8a`). The Fiesta/Native switch moved from
+  an overlay (it covered iOS's native fullscreen button) to a segmented control in a strip BELOW the video
+  inside `movie-player.component`. Verified on preview `streamfiesta-l3sono4te-nktvit.vercel.app`: player e2e
+  10/10 Chrome and WebKit (e2e helper `wakeControls` now hovers the `<video>`, not `#player`), unit 85 + the 5
+  known MovieService failures. NOT checked on a real iPhone. User has not yet said to merge it.
+- **Music tab (`feature/music-tab`)**: see the next section. **Decision made this session: approach B,
+  automated on the Mac mini relay - NOT BUILT YET.** Design: the relay (`tools/fiesta-proxy/relay.mjs`) holds a
+  TIDAL web-session refresh token, renews the access token itself, and serves it only to Vercel
+  (`GET /tidal/token`, Bearer `RELAY_SECRET`, like `/resolve`); `lib/tidal.js` `userToken()` fetches it. Full
+  lossless is gated to the owner (an unlock key kept in the browser), so the public site never streams from the
+  personal subscription. The user must supply once, in the mini's `.env.local` (not in chat): the web
+  session's refresh token and TIDAL's web OAuth client_id (both from listen.tidal.com DevTools). Needs a
+  relay restart, which briefly interrupts HLS streams: ask first. Risk to mention: TIDAL could revoke the
+  session; the account is personal.
+- **Angular modernization audit (research only, no code changed):** full report at
+  `docs/angular-refactor-report-2026-10-04.md`.
+  Headlines: latest stable is Angular 22.2 and v20 LTS ends 2026-11-28; only 4 of 22 components are OnPush;
+  hls.js runs INSIDE the zone (no `runOutsideAngular`) - easiest big win; the Buy Me a Coffee script blocks
+  startup; `provideAnimationsAsync` is unused; `tmdbImageLoader` is dead code; ~45 `.subscribe(` with 4
+  teardowns. Constraint kept: no change may raise the iOS/Safari 15 floor; the audit could not verify
+  Angular 21/22 runtime APIs on Safari 15 (needs a real iOS 15 test).
+- Loose ends: the pasted dev web-player token expires ~01:41 UTC 2026-10-05 (treat as exposed);
+  Production Vercel env has no TIDAL vars yet; worktrees live under `.claude/worktrees/`
+  (`music-tab`, `player-switch`, `empty-seasons`).
+
 ## IN PROGRESS (2026-10-04): Music tab (TIDAL) on branch `feature/music-tab`, preview verified, NOT merged
 
 Worktree: `.claude/worktrees/music-tab` (branch `feature/music-tab`, based on `1b96d91`). Preview:
