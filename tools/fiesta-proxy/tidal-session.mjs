@@ -2,8 +2,9 @@
 //
 // Holds the owner's TIDAL web-session refresh token on this box and hands out a
 // fresh access token to Vercel's api/music.js, so nobody pastes a token by hand.
-// Vercel only asks for it when the request carries the owner's unlock key, so
-// the public site never streams from this subscription.
+// Vercel only asks for it on preview/dev deployments (or in production with
+// MUSIC_SHARED_SESSION=1), so the public site doesn't stream from this subscription
+// by accident.
 //
 //   GET /tidal/token   Authorization: Bearer <RELAY_SECRET>
 //     -> 200 { access_token, expires_at (ms), country }

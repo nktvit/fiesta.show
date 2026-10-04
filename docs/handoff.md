@@ -14,9 +14,9 @@
 - **Music automation (`feature/music-tab`): WORKING END TO END on the preview (2026-10-05).** The mini holds
   the owner's TIDAL web session (client_id `49YxDN9a2aFV6RTG` = "Tidal Web Player - HiRes", token host
   auth.tidal.com) and renews it itself; TIDAL DOES rotate the refresh token (the module persists the new
-  one). `tools/e2e/music.mjs --unlock-file=<key file>` passes 14/14 on `streamfiesta-dfcs2v08n-nktvit` with no
-  pasted token (seek to 200 s = FULL lossless). Not yet merged; before merging add `MUSIC_OWNER_KEY` and the
-  `TIDAL_CLIENT_ID/SECRET` to Vercel PRODUCTION. Watch: TIDAL may revoke the web session or expire the refresh
+  one). `tools/e2e/music.mjs` (no options) passes 14/14 on a preview with no key and no
+  pasted token (seek to 200 s = FULL lossless). Not yet merged; before merging add `TIDAL_CLIENT_ID/SECRET` to Vercel PRODUCTION (production will
+  serve 30 s previews until viewer login ships or `MUSIC_SHARED_SESSION=1` is set). Watch: TIDAL may revoke the web session or expire the refresh
   token after long idle; symptom = `/tidal/token` 502 `refresh_failed` and `/music` falling back to previews
   (check `relay.log` for `[tidal-session]`); fix = rerun `npm run tidal:relay-setup` (see script header: the
   client_id is in the `login.tidal.com/api/refreshlogin?...client_id=` URL). History below kept for context:
@@ -27,15 +27,16 @@
     healthz 200). `/tidal/token` -> 401 without the secret, 503 `not_configured` until a session is stored.
     Session file: `tidal-session.json` (0600) in that dir. If the mini's relay is ever re-synced from the
     repo, re-apply the 2-line patch.
-  - Vercel: `lib/tidal.js` `userToken()` asks the relay only when the request has `X-Music-Key` ==
-    `MUSIC_OWNER_KEY`; `api/music.js` retries once on a rejected cached token. `MUSIC_OWNER_KEY` is set on
-    Vercel PREVIEW only (add to Production before merging; the unlock key was generated into the job tmp only;
-    give it to the user via clipboard (`pbcopy`), never retype it - an earlier session printed an invented key by mistake). Preview: `streamfiesta-dfcs2v08n-nktvit.vercel.app`. Verified: no key / wrong key /
-    owner key with no session all fall back to previews; `X-Tidal-Token` still gives FULL.
+  - Vercel: `lib/tidal.js` `userToken()` uses the relay session when `relaySessionAllowed()`: previews and local
+    dev always, PRODUCTION only if `MUSIC_SHARED_SESSION=1` is set on purpose (that makes every visitor listen on
+    the owner's personal subscription). No unlock link / key any more (removed at the user's request; the
+    earlier owner-key gate and `MUSIC_OWNER_KEY` are gone). Consequence: anyone with a preview URL gets the
+    owner's lossless session (user accepted this: "it is on preview right now"). `api/music.js` retries once on
+    a rejected cached token. Verified: preview needs nothing to play lossless; production would not.
   - Setup (done once): TIDAL's web SDK ENCRYPTS the refresh token in localStorage, so it was caught from the
     login token exchange response in DevTools (the numeric `cid` 8049 inside the JWT is NOT the OAuth
     client_id). `npm run tidal:relay-setup` parses cURL, JSON or DevTools-tree paste, `--client-id=`
-    overrides. Then open `/music?unlock=<key>` once per browser.
+    overrides. 
 - **Angular modernization audit (research only, no code changed):** full report at
   `docs/angular-refactor-report-2026-10-04.md`.
   Headlines: latest stable is Angular 22.2 and v20 LTS ends 2026-11-28; only 4 of 22 components are OnPush;
