@@ -1,13 +1,23 @@
 // One-time setup: hand the Mac mini relay your TIDAL web session so full-length
 // music playback renews itself (no more pasting tokens).
 //
-//   1. listen.tidal.com (logged in) -> DevTools -> Network -> filter "token"
-//   2. Reload the page. Find the POST to auth.tidal.com/v1/oauth2/token whose
-//      payload has `grant_type=refresh_token`.
-//   3. Right-click it -> Copy -> Copy as cURL
-//   4. npm run tidal:relay-setup           (reads your clipboard)
+// TIDAL's web player keeps its refresh token ENCRYPTED in local storage, so it
+// has to be caught in flight. Two ways (DevTools -> Network, tick "Preserve log",
+// filter "token"):
 //
-// It pulls client_id and refresh_token out of what you copied, writes them to
+//   A. Wait for the player's own refresh (it fires ~1 min before the access
+//      token expires, tab open): right-click the POST to .../oauth2/token with
+//      `grant_type=refresh_token` -> Copy -> Copy as cURL, then:
+//        npm run tidal:relay-setup
+//
+//   B. Right now: log out of listen.tidal.com and log back in. Find the POST to
+//      .../oauth2/token with `grant_type=authorization_code`.
+//        - Payload tab: note the `client_id` value
+//        - Response tab: right-click -> Copy the JSON (it has `refresh_token`)
+//        npm run tidal:relay-setup -- --client-id=<the client_id>
+//
+// Either way the script reads your clipboard, pulls client_id and refresh_token
+// out of what you copied (form data or JSON), writes them to
 // the relay box over SSH (host alias `mm`, mode 0600) and asks the relay for a
 // token to prove it works. Nothing secret is printed. It does NOT test the
 // token from this Mac: if TIDAL rotates refresh tokens, a test here would
@@ -20,21 +30,31 @@ const HOST = process.env.RELAY_SSH_HOST || 'mm';
 const DIR = process.env.RELAY_DIR || '/Users/ms/Server/relay.fiesta.show';
 
 const text = process.stdin.isTTY ? execSync('pbpaste', { encoding: 'utf8' }) : fs.readFileSync(0, 'utf8');
-const pick = (name) => {
-  const m = text.match(new RegExp(`${name}=([^&'"\\s\\\\]+)`));
-  return m ? decodeURIComponent(m[1]) : '';
+// Form data (`name=value`, as in a copied cURL) or JSON (`"name":"value"`).
+const pick = (...names) => {
+  for (const name of names) {
+    const form = text.match(new RegExp(`${name}=([^&'"\\s\\\\]+)`));
+    if (form) return decodeURIComponent(form[1]);
+    const json = text.match(new RegExp(`"${name}"\\s*:\\s*"([^"]+)"`));
+    if (json) return json[1];
+  }
+  return '';
 };
-const client_id = pick('client_id');
-const refresh_token = pick('refresh_token');
+const cliClientId = (process.argv.find((a) => a.startsWith('--client-id=')) || '').slice(12);
+const client_id = cliClientId || pick('client_id', 'clientId');
+const refresh_token = pick('refresh_token', 'refreshToken');
 
 if (!client_id || !refresh_token) {
   console.error('Could not find client_id and refresh_token in your clipboard.');
-  console.error('Copy the POST to auth.tidal.com/v1/oauth2/token that has grant_type=refresh_token ("Copy as cURL").');
+  console.error('Copy the oauth2/token POST ("Copy as cURL"), or its JSON response plus --client-id=<id>. See the top of this file.');
   console.error(`Found: client_id ${client_id ? 'yes' : 'NO'}, refresh_token ${refresh_token ? 'yes' : 'NO'}.`);
   process.exit(1);
 }
 
-const payload = JSON.stringify({ client_id, refresh_token });
+// Which host issued this refresh token (if the copied request shows it).
+const urlMatch = text.match(/https:\/\/(?:auth|login)\.tidal\.com\/[^\s'"]*token/);
+const token_url = (process.argv.find((a) => a.startsWith('--token-url=')) || '').slice(12) || (urlMatch ? urlMatch[0] : undefined);
+const payload = JSON.stringify({ client_id, refresh_token, ...(token_url ? { token_url } : {}) });
 execFileSync('ssh', [HOST, `umask 077 && cat > ${DIR}/tidal-session.json`], { input: payload, stdio: ['pipe', 'inherit', 'inherit'] });
 console.log(`Stored the session on ${HOST} (client_id ${client_id.length} chars, refresh_token ${refresh_token.length} chars).`);
 

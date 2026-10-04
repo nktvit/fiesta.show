@@ -41,25 +41,36 @@ function save(state) {
   fs.renameSync(tmp, FILE);
 }
 
+// A refresh token only works at the host that issued it, and TIDAL has two:
+// the legacy auth.tidal.com and the newer login.tidal.com. Try the recorded one
+// first, then the others, and remember whichever answers.
 async function refresh(state) {
-  const r = await fetch(TOKEN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: state.client_id,
-      refresh_token: state.refresh_token,
-      grant_type: 'refresh_token',
-    }),
-  });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok || !j.access_token) {
-    console.error('[tidal-session] refresh failed', r.status, j.error || '', j.error_description || '');
+  const urls = [...new Set([state.token_url, TOKEN_URL, 'https://login.tidal.com/oauth2/token'].filter(Boolean))];
+  let last = null;
+  let used = null;
+  for (const url of urls) {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: state.client_id,
+        refresh_token: state.refresh_token,
+        grant_type: 'refresh_token',
+      }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (r.ok && j.access_token) { last = j; used = url; break; }
+    console.error('[tidal-session] refresh failed at', new URL(url).host, r.status, j.error || '', j.error_description || '');
+  }
+  if (!last) {
     const e = new Error('refresh_failed');
     e.status = 502;
     throw e;
   }
+  const j = last;
   const next = {
     ...state,
+    token_url: used,
     access_token: j.access_token,
     expires_at: Date.now() + (j.expires_in || 3600) * 1000,
     country: (j.user && j.user.countryCode) || state.country || '',
