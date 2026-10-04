@@ -35,7 +35,9 @@ const pick = (...names) => {
   for (const name of names) {
     const form = text.match(new RegExp(`${name}=([^&'"\\s\\\\]+)`));
     if (form) return decodeURIComponent(form[1]);
-    const json = text.match(new RegExp(`"${name}"\\s*:\\s*"([^"]+)"`));
+    // JSON (`"name": "value"`) or the way DevTools shows a response tree
+    // (`name`, newline, `:`, newline, `"value"`).
+    const json = text.match(new RegExp(`\\b${name}"?\\s*:\\s*"([^"]+)"`));
     if (json) return json[1];
   }
   return '';
