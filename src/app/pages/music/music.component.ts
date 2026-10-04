@@ -32,6 +32,14 @@ export class MusicComponent {
     this.title.setTitle('Music | Stream Fiesta');
     this.meta.updateTag({ name: 'description', content: 'Search and play lossless music.' });
 
+    // One-time owner link: /music?unlock=<key> remembers the key in this browser
+    // (full-length playback, see api/music.js) and then drops it from the URL.
+    const unlock = this.route.snapshot.queryParamMap.get('unlock');
+    if (unlock) {
+      this.music.unlock(unlock);
+      void this.router.navigate([], { queryParams: { unlock: null }, queryParamsHandling: 'merge', replaceUrl: true });
+    }
+
     // The query lives in the URL (?q=), so back/forward and shared links work.
     this.route.queryParamMap
       .pipe(

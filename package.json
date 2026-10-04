@@ -8,7 +8,8 @@
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "eval:moderation": "node --env-file=.env.local scripts/moderation-evals.mjs",
-    "tidal:token": "node scripts/tidal-token.mjs"
+    "tidal:token": "node scripts/tidal-token.mjs",
+    "tidal:relay-setup": "node scripts/tidal-relay-setup.mjs"
   },
   "browserslist": [
     "last 2 versions",

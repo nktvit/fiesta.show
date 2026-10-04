@@ -93,11 +93,19 @@ async function artist(q, res) {
 async function manifest(q, req, res) {
   const id = numericId(q.id);
   const quality = QUALITIES[q.quality] || 'LOSSLESS';
-  const user = userToken(req);
-  const token = user || (await appToken());
-  const info = await tidalGet(`/tracks/${id}/playbackinfo`, {
-    audioquality: quality, playbackmode: 'STREAM', assetpresentation: 'FULL',
-  }, token);
+  let user = await userToken(req);
+  const query = { audioquality: quality, playbackmode: 'STREAM', assetpresentation: 'FULL' };
+  let info;
+  try {
+    info = await tidalGet(`/tracks/${id}/playbackinfo`, query, user || (await appToken()));
+  } catch (e) {
+    // The cached relay session can be rejected before it "expires" (TIDAL revoked
+    // it, or the relay renewed meanwhile): ask the relay for a fresh one, once.
+    if (e.code !== 'token_expired' || !user || req.headers['x-tidal-token']) throw e;
+    user = await userToken(req, true);
+    if (!user) throw e;
+    info = await tidalGet(`/tracks/${id}/playbackinfo`, query, user);
+  }
   const body = Buffer.from(info.manifest, 'base64').toString();
   const base = {
     presentation: info.assetPresentation, // FULL | PREVIEW

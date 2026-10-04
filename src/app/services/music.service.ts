@@ -81,6 +81,29 @@ export class MusicService {
   }
 
   manifest(id: number | string, quality: 'LOSSLESS' | 'HIGH' | 'LOW'): Observable<MusicManifest> {
-    return this.http.get<MusicManifest>('/api/music', { params: { action: 'manifest', id, quality } });
+    // The owner's unlock key (see unlock()) lets the server use the relay-held
+    // TIDAL session for full-length playback; everyone else gets previews.
+    const key = MusicService.unlockKey();
+    return this.http.get<MusicManifest>('/api/music', {
+      params: { action: 'manifest', id, quality },
+      headers: key ? { 'X-Music-Key': key } : {},
+    });
+  }
+
+  static readonly UNLOCK_STORAGE_KEY = 'fiesta:music-key';
+
+  static unlockKey(): string {
+    try {
+      return window.localStorage.getItem(MusicService.UNLOCK_STORAGE_KEY) || '';
+    } catch {
+      return '';
+    }
+  }
+
+  /** Remember the owner's unlock key in this browser (from /music?unlock=<key>). */
+  unlock(key: string): void {
+    try {
+      window.localStorage.setItem(MusicService.UNLOCK_STORAGE_KEY, key);
+    } catch { /* private mode: previews only */ }
   }
 }
