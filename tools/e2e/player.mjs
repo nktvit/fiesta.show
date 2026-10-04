@@ -74,8 +74,10 @@ async function openPlayer(page, query = '') {
 // bar lets clicks through to the <video>. Move like a viewer would, toward the
 // bar, so it is showing before anything in it is clicked.
 async function wakeControls(page) {
-  await page.locator('#player').scrollIntoViewIfNeeded();
-  const box = await page.locator('#player').boundingBox();
+  // The video's own box, not #player's: #player also contains the Fiesta/Native
+  // switch strip under the video, and hovering that wouldn't wake the controls.
+  await page.locator('#player video').first().scrollIntoViewIfNeeded();
+  const box = await page.locator('#player video').first().boundingBox();
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.move(box.x + box.width / 2, box.y + box.height - 30, { steps: 5 });
   // The bar fades in; it takes clicks once the skin marks it visible.
