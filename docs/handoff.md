@@ -1,5 +1,54 @@
 # Session handoff
 
+## IN PROGRESS (2026-10-04): Music tab (TIDAL) on branch `feature/music-tab`, preview verified, NOT merged
+
+Worktree: `.claude/worktrees/music-tab` (branch `feature/music-tab`, based on `1b96d91`). Preview:
+`streamfiesta-l8fq2qgmi-nktvit.vercel.app`. Ported nothing from monochrome except the idea: it used
+borrowed TIDAL app credentials and a `client_credentials` token; this uses OUR developer app.
+
+**What exists**
+- `/music` (search: songs/albums/artists, `?q=` in URL), `/music/album/:id`, `/music/artist/:id`; mini
+  player bar (persists across routes, Media Session); "Music" is the LAST tab in both navs with a red
+  pulsing "New" badge; sticky footer fix for every page (`styles.css`); donation widget lifts above the bar.
+- `api/music.js` + `lib/tidal.js`: `search|album|artist` (app token, no login, cached), `manifest`
+  (segment list; `PREVIEW` = 30 s or `FULL`), `seg` (audio proxy: TIDAL's CDN 403s a browser Origin, so
+  a proxy is mandatory). Segment host allow-list `*.tidal.com`.
+- Player = Media Source Extensions driven by hand (`music-player.service.ts`): dash.js rejects the
+  `flac` codec string even though Chrome plays it. FLAC (lossless) where `isTypeSupported`, else AAC
+  (`HIGH`). iPhone Safari < 17.1 has no MSE: shows "can't play this format".
+- Tests: `tools/e2e/music.mjs` 14/14 on local AND on the preview (real Vercel functions);
+  `music.service.spec.ts`; unit suite 86 pass + the 5 known MovieService apikey failures.
+  Measured on preview: first sound 1.1 s, segment latency median ~125 ms (one ~1 s outlier), no
+  mid-song stalls over 75 s, 40 s buffered ahead.
+
+**Full-length playback needs a USER token (the open item).** The app token only gets 30 s previews
+(`FULL_REQUIRES_SUBSCRIPTION`). Production therefore plays previews until per-viewer login ships.
+- Dev: `npm run tidal:token` (reads clipboard, writes `TIDAL_DEV_ACCESS_TOKEN` to `.env.local`; token
+  = a `Bearer` from a REQUEST header of api.tidal.com on listen.tidal.com; ~4 h life). Honoured only
+  when `VERCEL_ENV !== 'production'`. It is NOT set on Vercel on purpose (a shared personal
+  subscription must not stream to the public); the e2e sends it as `X-Tidal-Token` via
+  `--token-file=`.
+- Per-viewer login (PKCE) is NOT built: the authorize page returned TIDAL error `11102` (generic, raised
+  before login). Cause unconfirmed; needs the redirect URI(s) and scopes exactly as shown in the TIDAL
+  developer dashboard (I assumed `http://localhost:4200/music/callback`). `login.tidal.com` also rejects
+  our client_credentials ("Invalid client credentials") while `auth.tidal.com` accepts them, so the app is
+  registered on the legacy host. Playwright's Chrome is blocked by TIDAL bot protection (DataDome); the
+  home IP is blocked on tidal.com web pages (api/openapi hosts are fine).
+- Refresh plan: viewer's refresh token in an HttpOnly cookie, silently refreshed in `api/music.js`.
+
+**Config done**
+- `.env`: `TIDAL_CLIENT_ID`, `TIDAL_CLIENT_SECRET` (user-supplied). Vercel **Preview only** has the same two
+  (secret stored sensitive); Production does not have them yet, so `/music` errors there until added.
+- `auth.tidal.com` token endpoint is reachable from Vercel's servers (verified on the preview).
+
+**Next**
+1. User: fix/confirm the TIDAL dashboard redirect URI + scopes, then build `api/music.js?action=login|callback|refresh`.
+2. Relay for segments (agreed direction, not built): `MUSIC_RELAY_URL` + the existing HMAC token scheme,
+   because lossless is ~430 MB per listener-hour through Vercel. The Mac mini reaches TIDAL fine
+   (`api.tidal.com` 200). Vercel `seg` stays as fallback. Do not deploy to the mini without asking.
+3. Add TIDAL vars to Production before merging; decide on the "New" badge lifetime.
+4. The pasted dev web-player token was shared in chat: treat it as exposed (it expires ~01:41 UTC 2026-10-05).
+
 ## SHIPPED (2026-10-03): search works again when OMDB is out of quota; "$7" budget fix; paid OMDB key
 
 - **Search was dead on production**: `/api/omdb?action=search` and `/api/suggestions` both

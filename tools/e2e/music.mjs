@@ -1,9 +1,12 @@
 // E2E for the music tab: search -> play -> keep playing across navigation ->
 // seek -> next -> mobile layout.
 //   node tools/e2e/music.mjs [baseUrl=http://localhost:4200] [--shots=dir]
-// Needs a signed-in TIDAL dev token for FULL playback (npm run tidal:token);
-// with only the app token the test still passes but plays 30 s previews and
-// says so. Run from a dir whose node_modules has playwright(-core).
+//   --token-file=path   file holding a TIDAL user token; sent as X-Tidal-Token on
+//                       every /api/music call so a deployed preview (which has
+//                       no shared token, on purpose) plays FULL tracks.
+// Locally, `npm run tidal:token` does the same through .env.local. With no
+// user token the test still passes but plays 30 s previews (badge: Preview).
+// Run from a dir whose node_modules has playwright(-core).
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 let chromium;
@@ -11,11 +14,17 @@ try { ({ chromium } = require('playwright-core')); } catch { ({ chromium } = req
 
 const base = process.argv.find((a) => a.startsWith('http')) || 'http://localhost:4200';
 const shots = (process.argv.find((a) => a.startsWith('--shots=')) || '').slice(8);
+const tokenFile = (process.argv.find((a) => a.startsWith('--token-file=')) || '').slice(13);
+const userToken = tokenFile ? (await import('node:fs')).readFileSync(tokenFile, 'utf8').trim() : '';
+const withToken = (c) => userToken
+  ? c.route('**/api/music*', (r) => r.continue({ headers: { ...r.request().headers(), 'x-tidal-token': userToken } }))
+  : Promise.resolve();
 const results = [];
 const check = (name, ok, extra = '') => { results.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${extra ? '  ' + extra : ''}`); };
 
 const browser = await chromium.launch({ channel: 'chrome', args: ['--autoplay-policy=no-user-gesture-required'] }).catch(() => chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] }));
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+await withToken(ctx);
 const page = await ctx.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
@@ -76,6 +85,7 @@ check('no uncaught page errors', errors.length === 0, errors.slice(0, 2).join(' 
 
 // Mobile: tab bar has Music; mini player sits above it without overlap.
 const m = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+await withToken(m);
 const mp = await m.newPage();
 await mp.goto(base + '/music?q=radiohead', { waitUntil: 'domcontentloaded' });
 await mp.waitForSelector('app-music-track-row', { timeout: 20000 });
