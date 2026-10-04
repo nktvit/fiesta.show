@@ -92,6 +92,18 @@ body.nav-sheet-open #bmc-close-btn {
 }
 
 
+/* Sticky footer. app.component.html is a min-h-screen column of
+   [router-outlet's page, footer], but a routed page's host element is an
+   ordinary flex item that doesn't grow, so on a short page (empty search, About
+   on a tall monitor) the footer rode up under the content instead of sitting at
+   the bottom. Let the page host take the leftover height. `flex: 1 0 auto`
+   (not just grow) keeps long pages from shrinking below their content. */
+app-root > div > router-outlet + * {
+  display: flex;
+  flex-direction: column;
+  flex: 1 0 auto;
+}
+
 /* Hide the Buy-Me-a-Coffee widget while the search field is focused. It sits at
    z-index 9999999, above every app layer, 48px at bottom: calc(4.75rem + safe) —
    i.e. directly over the bottom-right of the last suggestion row, where it steals
