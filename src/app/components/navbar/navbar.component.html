@@ -37,11 +37,6 @@
             ? (transparent() ? 'text-white font-semibold' : 'text-indigo-600 dark:text-indigo-400 font-semibold')
             : (transparent() ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white')"
           [routerLink]="['/top-rated']">Top Rated</a>
-        <a class="relative font-medium text-sm transition-colors"
-          [ngClass]="currentPage.startsWith('/music')
-            ? (transparent() ? 'text-white font-semibold' : 'text-indigo-600 dark:text-indigo-400 font-semibold')
-            : (transparent() ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white')"
-          [routerLink]="['/music']">Music<span class="new-badge absolute -top-2.5 left-full ml-0.5 rounded-full bg-red-500 px-1.5 py-px text-[9px] font-bold uppercase leading-none tracking-wide text-white">New</span></a>
         <!-- Genre dropdown -->
         <div class="relative genre-dropdown">
           <button (click)="isGenreOpen = !isGenreOpen"
@@ -65,6 +60,11 @@
             </div>
           }
         </div>
+        <a class="relative font-medium text-sm transition-colors"
+          [ngClass]="currentPage.startsWith('/music')
+            ? (transparent() ? 'text-white font-semibold' : 'text-indigo-600 dark:text-indigo-400 font-semibold')
+            : (transparent() ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white')"
+          [routerLink]="['/music']">Music<span class="new-badge absolute -top-2.5 left-full ml-0.5 rounded-full bg-red-500 px-1.5 py-px text-[9px] font-bold uppercase leading-none tracking-wide text-white">New</span></a>
       </div>
     </div>
   </nav>

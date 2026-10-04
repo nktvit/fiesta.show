@@ -28,8 +28,10 @@ export class BottomNavComponent implements OnDestroy {
     { path: '/search', label: 'Search', icon: 'search', exact: false },
     { path: '/tv', label: 'TV Shows', icon: 'tv', exact: false },
     { path: '/top-rated', label: 'Top Rated', icon: 'star', exact: false },
-    { path: '/music', label: 'Music', icon: 'music', exact: false },
   ];
+
+  /** Rendered after the Genres button, so it is not part of `tabs`. */
+  readonly musicTab: NavTab = { path: '/music', label: 'Music', icon: 'music', exact: false };
 
   readonly genres = signal<{ id: number; name: string }[]>([]);
   readonly genresOpen = signal(false);
