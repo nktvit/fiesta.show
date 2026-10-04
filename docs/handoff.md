@@ -6,20 +6,29 @@
   episodes (`lib/seasons.js`, used by `api/tmdb.js`, `api/movie.js`, `tmdb.service.ts`). Verified live:
   Rick and Morty shows seasons 1-9, header "9 Seasons" (OMDB said 12); a stale `?s=10` link redirects
   to the latest real season.
-- **Pushed, NOT merged:** `fix/player-switch` (`5b403c3`, `de9ac8a`). The Fiesta/Native switch moved from
-  an overlay (it covered iOS's native fullscreen button) to a segmented control in a strip BELOW the video
-  inside `movie-player.component`. Verified on preview `streamfiesta-l3sono4te-nktvit.vercel.app`: player e2e
-  10/10 Chrome and WebKit (e2e helper `wakeControls` now hovers the `<video>`, not `#player`), unit 85 + the 5
-  known MovieService failures. NOT checked on a real iPhone. User has not yet said to merge it.
-- **Music tab (`feature/music-tab`)**: see the next section. **Decision made this session: approach B,
-  automated on the Mac mini relay - NOT BUILT YET.** Design: the relay (`tools/fiesta-proxy/relay.mjs`) holds a
-  TIDAL web-session refresh token, renews the access token itself, and serves it only to Vercel
-  (`GET /tidal/token`, Bearer `RELAY_SECRET`, like `/resolve`); `lib/tidal.js` `userToken()` fetches it. Full
-  lossless is gated to the owner (an unlock key kept in the browser), so the public site never streams from the
-  personal subscription. The user must supply once, in the mini's `.env.local` (not in chat): the web
-  session's refresh token and TIDAL's web OAuth client_id (both from listen.tidal.com DevTools). Needs a
-  relay restart, which briefly interrupts HLS streams: ask first. Risk to mention: TIDAL could revoke the
-  session; the account is personal.
+- **Merged to `main` (user: "player switch lgtm, merge"):** `de9ac8a` (player switch `5b403c3` + e2e fix).
+  The Fiesta/Native switch moved from an overlay (it covered iOS's native fullscreen button) to a segmented
+  control in a strip BELOW the video inside `movie-player.component`. Verified on a preview: player e2e 10/10
+  Chrome and WebKit (e2e helper `wakeControls` hovers the `<video>`, not `#player`), unit 85 + the 5 known
+  MovieService failures. NOT checked on a real iPhone. Production deploy not re-verified after the merge.
+- **Music automation (`feature/music-tab`, built + deployed to the mini, WAITING ON ONE USER STEP):**
+  - Mini (`ssh mm`, `/Users/ms/Server/relay.fiesta.show`, launchd `show.fiesta.relay`): the mini's `relay.mjs`
+    is a divergent 1,219-line copy (NOT the repo's `tools/fiesta-proxy/relay.mjs`; it has a `.autofix`
+    watchdog). Patched with ONE import + ONE route (`/tidal/token` -> `handleTidalToken(req,res,SECRET)`),
+    backup `relay.mjs.bak-20261004T225512Z`, new file `tidal-session.mjs` next to it, relay restarted (new pid,
+    healthz 200). `/tidal/token` -> 401 without the secret, 503 `not_configured` until a session is stored.
+    Session file: `tidal-session.json` (0600) in that dir. If the mini's relay is ever re-synced from the
+    repo, re-apply the 2-line patch.
+  - Vercel: `lib/tidal.js` `userToken()` asks the relay only when the request has `X-Music-Key` ==
+    `MUSIC_OWNER_KEY`; `api/music.js` retries once on a rejected cached token. `MUSIC_OWNER_KEY` is set on
+    Vercel PREVIEW only (add to Production before merging; the unlock key itself is in the job tmp and was
+    shown to the user once). Preview: `streamfiesta-dfcs2v08n-nktvit.vercel.app`. Verified: no key / wrong key /
+    owner key with no session all fall back to previews; `X-Tidal-Token` still gives FULL.
+  - **Remaining user step:** copy the `auth.tidal.com/v1/oauth2/token` refresh request ("Copy as cURL") from
+    listen.tidal.com DevTools and run `npm run tidal:relay-setup` (script reads the clipboard, sends
+    client_id + refresh_token to the mini over SSH, has the mini fetch a token and prints only OK/country/
+    minutes). Then open `/music?unlock=<key>` once per browser. UNTESTED end to end until then. Unknowns:
+    whether TIDAL rotates the refresh token (the module handles both) and whether TIDAL revokes the session.
 - **Angular modernization audit (research only, no code changed):** full report at
   `docs/angular-refactor-report-2026-10-04.md`.
   Headlines: latest stable is Angular 22.2 and v20 LTS ends 2026-11-28; only 4 of 22 components are OnPush;
