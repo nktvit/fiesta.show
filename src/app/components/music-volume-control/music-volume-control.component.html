@@ -1,0 +1,19 @@
+<div class="group relative flex items-center gap-1" (wheel)="onWheel($event)">
+  <button type="button" (click)="player.toggleMute()" [attr.aria-label]="player.muted() ? 'Unmute' : 'Mute'" [attr.aria-pressed]="player.muted()"
+    class="flex h-10 w-10 items-center justify-center rounded-full text-gray-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+    <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z" fill="currentColor" />
+      @switch (level()) {
+        @case ('off') { <path d="m16 9.5 5 5m0-5-5 5" /> }
+        @case ('low') { <path d="M15.5 10a3 3 0 0 1 0 4" /> }
+        @case ('mid') { <path d="M15.5 9a4.5 4.5 0 0 1 0 6" /> }
+        @default { <path d="M15.5 9a4.5 4.5 0 0 1 0 6M18 6.5a8 8 0 0 1 0 11" /> }
+      }
+    </svg>
+  </button>
+  <div class="absolute bottom-full left-1/2 hidden -translate-x-1/2 items-center rounded-lg border border-white/10 bg-[#121212] px-3 py-2 group-focus-within:flex group-hover:flex lg:static lg:flex lg:translate-x-0 lg:border-0 lg:bg-transparent lg:p-0">
+    <input type="range" min="0" max="100" step="1" [value]="percent()" (input)="onInput($event)" (keydown)="onKeydown($event)"
+      aria-label="Volume" [attr.aria-valuetext]="percent() + '%'" [title]="'Volume ' + percent() + '%'"
+      class="h-1 w-24 cursor-pointer accent-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" />
+  </div>
+</div>

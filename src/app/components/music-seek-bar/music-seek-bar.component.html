@@ -1,0 +1,17 @@
+<div class="flex items-center gap-2">
+  <span class="w-10 text-right text-xs tabular-nums text-gray-400">{{ time(shown()) }}</span>
+  <div data-seek-track class="relative flex h-5 min-w-0 flex-1 items-center" (pointermove)="onMove($event)" (pointerleave)="onLeave()">
+    @if (showWaveform()) {
+      <app-music-waveform [trackId]="trackId()" [progress]="progress()" />
+    }
+    @if (tooltip(); as tip) {
+      <span class="pointer-events-none absolute bottom-full z-10 mb-1 -translate-x-1/2 rounded bg-black/90 px-1.5 py-0.5 text-[11px] tabular-nums text-white"
+        [style.left.px]="tip.left" role="presentation">{{ tip.text }}</span>
+    }
+    <input type="range" min="0" [max]="duration()" step="1" [value]="shown()"
+      (input)="onInput($event)" (pointerdown)="onPointerDown($event)" (keydown)="onKeydown($event)"
+      aria-label="Seek" [attr.aria-valuetext]="time(shown()) + ' of ' + time(duration())"
+      class="relative h-5 w-full cursor-pointer accent-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" />
+  </div>
+  <span class="w-10 text-xs tabular-nums text-gray-400">{{ time(duration()) }}</span>
+</div>
