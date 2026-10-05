@@ -1,4 +1,4 @@
-import { Component, effect, inject } from '@angular/core';
+import { afterNextRender, Component, effect, inject } from '@angular/core';
 import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs';
 import { NavigationService } from './services/navigation.service';
@@ -21,6 +21,27 @@ import { MusicImportDialogComponent } from './components/music-import-dialog/mus
 import { MusicSelectionBarComponent } from './components/music-selection-bar/music-selection-bar.component';
 import { MusicDownloadsTrayComponent } from './components/music-downloads-tray/music-downloads-tray.component';
 import { computeRoute, injectSpeedInsights } from '@vercel/speed-insights';
+
+/** Injects the Buy Me a Coffee widget, with the same config the old inline tag had. */
+function loadBmcWidget(): void {
+  if (document.querySelector('script[data-name="BMC-Widget"]')) return;
+  const s = document.createElement('script');
+  s.async = true;
+  s.src = 'https://cdnjs.buymeacoffee.com/1.0.0/widget.prod.min.js';
+  const data: Record<string, string> = {
+    name: 'BMC-Widget', cfasync: 'false', id: 'nktvit',
+    description: 'Support me on Buy me a coffee!',
+    message: "Don't forget to grab some popcorn and friends. Happy watching!",
+    color: '#FFDD00', position: 'Right', x_margin: '18', y_margin: '18',
+  };
+  for (const [k, v] of Object.entries(data)) s.setAttribute('data-' + k, v);
+  // The widget boots on DOMContentLoaded / load, both long gone by now.
+  s.onload = () => {
+    window.dispatchEvent(new Event('DOMContentLoaded'));
+    window.dispatchEvent(new Event('load'));
+  };
+  document.body.appendChild(s);
+}
 
 @Component({
   selector: 'app-root',
@@ -45,6 +66,12 @@ export class AppComponent {
   constructor() {
     // Lets styles.css lift the donation widget clear of the mini player.
     effect(() => document.body.classList.toggle('has-music-bar', !!this.player.track()));
+
+    // The Buy Me a Coffee widget used to be a synchronous <script> in index.html,
+    // which made Angular's module scripts wait on a third-party download. Load it
+    // after the first render instead. (requestIdleCallback is missing on Safari,
+    // so a plain timeout it is.)
+    afterNextRender(() => setTimeout(loadBmcWidget, 1500));
   }
 
   ngOnInit() {
