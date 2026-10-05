@@ -1,70 +1,81 @@
 # Session handoff
 
-## STATE AT END OF SESSION (2026-10-04, late) - read this first
+## STATE AT END OF SESSION (2026-10-05) - READ THIS FIRST
 
-- **Merged to `main` + live on production (user: "merge it"):** `c3626a5` hides seasons with no
-  episodes (`lib/seasons.js`, used by `api/tmdb.js`, `api/movie.js`, `tmdb.service.ts`). Verified live:
-  Rick and Morty shows seasons 1-9, header "9 Seasons" (OMDB said 12); a stale `?s=10` link redirects
-  to the latest real season.
-- **Merged to `main` (user: "player switch lgtm, merge"):** `de9ac8a` (player switch `5b403c3` + e2e fix).
-  The Fiesta/Native switch moved from an overlay (it covered iOS's native fullscreen button) to a segmented
-  control in a strip BELOW the video inside `movie-player.component`. Verified on a preview: player e2e 10/10
-  Chrome and WebKit (e2e helper `wakeControls` hovers the `<video>`, not `#player`), unit 85 + the 5 known
-  MovieService failures. NOT checked on a real iPhone. Production deploy not re-verified after the merge.
-- **Sticky footer is on `main` + live** (`4f052d4`, standalone branch `fix/sticky-footer`): verified on 30
-  page/viewport combos and on production. The same rule also exists in `feature/music-tab`'s `styles.css`
-  (different position in the file): when merging the music branch keep ONE copy.
-- **Mac mini relay is now tracked in git (branch `chore/relay-source-of-truth`, pushed, NOT merged; the GitHub
-  token can't create PRs - open https://github.com/nktvit/fiesta.show/compare/main...chore/relay-source-of-truth).**
-  It snapshots the real `relay.mjs` (1,221 lines, incl. the 2 music lines), `tidal-session.mjs`, the autofix
-  watchdog, the launchd plists and package files into `tools/fiesta-proxy/`, and adds `npm run relay:status |
-  relay:pull | relay:deploy` (`tools/fiesta-proxy/relayctl.mjs`, README section "Source of truth and
-  deploying"). The autofix agent (`claude -p`, edits `relay.mjs` IN PLACE on the box when upstream sources
-  change) is deliberately left alone: deploy records what it wrote (`.relayctl.json` on the box) and REFUSES to
-  overwrite a mini file that changed since (`mini-ahead`) until `relay:pull` brings that change into git.
-  Verified live: baseline, dry-run, syntax-error abort (exit 2), mini-edit detection + refused deploy (exit 3),
-  pull, full deploy with restart + health check. NOT exercised live: the health-failure auto-rollback (it would
-  mean a deliberate relay outage) - test it in a quiet window. Two bugs found by those tests and fixed:
-  staged copies must keep `.mjs` for `node --check`; a `remote` field name clash (hash vs path).
-  When this merges with `feature/music-tab`: `tidal-session.mjs` is identical on both (clean merge).
-- **Music automation (`feature/music-tab`): WORKING END TO END on the preview (2026-10-05).** The mini holds
-  the owner's TIDAL web session (client_id `49YxDN9a2aFV6RTG` = "Tidal Web Player - HiRes", token host
-  auth.tidal.com) and renews it itself; TIDAL DOES rotate the refresh token (the module persists the new
-  one). `tools/e2e/music.mjs` (no options) passes 14/14 on a preview with no key and no
-  pasted token (seek to 200 s = FULL lossless). Not yet merged; before merging add `TIDAL_CLIENT_ID/SECRET` to Vercel PRODUCTION (production will
-  serve 30 s previews until viewer login ships or `MUSIC_SHARED_SESSION=1` is set). Watch: TIDAL may revoke the web session or expire the refresh
-  token after long idle; symptom = `/tidal/token` 502 `refresh_failed` and `/music` falling back to previews
-  (check `relay.log` for `[tidal-session]`); fix = rerun `npm run tidal:relay-setup` (see script header: the
-  client_id is in the `login.tidal.com/api/refreshlogin?...client_id=` URL). History below kept for context:
-  - Mini (`ssh mm`, `/Users/ms/Server/relay.fiesta.show`, launchd `show.fiesta.relay`): the mini's `relay.mjs`
-    is a divergent 1,219-line copy (NOT the repo's `tools/fiesta-proxy/relay.mjs`; it has a `.autofix`
-    watchdog). Patched with ONE import + ONE route (`/tidal/token` -> `handleTidalToken(req,res,SECRET)`),
-    backup `relay.mjs.bak-20261004T225512Z`, new file `tidal-session.mjs` next to it, relay restarted (new pid,
-    healthz 200). `/tidal/token` -> 401 without the secret, 503 `not_configured` until a session is stored.
-    Session file: `tidal-session.json` (0600) in that dir. If the mini's relay is ever re-synced from the
-    repo, re-apply the 2-line patch.
-  - Vercel: `lib/tidal.js` `userToken()` uses the relay session when `relaySessionAllowed()`: previews and local
-    dev always, PRODUCTION only if `MUSIC_SHARED_SESSION=1` is set on purpose (that makes every visitor listen on
-    the owner's personal subscription). No unlock link / key any more (removed at the user's request; the
-    earlier owner-key gate and `MUSIC_OWNER_KEY` are gone). Consequence: anyone with a preview URL gets the
-    owner's lossless session (user accepted this: "it is on preview right now"). `api/music.js` retries once on
-    a rejected cached token. Verified: preview needs nothing to play lossless; production would not.
-  - Setup (done once): TIDAL's web SDK ENCRYPTS the refresh token in localStorage, so it was caught from the
-    login token exchange response in DevTools (the numeric `cid` 8049 inside the JWT is NOT the OAuth
-    client_id). `npm run tidal:relay-setup` parses cURL, JSON or DevTools-tree paste, `--client-id=`
-    overrides. 
-- **Angular modernization audit (research only, no code changed):** full report at
-  `docs/angular-refactor-report-2026-10-04.md`.
-  Headlines: latest stable is Angular 22.2 and v20 LTS ends 2026-11-28; only 4 of 22 components are OnPush;
-  hls.js runs INSIDE the zone (no `runOutsideAngular`) - easiest big win; the Buy Me a Coffee script blocks
-  startup; `provideAnimationsAsync` is unused; `tmdbImageLoader` is dead code; ~45 `.subscribe(` with 4
-  teardowns. Constraint kept: no change may raise the iOS/Safari 15 floor; the audit could not verify
-  Angular 21/22 runtime APIs on Safari 15 (needs a real iOS 15 test).
-- Loose ends: the pasted dev web-player token expires ~01:41 UTC 2026-10-05 (treat as exposed);
-  Production Vercel env has no TIDAL vars yet; worktrees live under `.claude/worktrees/`
-  (`music-tab`, `player-switch`, `empty-seasons`).
+**This file is the ONLY handoff. It lives on `main` (docs/handoff.md) and is updated by a docs-only commit on
+`main`. Do NOT keep or edit copies of it on feature branches** (an earlier session did, and had to merge them back).
 
-## IN PROGRESS (2026-10-04): Music tab (TIDAL) on branch `feature/music-tab`, preview verified, NOT merged
+`main`: last CODE commit `4f052d4` (anything after it is docs-only), in sync with origin. Everything under "Live" is merged AND verified on production.
+Git worktrees for all of this are under `.claude/worktrees/` (`music-tab`, `relay-sot`, plus merged ones that can
+be removed: `empty-seasons`, `player-switch`, `sticky-footer`). Always work in a worktree, never in this checkout.
+
+### Live on production (user asked for each merge)
+- **Empty seasons hidden** (`c3626a5`, `lib/seasons.js`): Rick and Morty shows S1-9, header "9 Seasons" (OMDB said
+  12); a stale `?s=10` link redirects to the latest real season.
+- **Fiesta/Native player switch** moved from an overlay to a segmented control in a strip BELOW the video
+  (`5b403c3`, `de9ac8a`): it covered iOS's native fullscreen button. Player e2e 10/10 Chrome + WebKit. Not
+  checked on a real iPhone.
+- **Sticky footer** (`4f052d4`): footer sits at the bottom on short pages; 30 page/viewport combos measured.
+
+### Open branches (pushed, NOT merged) - the user decides when
+1. **`feature/music-tab`** (13 commits ahead): the whole Music tab. Full details: section "MUSIC TAB - details" below. Summary:
+   - `/music`, `/music/album/:id`, `/music/artist/:id`, mini player bar, Music = LAST tab in both navs with a red
+     pulsing "New" badge; `api/music.js` + `lib/tidal.js` (search/album/artist/manifest/segment proxy);
+     Media-Source-Extensions player (FLAC, AAC fallback; dash.js rejects the `flac` codec).
+   - **Full lossless** comes from the owner's TIDAL web session kept fresh on the Mac mini relay
+     (`/tidal/token`, `tools/fiesta-proxy/tidal-session.mjs`). Rule
+     (`relaySessionAllowed()` in `lib/tidal.js`): previews + local dev use it automatically, PRODUCTION only if
+     `MUSIC_SHARED_SESSION=1` (explicit opt-in; it makes every visitor listen on one personal account).
+     Anyone with a preview URL can therefore listen on the owner's account (user accepted this).
+   - Latest preview: `streamfiesta-64kyr9nzu-nktvit.vercel.app/music` (e2e 14/14, no key/token needed).
+   - **Before merging:** add `TIDAL_CLIENT_ID` and `TIDAL_CLIENT_SECRET` to Vercel PRODUCTION (currently 0
+     TIDAL/MUSIC vars there; Preview has the two). Without them `/music` errors on production; with them it
+     serves 30 s previews only. Two copies of the sticky-footer CSS now exist (main + this branch): keep one.
+   - Viewer login (PKCE, each visitor on their own TIDAL account) is NOT built: TIDAL error `11102` on the
+     authorize page; needs the exact redirect URI(s) + scopes from the developer dashboard.
+2. **`chore/relay-source-of-truth`** (1 commit): the Mac mini relay in git + `relayctl` (see below). The GitHub
+   token cannot create PRs; open https://github.com/nktvit/fiesta.show/compare/main...chore/relay-source-of-truth
+
+### Mac mini relay (`ssh mm`, `/Users/ms/Server/relay.fiesta.show`, launchd `show.fiesta.relay`)
+- It is the HLS extractor AND now the TIDAL session keeper. The repo copy was a dead 369-line snapshot; the box
+  had 1,221 lines. Branch `chore/relay-source-of-truth` fixes that: `npm run relay:status | relay:pull |
+  relay:deploy` (`tools/fiesta-proxy/relayctl.mjs`; README "Source of truth and deploying"). Until that branch is
+  merged, run these from `.claude/worktrees/relay-sot`.
+- **Autofix agent** (`scripts/autofix-watchdog.sh`, runs `claude -p`) edits `relay.mjs` IN PLACE when upstream
+  video sources change. Intentional. `relayctl deploy` refuses to overwrite a box file changed since the last
+  sync (`mini-ahead`): `relay:pull`, review `git diff`, commit.
+- TIDAL session on the box: `tidal-session.json` (0600; client_id `49YxDN9a2aFV6RTG` = "Tidal Web Player -
+  HiRes", token host auth.tidal.com; TIDAL ROTATES the refresh token, the module persists it). If it stops
+  (`/tidal/token` 502 `refresh_failed`, music falls back to previews): rerun `npm run tidal:relay-setup` from
+  `.claude/worktrees/music-tab` (script header explains how to capture the token from DevTools - TIDAL's web SDK
+  encrypts it in localStorage, so it must be caught in flight; the client_id is in the
+  `login.tidal.com/api/refreshlogin?...client_id=` URL).
+- Restarting the relay briefly interrupts live streams. NOT tested live: `relayctl`'s auto-rollback after a
+  failed health check (it needs a deliberate outage; do it in a quiet window).
+
+### Other findings / decisions
+- **Angular audit** (research only, no code changed): `docs/angular-refactor-report-2026-10-04.md`.
+  Headlines: latest stable 22.2, v20 LTS ends 2026-11-28; only 4/22 components OnPush; hls.js runs inside the
+  zone (easiest big win); Buy Me a Coffee script blocks startup; unused `provideAnimationsAsync`; dead
+  `tmdbImageLoader`. Constraint: nothing may raise the iOS/Safari 15 floor (needs a real iOS 15 test).
+- Unit tests: 86 pass + 5 KNOWN failures (`MovieService` specs expect a hardcoded OMDB key).
+- Preview URLs are publicly reachable (Deployment Protection is off for previews).
+
+### Working conventions that bit us this session (so they don't again)
+- Never type a secret from memory (a made-up value was once shown to the user as if it were real). Deliver secrets via the
+  clipboard (`pbcopy`) or a file, never retype them.
+- `EnterWorktree` cannot enter another repo's worktree; create it with `git worktree add` under
+  `.claude/worktrees/`, symlink `node_modules`, copy `.env`/`.env.local`, copy `.vercel` for `vercel deploy`.
+- Playwright lives in the global CLI: `NODE_PATH=/Users/nick-mbp/.nvm/versions/node/v24.11.0/lib/node_modules/@playwright/cli/node_modules`
+  works for CJS-style `require`; ESM `import 'playwright'` (e.g. `tools/e2e/player.mjs`) needs a scratch dir whose
+  `node_modules` symlinks that folder.
+- The auto-mode safety check blocks weakening access controls and reading browser credential stores; ask the user
+  to decide or to add a permission rule instead of working around it.
+- Pending user-supplied data: nothing is waiting on the user except the production decisions above and the
+  optional viewer-login dashboard details. The TIDAL web access token pasted in chat earlier expired
+  ~01:41 UTC 2026-10-05; the refresh token pasted in chat was rotated away by the relay (dead).
+
+## MUSIC TAB - details (branch `feature/music-tab`, preview verified, NOT merged; written before the relay-session automation, so where this differs from the summary at the top, the top wins)
 
 Worktree: `.claude/worktrees/music-tab` (branch `feature/music-tab`, based on `1b96d91`). Preview:
 `streamfiesta-l8fq2qgmi-nktvit.vercel.app`. Ported nothing from monochrome except the idea: it used
@@ -112,6 +123,37 @@ borrowed TIDAL app credentials and a `client_credentials` token; this uses OUR d
    (`api.tidal.com` 200). Vercel `seg` stays as fallback. Do not deploy to the mini without asking.
 3. Add TIDAL vars to Production before merging; decide on the "New" badge lifetime.
 4. The pasted dev web-player token was shared in chat: treat it as exposed (it expires ~01:41 UTC 2026-10-05).
+
+## RESEARCH (2026-10-04): third-party API inventory + monochrome comparison
+
+Read-only audit, no code changed. Clone of github.com/monochrome-music/monochrome @ `5b1e6ef` (Vite SPA + Cloudflare Pages Functions) was used for comparison; its audit is grep-based, nothing run.
+
+**fiesta.show external calls** (all `api/*.js` are Vercel Node functions; Angular calls TMDB/OMDB directly only in dev):
+- TMDB `api.themoviedb.org/3` (`TMDB_API_KEY`): movie, tv, season, find, videos, recs, credits, person, search, genres, discover, lists. `api/tmdb.js`, `_tmdb-search.js`, `movie.js`, `middleware.js`. Images `image.tmdb.org/t/p`.
+- OMDB `omdbapi.com` (`OMDB_API_KEY`): `?s=`, `?i=`, `?i=&Season=`. `api/omdb.js`, `suggestions.js`, `movie.js`.
+- OpenSubtitles legacy REST `rest.opensubtitles.org/search/imdbid-X`, `dl.opensubtitles.org/en/download/file/{id}.gz` (browser fetches .gz direct, falls back to `/api/subs`).
+- Stream relay (`STREAM_RELAY_URL`, `STREAM_RELAY_SECRET`): `api/stream.js` -> `/resolve`; relay (`tools/fiesta-proxy/relay.mjs`) scrapes `vidsrc.me`, `cloudnestra.com`, `vsembed.ru`, headless browser for Turnstile.
+- Upstash Redis (`UPSTASH_REDIS_REST_*` / `KV_REST_API_*`): likes, comments, rate limit.
+- Vercel AI Gateway, `openai/gpt-5.4-nano`: comment moderation (`lib/moderation.js`, OIDC token).
+- YouTube iframe API (trailers), Vercel Analytics + Speed Insights, Google Fonts (Roboto), Buy Me a Coffee widget.
+- Gaps: OMDB key plaintext in gitignored `src/environments/environment.ts` (ends up in dev client JS). Dev `tmdb.service.ts` reads undefined `environment.TMDB_API_KEY`. `.env.example` has unused `BACKEND_URL`, `USE_STATIC_DATA`.
+
+**monochrome external calls** (music app):
+- TIDAL: OAuth `auth.tidal.com/v1/oauth2/token` (client id/secret hardcoded in `js/HiFi.ts`, `functions/*/[id].js`); API v1 `api.tidal.com/v1` (tracks, playbackinfo, lyrics, mix, albums, artists, playlists, search); OpenAPI v2 `openapi.tidal.com/v2` (trackManifests = stream URLs, similar artists/albums, searchResults); images `resources.tidal.com`; proxy `tidal-proxy.monochrome.tf`.
+- Own backends: `tracks.monochrome.st` (search, releases, track, goal, contributors; primary stream resolver), `auth.monochrome.st` (better-auth, parties WS), PocketBase `data.monochrome.st`, `hot.monochrome.tf`.
+- Stream resolve order: `tracksStreamerAPI.resolveTrackStream` only. "Unified Playback" code (`js/api.js` ~2040-2790: Turnstile -> JWT) base URL not traced.
+- Deezer fallback: `getDeezerStreamUrl(isrc, quality)` `js/api.js:1911` -> HEAD `https://dzr.tabs-vs-spaces.wtf/stream/?isrc=&format=FLAC|MP3_320|MP3_128` (12 s timeout), toggle in Settings, default on. No caller outside tests in `js/*.js` (orphaned at this commit; subfolders not grepped).
+- Scrobbling: Last.fm `ws.audioscrobbler.com/2.0` (default key/secret hardcoded), Libre.fm, ListenBrainz, Maloja.
+- Metadata: MusicBrainz, Apple Music API (`api.music.apple.com`, token from `am-mint.binimum.org`), AMP video covers, PodcastIndex, Panora, AOTY (`aoty.edideaur.works`), ArtistGrid, YouTube Music import worker.
+- Lyrics: LRCLIB, Genius (via `api.allorigins.win`, tokens hardcoded), `@uimaxbai/am-lyrics`, kuromoji/kuroshiro via jsDelivr.
+- Misc: `corsproxy.io`, `wsrv.nl`, DiceBear, GitHub (AutoEq), Plausible, Sentry (+replay), Turnstile, Google Fonts, upload workers `*.qzz.io`.
+- Overlap with fiesta.show: Google Fonts, YouTube embeds, CDN scripts only.
+
+**What the services are:**
+- TIDAL: paid lossless/hi-res music streaming (FLAC up to 24-bit, Dolby Atmos). Price (US): Individual $10.99/mo (HiFi + HiFi Plus merged 2024-04-10), Family up to 6 $16.99/mo, Student $4.99/mo, DJ extension +$9; free tier gone. Sources: musicbusinessworldwide.com, billboard.com, androidauthority.com (TIDAL price articles).
+- monochrome reaches TIDAL via borrowed app credentials plus community "HiFi" instances; `public/instances.json` is dead config (loader list empty).
+- Last.fm: listening-history tracker; clients scrobble plays and read top artists/albums back. No audio.
+- ISRC: universal recording id used to match the same track across services (Deezer fallback keys on it).
 
 ## SHIPPED (2026-10-03): search works again when OMDB is out of quota; "$7" budget fix; paid OMDB key
 
