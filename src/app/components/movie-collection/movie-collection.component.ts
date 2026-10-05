@@ -11,7 +11,6 @@ import {
   signal,
   ViewChild,
 } from '@angular/core';
-import { NgClass } from '@angular/common';
 import { IMovie } from '../../interfaces/movie.interface';
 import { PosterComponent } from '../poster/poster.component';
 import { MovieDetailPanelComponent } from '../movie-detail-panel/movie-detail-panel.component';
@@ -93,7 +92,7 @@ export const SCROLL_ARM_TIMEOUT_MS = 1500;
  */
 @Component({
   selector: 'app-movie-collection',
-  imports: [NgClass, PosterComponent, MovieDetailPanelComponent],
+  imports: [PosterComponent, MovieDetailPanelComponent],
   templateUrl: './movie-collection.component.html',
   styleUrl: './movie-collection.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,

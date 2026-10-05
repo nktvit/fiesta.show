@@ -1,7 +1,7 @@
 @if (mode() === 'grid') {
   <div
     class="collection grid"
-    [ngClass]="gridClasses"
+    [class]="gridClasses"
     [class.has-selection]="anyOpen()">
     @for (movie of movies(); track trackKey(movie, $index); let i = $index) {
       <div
@@ -32,7 +32,7 @@
     @if (heading()) {
       <h2
         class="text-base sm:text-lg md:text-xl font-bold mb-2 sm:mb-3 px-6 md:px-12 lg:px-16 transition-colors"
-        [ngClass]="headingClass()">
+        [class]="headingClass()">
         {{ heading() }}
       </h2>
     }
