@@ -128,7 +128,7 @@
             @if (credits().length) {
               <p class="pb-2 text-center text-xs leading-relaxed text-gray-300" data-artist-credits>
                 @for (c of credits(); track c.text; let last = $last) {
-                  <span>{{ c.text }} (<a [href]="c.href" target="_blank" rel="noopener noreferrer" class="underline hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ag-accent-text,#818cf8)]">Wikimedia Commons</a>)</span>@if (!last) {<span aria-hidden="true"> · </span>}
+                  <span>{{ c.text }} (<a [href]="c.href" target="_blank" rel="noopener noreferrer" class="-my-3.5 inline-block py-3.5 underline hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ag-accent-text,#818cf8)]">Wikimedia Commons</a>)</span>@if (!last) {<span aria-hidden="true"> · </span>}
                 }
               </p>
             }
