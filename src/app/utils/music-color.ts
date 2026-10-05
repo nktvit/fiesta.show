@@ -176,7 +176,7 @@ export function paletteFromHue(h: number, s: number, h2?: number, s2?: number, n
   const sat2 = clamp(s2 ?? s, MIN_SAT, MAX_SAT);
   // Yellows and greens read brighter at equal lightness, so they start darker.
   const warm = h > 0.1 && h < 0.45;
-  const accent = ensureContrast(hslToRgb(h, sat, warm ? 0.36 : 0.46), 5.2);
+  const accent = ensureContrast(hslToRgb(h, clamp(sat * 1.15, 0.42, 0.8), warm ? 0.36 : 0.46), 5.2);
   return {
     accent: toHex(accent),
     accentText: toHex(hslToRgb(h, clamp(sat + 0.15, 0, 0.95), 0.8)),
@@ -214,7 +214,7 @@ export function paletteFromPixels(data: ArrayLike<number>): ArtistPalette {
     weight[k] += w;
     sum[k][0] += h * w; sum[k][1] += s * w; sum[k][2] += w;
   }
-  if (total === 0 || colourful / total < 0.04) return NEUTRAL_PALETTE;
+  if (total === 0 || colourful / total < 0.02) return NEUTRAL_PALETTE;
   const order = weight.map((w, k) => ({ w, k })).filter((x) => x.w > 0).sort((a, b) => b.w - a.w);
   if (!order.length) return NEUTRAL_PALETTE;
   const hueAt = (k: number): [number, number] => [sum[k][0] / sum[k][2], sum[k][1] / sum[k][2]];

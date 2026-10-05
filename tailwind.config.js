@@ -7,6 +7,16 @@ module.exports = {
   ],
   theme: {
     extend: {
+      // Slow Ken-Burns drift of the artist page backdrop (music-artist-backdrop).
+      keyframes: {
+        'ag-drift': {
+          '0%': { transform: 'scale(1.25) translate3d(0, 0, 0)' },
+          '100%': { transform: 'scale(1.4) translate3d(-2%, -1.5%, 0)' },
+        },
+      },
+      animation: {
+        'ag-drift': 'ag-drift 40s ease-in-out infinite alternate',
+      },
       lineHeight: {
         "tighter": "0.5rem"
       },
