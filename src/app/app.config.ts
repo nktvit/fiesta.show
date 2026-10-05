@@ -5,13 +5,11 @@ import {provideRouter, withRouterConfig} from '@angular/router';
 import { routes } from './app.routes';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { cacheInterceptor } from './interceptors/cache.interceptor';
-import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
 
 export const appConfig: ApplicationConfig = {
   providers: [
     provideRouter(routes, withRouterConfig({onSameUrlNavigation: 'reload'})),
     provideHttpClient(withInterceptors([cacheInterceptor])),
-    provideAnimationsAsync(),
     { provide: IMAGE_CONFIG, useValue: { disableImageLazyLoadWarning: true, disableImageSizeWarning: true } },
   ]
 };
