@@ -1,43 +1,126 @@
 <main class="flex-grow bg-[#0a0a0a] text-white">
   <app-navbar [showSearchBox]="false" [transparent]="false"></app-navbar>
+  <app-music-subnav />
 
   <div class="px-4 py-8 md:px-12 lg:px-16">
-    <a routerLink="/music" class="mb-6 inline-block text-sm text-gray-400 hover:text-white">&larr; Music</a>
-
     @switch (status()) {
       @case ('loading') {
-        <div class="flex flex-col gap-6 sm:flex-row" aria-busy="true">
-          <div class="aspect-square w-56 animate-pulse rounded bg-white/5"></div>
-          <div class="h-40 flex-1 animate-pulse rounded bg-white/5"></div>
+        <a routerLink="/music" class="mb-6 inline-block text-sm text-gray-400 hover:text-white">&larr; Music</a>
+        <div class="flex flex-col gap-6 sm:flex-row" aria-busy="true" aria-label="Loading album">
+          <div class="aspect-square w-56 animate-pulse rounded bg-white/5 motion-reduce:animate-none"></div>
+          <div class="h-40 flex-1 animate-pulse rounded bg-white/5 motion-reduce:animate-none"></div>
         </div>
       }
       @case ('error') {
+        <a routerLink="/music" class="mb-6 inline-block text-sm text-gray-400 hover:text-white">&larr; Music</a>
         <p class="text-sm text-amber-400">Couldn't load this album.</p>
       }
       @case ('done') {
         @if (album(); as a) {
-          <div class="mb-8 flex flex-col gap-6 sm:flex-row sm:items-end">
-            <img [src]="a.cover" alt="" width="224" height="224" class="aspect-square w-56 rounded bg-gray-800 object-cover shadow-xl" />
-            <div>
-              <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Album</p>
-              <h1 class="my-1 text-2xl font-bold md:text-4xl">{{ a.title }}</h1>
-              <p class="text-sm text-gray-300">
-                {{ a.artist }}@if (a.year) {<span class="text-gray-400"> · {{ a.year }}</span>}
-                <span class="text-gray-400"> · {{ a.tracks }} songs, {{ minutes(a.duration) }}</span>
-              </p>
-              <button type="button" (click)="playAll()"
-                class="mt-4 inline-flex items-center gap-2 rounded-full bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-indigo-500">
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" /></svg>
-                Play
-              </button>
+          <div class="-mx-4 -mt-8 mb-8 px-4 pb-2 pt-8 transition-[background-image] duration-500 motion-reduce:transition-none md:-mx-12 md:px-12 lg:-mx-16 lg:px-16"
+            [style]="headerStyle()" data-testid="album-header">
+            <a routerLink="/music" class="mb-6 inline-block text-sm text-gray-300 hover:text-white">&larr; Music</a>
+            <div class="flex flex-col gap-6 sm:flex-row sm:items-end">
+              <img [src]="a.cover" alt="" width="224" height="224" class="aspect-square w-56 rounded bg-gray-800 object-cover shadow-xl" />
+              <div class="min-w-0">
+                <p class="text-xs font-semibold uppercase tracking-wide text-gray-300">{{ a.type === 'EP' ? 'EP' : a.type === 'SINGLE' ? 'Single' : a.type === 'COMPILATION' ? 'Compilation' : 'Album' }}</p>
+                <h1 class="my-1 text-2xl font-bold md:text-4xl">{{ a.title }}</h1>
+                <p class="text-sm text-gray-200">
+                  @if (a.artistId) {
+                    <a [routerLink]="['/music/artist', a.artistId]" class="hover:underline">{{ a.artist }}</a>
+                  } @else {
+                    {{ a.artist }}
+                  }
+                  @if (releaseDate()) {
+                    <span class="text-gray-300"> · {{ releaseDate() }}</span>
+                  } @else if (a.year) {
+                    <span class="text-gray-300"> · {{ a.year }}</span>
+                  }
+                  <span class="text-gray-300"> · {{ a.tracks }} songs, {{ duration(a.duration) }}</span>
+                </p>
+
+                @if (aoty(); as s) {
+                  <div class="mt-3 flex flex-wrap items-center gap-2" aria-label="Album of the Year scores">
+                    @if (s.critic !== undefined) {
+                      <a [href]="s.url || null" target="_blank" rel="noopener noreferrer" [attr.aria-label]="'Critic score ' + s.critic + ' out of 100 (opens Album of the Year)'"
+                        class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-gray-200 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+                        Critics <span class="font-semibold text-white">{{ s.critic }}</span>
+                      </a>
+                    }
+                    @if (s.user !== undefined) {
+                      <a [href]="s.url || null" target="_blank" rel="noopener noreferrer" [attr.aria-label]="'User score ' + s.user + ' out of 100 (opens Album of the Year)'"
+                        class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-gray-200 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+                        Users <span class="font-semibold text-white">{{ s.user }}</span>
+                      </a>
+                    }
+                    @if (s.mustHear) {
+                      <span class="rounded-full border border-indigo-400/60 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-400">Must hear</span>
+                    }
+                  </div>
+                }
+
+                <div class="mt-4 flex flex-wrap items-center gap-2">
+                  <button type="button" (click)="playAll()"
+                    class="inline-flex h-11 items-center gap-2 rounded-full bg-indigo-600 px-6 text-sm font-semibold text-white hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" /></svg>
+                    Play
+                  </button>
+                  <button type="button" (click)="shuffleAll()"
+                    class="inline-flex h-11 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-5 text-sm font-medium text-white hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5" /></svg>
+                    Shuffle
+                  </button>
+                  @if (item(); as it) {
+                    <app-music-like-button [item]="it" />
+                  }
+                  <button type="button" (click)="addToPlaylist()" aria-label="Add album to playlist" title="Add to playlist"
+                    class="flex h-11 w-11 items-center justify-center rounded-full text-gray-300 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+                    <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M3 6h12M3 12h8M3 18h8M17 14v6M14 17h6" /></svg>
+                  </button>
+                  <button type="button" (click)="share()" aria-label="Share album" title="Share"
+                    class="flex h-11 w-11 items-center justify-center rounded-full text-gray-300 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+                    <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3M7 8l5-5 5 5M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5" /></svg>
+                  </button>
+                  @if (download.enabled()) {
+                    <button type="button" (click)="downloadAlbum()" aria-label="Download album" title="Download"
+                      class="flex h-11 w-11 items-center justify-center rounded-full text-gray-300 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+                      <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 20h14" /></svg>
+                    </button>
+                  }
+                </div>
+              </div>
             </div>
           </div>
 
-          <div class="max-w-4xl">
+          <div class="mb-10 max-w-4xl">
             @for (t of tracks(); track t.id; let i = $index) {
               <app-music-track-row [track]="t" [queue]="tracks()" [showCover]="false" [showAlbum]="false" [number]="i + 1"></app-music-track-row>
             }
+            @if (copyright()) {
+              <p class="mt-4 text-xs text-gray-400">{{ copyright() }}</p>
+            }
           </div>
+
+          @if (moreByArtist().length) {
+            <app-music-rail [title]="'More by ' + a.artist" [link]="a.artistId ? ['/music/artist', a.artistId] : null">
+              @for (x of moreByArtist(); track x.id) { <app-music-album-card [album]="x" /> }
+            </app-music-rail>
+          }
+          @if (epsSingles().length) {
+            <app-music-rail title="EPs & Singles">
+              @for (x of epsSingles(); track x.id) { <app-music-album-card [album]="x" /> }
+            </app-music-rail>
+          }
+          @if (similarAlbums().length) {
+            <app-music-rail title="Similar albums">
+              @for (x of similarAlbums(); track x.id) { <app-music-album-card [album]="x" /> }
+            </app-music-rail>
+          }
+          @if (similarArtists().length) {
+            <app-music-rail title="Similar artists">
+              @for (x of similarArtists(); track x.id) { <app-music-artist-card [artist]="x" /> }
+            </app-music-rail>
+          }
         }
       }
     }

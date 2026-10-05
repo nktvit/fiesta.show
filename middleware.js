@@ -42,6 +42,14 @@ export default async function middleware(request) {
       const rendered = await renderPageMeta(url, () => fetchPersonMeta(url, personMatch[1]));
       if (rendered) return rendered;
     }
+
+    // Music pages (/music/album|artist|track|playlist|mix/:id): bots only, since
+    // real visitors get the Angular page and set their own title client-side.
+    const musicMatch = url.pathname.match(/^\/music\/(album|artist|track|playlist|mix)\/([^/]+)\/?$/);
+    if (musicMatch && isBotUserAgent(ua)) {
+      const rendered = await renderPageMeta(url, () => fetchMusicMeta(url, musicMatch[1], musicMatch[2]));
+      if (rendered) return rendered;
+    }
   }
 
   return next();
@@ -139,6 +147,76 @@ async function fetchPersonMeta(url, rawId) {
     : `Browse movies and TV shows featuring ${data.name} on Stream Fiesta.`;
 
   return { title, description, image: data.profilePath || null };
+}
+
+const BOT_UA = /bot|crawler|spider|facebookexternalhit|facebot|slurp|embedly|quora link preview|whatsapp|telegram|discord|slack|linkedin|pinterest|skypeuripreview|mastodon|bluesky|iframely|vkshare|redditbot|applebot|imessage|google-inspectiontool|preview/i;
+
+function isBotUserAgent(ua) {
+  return BOT_UA.test(ua || '');
+}
+
+const MUSIC_ID = {
+  album: /^\d{1,12}$/,
+  artist: /^\d{1,12}$/,
+  track: /^\d{1,12}$/,
+  playlist: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+  mix: /^[A-Za-z0-9]{8,40}$/,
+};
+
+// TIDAL cover URLs end in /320x320.jpg etc.; link previews want a bigger one.
+function bigCover(src) {
+  return src ? String(src).replace(/\/\d+x\d+\.(jpg|jpeg|png|webp)$/i, '/750x750.$1') : null;
+}
+
+async function fetchMusicMeta(url, kind, rawId) {
+  if (!MUSIC_ID[kind].test(rawId)) return null;
+  const res = await fetch(new URL('/api/music?action=' + kind + '&id=' + encodeURIComponent(rawId), url.origin));
+  if (!res.ok) return null;
+  const data = await res.json();
+  if (!data) return null;
+
+  if (kind === 'album' && data.album && data.album.title) {
+    const a = data.album;
+    const by = a.artist ? ` by ${a.artist}` : '';
+    const bits = [a.year, a.tracks ? `${a.tracks} songs` : ''].filter(Boolean).join(' · ');
+    return {
+      title: `${a.title}${by} | Stream Fiesta`,
+      description: `Listen to ${a.title}${by} in lossless on Stream Fiesta.${bits ? ' ' + bits + '.' : ''}`,
+      image: bigCover(a.cover),
+    };
+  }
+  if (kind === 'artist' && data.artist && data.artist.name) {
+    return {
+      title: `${data.artist.name} | Stream Fiesta`,
+      description: `Listen to ${data.artist.name}: top songs and albums in lossless on Stream Fiesta.`,
+      image: bigCover(data.artist.picture),
+    };
+  }
+  if (kind === 'track' && data.track && data.track.title) {
+    const t = data.track;
+    return {
+      title: `${t.title}${t.artist ? ' by ' + t.artist : ''} | Stream Fiesta`,
+      description: `Listen to ${t.title}${t.artist ? ' by ' + t.artist : ''}${t.album ? ' from ' + t.album : ''} in lossless on Stream Fiesta.`,
+      image: bigCover(t.cover),
+    };
+  }
+  if (kind === 'playlist' && data.playlist && data.playlist.title) {
+    const p = data.playlist;
+    return {
+      title: `${p.title} | Stream Fiesta`,
+      description: (p.description || `Listen to the ${p.title} playlist${p.creator ? ' by ' + p.creator : ''} on Stream Fiesta.`).substring(0, 200),
+      image: bigCover(p.cover),
+    };
+  }
+  if (kind === 'mix' && data.mix && data.mix.title) {
+    const m = data.mix;
+    return {
+      title: `${m.title} | Stream Fiesta`,
+      description: (m.subTitle || `Listen to ${m.title} on Stream Fiesta.`).substring(0, 200),
+      image: m.cover || null,
+    };
+  }
+  return null;
 }
 
 function escapeHtml(str) {

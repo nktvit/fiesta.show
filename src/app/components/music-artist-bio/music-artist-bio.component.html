@@ -1,0 +1,41 @@
+@if (bio(); as b) {
+  <section class="max-w-3xl" aria-label="About the artist">
+    <h2 class="mb-2 text-lg font-semibold">About</h2>
+    <p class="whitespace-pre-line text-sm leading-relaxed text-gray-300">{{ excerpt() }}</p>
+    @if (truncated()) {
+      <button type="button" (click)="openDialog()" aria-haspopup="dialog"
+        class="mt-2 inline-flex min-h-10 items-center rounded-full px-1 text-sm font-medium text-indigo-400 hover:text-indigo-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Read more</button>
+    }
+  </section>
+
+  <app-music-dialog [title]="'About ' + (name() || 'the artist')" [(open)]="dialogOpen" size="lg">
+    @for (p of paragraphs(); track $index) {
+      <p class="mb-3 text-sm leading-relaxed text-gray-300">{{ p }}</p>
+    }
+    @if (mentioned().length) {
+      <p class="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-gray-400">Mentioned</p>
+      <ul class="flex flex-wrap gap-2">
+        @for (l of mentioned(); track l.route) {
+          <li>
+            <a [routerLink]="l.route" (click)="dialogOpen.set(false)"
+              class="inline-flex min-h-10 items-center rounded-full border border-white/10 bg-white/5 px-3 text-sm text-gray-200 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{{ l.label }}</a>
+          </li>
+        }
+      </ul>
+    }
+    @if (b.source) {
+      <p class="mt-4 text-xs text-gray-400">Source: {{ b.source }}</p>
+    }
+  </app-music-dialog>
+}
+
+@if (linkViews().length) {
+  <ul class="mt-3 flex flex-wrap gap-2" aria-label="Artist links">
+    @for (l of linkViews(); track l.url) {
+      <li>
+        <a [href]="l.url" target="_blank" rel="noopener noreferrer" [title]="l.host" [attr.aria-label]="l.label + ' (opens in a new tab)'"
+          class="inline-flex min-h-10 items-center rounded-full border border-white/10 bg-white/5 px-3 text-xs text-gray-200 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{{ l.label }}</a>
+      </li>
+    }
+  </ul>
+}

@@ -1,0 +1,95 @@
+<main class="flex-grow bg-[#0a0a0a] text-white">
+  <app-navbar [showSearchBox]="false" [transparent]="false"></app-navbar>
+  <app-music-subnav />
+
+  <div class="px-4 py-8 md:px-12 lg:px-16">
+    <a routerLink="/music" class="mb-6 inline-block text-sm text-gray-400 hover:text-white">&larr; Music</a>
+
+    @switch (status()) {
+      @case ('loading') {
+        <div class="flex flex-col gap-6 sm:flex-row" aria-busy="true" aria-label="Loading song">
+          <div class="aspect-square w-56 animate-pulse rounded bg-white/5 motion-reduce:animate-none"></div>
+          <div class="h-40 flex-1 animate-pulse rounded bg-white/5 motion-reduce:animate-none"></div>
+        </div>
+      }
+      @case ('error') {
+        <h1 class="mb-2 text-2xl font-bold md:text-3xl">Song not available</h1>
+        <p class="text-sm text-amber-400">Couldn't load this song.</p>
+      }
+      @case ('done') {
+        @if (track(); as t) {
+          <div class="mb-10 flex flex-col gap-6 sm:flex-row sm:items-end">
+            <img [src]="t.cover" alt="" width="224" height="224" class="aspect-square w-56 rounded bg-gray-800 object-cover shadow-xl" />
+            <div class="min-w-0">
+              <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Song</p>
+              <h1 class="my-1 text-2xl font-bold md:text-4xl">{{ t.title }}</h1>
+              <p class="text-sm text-gray-300">
+                @if (t.artistId) {
+                  <a [routerLink]="['/music/artist', t.artistId]" class="hover:underline">{{ t.artist }}</a>
+                } @else {
+                  {{ t.artist }}
+                }
+                @if (t.albumId) {
+                  <span class="text-gray-400"> · </span><a [routerLink]="['/music/album', t.albumId]" class="hover:underline">{{ t.album }}</a>
+                }
+                <span class="text-gray-400"> · {{ time(t.duration) }}</span>
+              </p>
+              <div class="mt-4 flex flex-wrap items-center gap-2">
+                <button type="button" (click)="play()"
+                  class="inline-flex h-11 items-center gap-2 rounded-full bg-indigo-600 px-6 text-sm font-semibold text-white hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+                  @if (isPlaying()) {
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z" /></svg>
+                    Pause
+                  } @else {
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" /></svg>
+                    Play
+                  }
+                </button>
+                @if (item(); as it) {
+                  <app-music-like-button [item]="it" />
+                }
+                <button type="button" (click)="radio()"
+                  class="inline-flex h-11 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-5 text-sm font-medium text-white hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="2" /><path d="M8.5 8.5a5 5 0 0 0 0 7M15.5 8.5a5 5 0 0 1 0 7M5.6 5.6a9 9 0 0 0 0 12.8M18.4 5.6a9 9 0 0 1 0 12.8" /></svg>
+                  Radio
+                </button>
+                <button type="button" (click)="addToPlaylist()" aria-label="Add song to playlist" title="Add to playlist"
+                  class="flex h-11 w-11 items-center justify-center rounded-full text-gray-300 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+                  <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M3 6h12M3 12h8M3 18h8M17 14v6M14 17h6" /></svg>
+                </button>
+                <button type="button" (click)="share()" aria-label="Share song" title="Share"
+                  class="flex h-11 w-11 items-center justify-center rounded-full text-gray-300 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+                  <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3M7 8l5-5 5 5M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5" /></svg>
+                </button>
+                <button type="button" (click)="copyLink()" aria-label="Copy link to this song" title="Copy link"
+                  class="flex h-11 w-11 items-center justify-center rounded-full text-gray-300 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+                  <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" /></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          @if (albumTracks().length) {
+            <section class="mb-10 max-w-4xl" aria-label="From the album">
+              <h2 class="mb-2 text-lg font-semibold">
+                @if (t.albumId) { From <a [routerLink]="['/music/album', t.albumId]" class="hover:underline">{{ t.album }}</a> } @else { From the album }
+              </h2>
+              @for (x of albumTracks(); track x.id; let i = $index) {
+                <app-music-track-row [track]="x" [queue]="albumTracks()" [showCover]="false" [showAlbum]="false" [number]="i + 1"></app-music-track-row>
+              }
+            </section>
+          }
+
+          @if (similarTracks().length) {
+            <section class="mb-10 max-w-4xl" aria-label="Similar tracks">
+              <h2 class="mb-2 text-lg font-semibold">Similar tracks</h2>
+              @for (x of similarTracks(); track x.id) {
+                <app-music-track-row [track]="x" [queue]="similarTracks()"></app-music-track-row>
+              }
+            </section>
+          }
+        }
+      }
+    }
+  </div>
+</main>

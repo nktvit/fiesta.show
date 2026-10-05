@@ -1,0 +1,30 @@
+@if (expanded()) {
+  <ul role="listbox" [id]="listboxId" aria-label="Search suggestions"
+      class="absolute inset-x-0 top-full z-[55] mt-1 max-h-96 overflow-y-auto rounded-lg border border-white/10 bg-[#121212]/95 py-1 shadow-2xl"
+      [class.backdrop-blur-md]="!settings.reduceBlur()">
+      @for (o of options(); track o.id; let i = $index) {
+        <li role="option" [id]="o.id" [attr.aria-selected]="i === active()"
+          (mousedown)="$event.preventDefault()" (click)="choose(o)" (mouseenter)="hover(i)"
+          class="flex min-h-[44px] cursor-pointer items-center gap-3 px-3 py-1.5 text-sm"
+          [class]="i === active() ? 'bg-white/10 text-white' : 'text-gray-200'">
+          @if (o.kind === 'term') {
+            <span class="flex h-9 w-9 flex-shrink-0 items-center justify-center text-gray-400">
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+            </span>
+            <span class="min-w-0 flex-1 truncate" [title]="o.label">{{ o.label }}</span>
+          } @else {
+            @if (o.image) {
+              <img [src]="o.image" alt="" width="36" height="36" loading="lazy"
+                class="h-9 w-9 flex-shrink-0 bg-gray-800 object-cover" [class]="o.kind === 'artist' ? 'rounded-full' : 'rounded'" />
+            } @else {
+              <span class="h-9 w-9 flex-shrink-0 bg-gray-800" [class]="o.kind === 'artist' ? 'rounded-full' : 'rounded'"></span>
+            }
+            <span class="min-w-0 flex-1">
+              <span class="block truncate" [title]="o.label">{{ o.label }}</span>
+              <span class="block truncate text-xs text-gray-400" [title]="o.sub">{{ o.sub }}</span>
+            </span>
+          }
+        </li>
+      }
+  </ul>
+}
