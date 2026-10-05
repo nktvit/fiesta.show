@@ -43,13 +43,26 @@ check('tablist with the nine tabs in order (eight while downloads are switched o
     .includes(labels.map((l) => l.trim()).join('|')), labels.join('|'));
 check('title is "Music settings | Stream Fiesta"', (await page.title()) === 'Music settings | Stream Fiesta', await page.title());
 check('default tab is Playback and selected', (await page.locator('[role=tab][aria-selected=true]').textContent())?.trim() === 'Playback');
+{
+  // Visitors never pass ?musicdebug=1, which is the only way the hidden Data tab appears.
+  const flagged = page.url();
+  await page.goto(base + '/music/settings', { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('[role=tab]', { timeout: 15000 });
+  check('the Data tab is hidden for visitors (browser storage is not the permanent store)', (await page.locator('#music-settings-tab-data').count()) === 0
+    && (await page.locator('[role=tab]').count()) > 3);
+  await page.goto(base + '/music/settings?tab=data', { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('[role=tab]', { timeout: 15000 });
+  check('?tab=data without the test flag falls back to Playback', (await page.locator('[role=tab][aria-selected=true]').textContent())?.trim() === 'Playback');
+  await page.goto(flagged, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('[role=tab]', { timeout: 15000 });
+}
 await shot(page, 'playback');
 
 for (const [id, sel] of [['audio', 'app-music-settings-audio'], ['lyrics', 'app-music-settings-lyrics'], ['interface', 'app-music-settings-interface'],
   ['shortcuts', 'app-music-settings-shortcuts'], ['downloads', 'app-music-settings-downloads'], ['scrobbling', 'app-music-settings-scrobbling'],
   ['data', 'app-music-settings-data'], ['system', 'app-music-settings-system'], ['playback', 'app-music-settings-playback']]) {
-  // The Downloads tab only exists while MUSIC_DOWNLOADS_ENABLED is on.
-  if (id === 'downloads' && (await page.locator('#music-settings-tab-downloads').count()) === 0) continue;
+  // The Downloads tab only exists while MUSIC_DOWNLOADS_ENABLED is on, and the Data tab is hidden for visitors.
+  if ((id === 'downloads' || id === 'data') && (await page.locator(`#music-settings-tab-${id}`).count()) === 0) continue;
   await page.click(`#music-settings-tab-${id}`);
   await page.waitForSelector(sel, { timeout: 5000 }).catch(() => {});
   check(`tab ${id} renders ${sel} and updates ?tab=`, (await page.locator(sel).count()) === 1 && page.url().includes('tab=' + id));

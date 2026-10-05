@@ -74,7 +74,7 @@ for (const [path, title] of routes) {
   else routeFails.push(`${path} (${t})`);
 }
 check('every music route renders with subnav, h1 and a "<Thing> | Stream Fiesta" title', routeOk === routes.length, routeFails.join(', '));
-await page.goto(base + '/music/settings?tab=data', { waitUntil: 'domcontentloaded' });
+await page.goto(base + '/music/settings?tab=data&musicdebug=1', { waitUntil: 'domcontentloaded' });
 await page.waitForSelector('app-music-settings-data', { timeout: 15000 }).catch(() => {});
 check('settings ?tab= deep link selects the section (Settings stays active in the subnav)', (await page.locator('app-music-settings-data h2').count()) === 1
   && (await page.locator('nav[aria-label="Music sections"] a[aria-current="page"]').first().textContent().catch(() => ''))?.trim() === 'Settings');

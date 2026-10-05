@@ -230,7 +230,7 @@ export class MusicCommandsService {
 
     // Settings
     add({ id: 'settings-search', label: 'Search settings…', group: 'Settings', keywords: ['find setting', 'option', '>'], run: go('/music/settings') });
-    for (const tab of SETTINGS_TABS.filter((t) => t.id !== 'system' || IS_PREVIEW_OR_DEV)) {
+    for (const tab of SETTINGS_TABS.filter((t) => (t.id !== 'system' || IS_PREVIEW_OR_DEV) && t.id !== 'data')) {
       if (tab.id === 'downloads' && !this.downloads.enabled()) continue;
       add({ id: `settings-${tab.id}`, label: `Settings: ${tab.label}`, group: 'Settings', keywords: ['preferences', tab.id], run: goSettings(tab.id) });
     }

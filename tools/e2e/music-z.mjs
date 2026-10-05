@@ -183,7 +183,7 @@ for (const [name, path] of pages) {
 }
 check('1280px: music pages have named buttons, no horizontal overflow, nothing under the bar', desktopBad.length === 0, desktopBad.slice(0, 4).join(' | '));
 for (const tab of ['playback', 'audio', 'lyrics', 'interface', 'shortcuts', 'scrobbling', 'data', 'system']) {
-  await page.goto(base + `/music/settings?tab=${tab}`, { waitUntil: 'domcontentloaded' });
+  await page.goto(base + `/music/settings?tab=${tab}&musicdebug=1`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector(`app-music-settings-${tab}`, { timeout: 15000 }).catch(() => {});
   await sleep(600);
   const miss = await unlabeled(page, 'main');

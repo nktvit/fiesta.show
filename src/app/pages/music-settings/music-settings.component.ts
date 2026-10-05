@@ -51,17 +51,23 @@ export class MusicSettingsComponent {
   private pendingJump: string | null = null;
   private highlightTimer: ReturnType<typeof setTimeout> | null = null;
   private downloads = inject(MusicDownloadService);
+  /** Only the e2e harness (?musicdebug=1 on a preview or local dev) can reach the hidden Data tab. */
+  private readonly dataTabForTests = IS_PREVIEW_OR_DEV && typeof location !== 'undefined' && new URLSearchParams(location.search).has('musicdebug');
   /** The Downloads tab (and its search entries) is hidden while the downloads switch is off. */
   protected readonly downloadsOn = this.downloads.enabled;
-  /** The System tab (storage, cache clearing, API status, version) is for previews and local dev only. */
+  /**
+   * The System tab (storage, cache clearing, API status, version) is for previews and local dev only.
+   * The Data tab (backup / restore / reset of browser-stored data) is hidden: browser storage is not
+   * the permanent store, so there is nothing for visitors to back up or restore.
+   */
   protected readonly tabs = computed(() =>
-    TABS.filter((t) => (t.id !== 'downloads' || this.downloads.enabled()) && (t.id !== 'system' || IS_PREVIEW_OR_DEV)),
+    TABS.filter((t) => (t.id !== 'downloads' || this.downloads.enabled()) && (t.id !== 'system' || IS_PREVIEW_OR_DEV) && (t.id !== 'data' || this.dataTabForTests)),
   );
   protected readonly tab = signal<MusicSettingsTab>(this.visible(this.settings.lastSettingsTab()));
   protected readonly query = signal('');
   protected readonly active = signal(0);
   protected readonly results = computed<MusicSettingEntry[]>(() => {
-    const registry = MUSIC_SETTINGS_REGISTRY.filter((e) => (e.tab !== 'downloads' || this.downloads.enabled()) && (e.tab !== 'system' || IS_PREVIEW_OR_DEV));
+    const registry = MUSIC_SETTINGS_REGISTRY.filter((e) => (e.tab !== 'downloads' || this.downloads.enabled()) && (e.tab !== 'system' || IS_PREVIEW_OR_DEV) && (e.tab !== 'data' || this.dataTabForTests));
     return searchSettings(registry, this.query(), 8);
   });
   protected readonly tabLabel = (t: MusicSettingsTab) => TABS.find((x) => x.id === t)?.label ?? t;
@@ -84,7 +90,7 @@ export class MusicSettingsComponent {
   }
 
   private visible(t: MusicSettingsTab): MusicSettingsTab {
-    return (t === 'downloads' && !this.downloads.enabled()) || (t === 'system' && !IS_PREVIEW_OR_DEV) ? 'playback' : t;
+    return (t === 'downloads' && !this.downloads.enabled()) || (t === 'system' && !IS_PREVIEW_OR_DEV) || (t === 'data' && !this.dataTabForTests) ? 'playback' : t;
   }
 
   protected select(t: MusicSettingsTab): void {
