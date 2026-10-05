@@ -123,15 +123,17 @@ export class MusicNowPlayingComponent {
       untracked(() => { el.animate([{ transform: 'translateY(8%)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 220, easing: 'ease-out' }); });
     });
 
-    // CD spin: only while playing, never under reduced motion.
+    // CD spin: only while playing. It is an explicit, opt-in toggle, so it runs even under
+    // prefers-reduced-motion (macOS "Reduce motion" would otherwise make the mode look broken);
+    // the incidental motion (slide-in, tilt) still honours the preference.
     effect(() => {
       const el = this.cover()?.nativeElement;
       const mode = this.cd();
-      const on = mode && this.player.playing() && !this.reducedMotion();
+      const on = mode && this.player.playing();
       untracked(() => {
         if (this.spin && this.spinEl !== el) { this.spin.cancel(); this.spin = null; }
         if (!el || typeof el.animate !== 'function') return;
-        if (!mode || this.reducedMotion()) { this.spin?.cancel(); this.spin = null; el.dataset['spinning'] = 'false'; return; }
+        if (!mode) { this.spin?.cancel(); this.spin = null; el.dataset['spinning'] = 'false'; return; }
         if (!this.spin) { this.spin = el.animate([{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }], { duration: 12000, iterations: Infinity }); this.spinEl = el; }
         if (on) this.spin.play(); else this.spin.pause();
         el.dataset['spinning'] = String(on);
