@@ -4,7 +4,7 @@
     <p class="whitespace-pre-line text-sm leading-relaxed text-gray-300">{{ excerpt() }}</p>
     @if (truncated()) {
       <button type="button" (click)="openDialog()" aria-haspopup="dialog"
-        class="mt-2 inline-flex min-h-10 items-center rounded-full px-1 text-sm font-medium text-indigo-400 hover:text-indigo-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Read more</button>
+        class="mt-2 inline-flex min-h-10 items-center rounded-full px-1 text-sm font-medium text-[color:var(--ag-accent-text,#818cf8)] hover:brightness-125 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ag-accent-text,#818cf8)]">Read more</button>
     }
   </section>
 
@@ -18,7 +18,7 @@
         @for (l of mentioned(); track l.route) {
           <li>
             <a [routerLink]="l.route" (click)="dialogOpen.set(false)"
-              class="inline-flex min-h-10 items-center rounded-full border border-white/10 bg-white/5 px-3 text-sm text-gray-200 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{{ l.label }}</a>
+              class="inline-flex min-h-10 items-center rounded-full border border-white/10 bg-white/5 px-3 text-sm text-gray-200 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ag-accent-text,#818cf8)]">{{ l.label }}</a>
           </li>
         }
       </ul>
@@ -34,7 +34,7 @@
     @for (l of linkViews(); track l.key) {
       <li>
         <a [href]="l.url" target="_blank" rel="noopener noreferrer" [title]="l.host" [attr.aria-label]="l.label + ' (opens in a new tab)'"
-          class="inline-flex h-10 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3.5 text-sm font-medium text-gray-200 transition-colors hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 motion-reduce:transition-none">
+          class="inline-flex h-10 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3.5 text-sm font-medium text-gray-200 transition-colors hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ag-accent-text,#818cf8)] motion-reduce:transition-none">
           @if (l.path) {
             <svg class="h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path [attr.d]="l.path" /></svg>
           } @else {
