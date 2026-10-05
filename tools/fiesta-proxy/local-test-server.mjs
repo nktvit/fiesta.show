@@ -1,5 +1,8 @@
 // Lightweight harness to run the Vercel /api functions locally without `vercel dev`.
-// Mounts api/stream.js, parsing ?query into req.query like Vercel does.
+// Mounts the api/*.js handlers, parsing ?query into req.query like Vercel does.
+// `ng serve` proxies /api/* here (src/proxy.conf.json), so dev runs the same
+// api/tmdb.js and api/movie.js code as production. Needs TMDB_API_KEY and
+// OMDB_API_KEY (repo-root .env, .env.local or the shell environment).
 import http from 'node:http';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -20,19 +23,27 @@ if (fs.existsSync(envFile)) {
   console.log('loaded .env.local; STREAM_RELAY_URL', process.env.STREAM_RELAY_URL ? 'set' : 'unset');
 }
 
-// Repo-root env (TIDAL_*), same gitignored files `vercel dev` would read.
+// Repo-root env (TIDAL_*, TMDB/OMDB keys), same gitignored files `vercel dev` would read.
 for (const name of ['.env.local', '.env']) {
   const f = path.join(ROOT, name);
   if (!fs.existsSync(f)) continue;
   for (const line of fs.readFileSync(f, 'utf8').split('\n')) {
-    const m = line.match(/^\s*(TIDAL_[A-Z0-9_]+)\s*=\s*(.*)\s*$/);
+    const m = line.match(/^\s*((?:TIDAL_[A-Z0-9_]+)|TMDB_API_KEY|OMDB_API_KEY)\s*=\s*(.*)\s*$/);
     if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
   }
 }
 
-const stream = require(path.join(ROOT, 'api/stream.js'));
-const subs = require(path.join(ROOT, 'api/subs.js'));
-const music = require(path.join(ROOT, 'api/music.js'));
+// Every handler the browser calls in dev (mirrors src/proxy.conf.json). A handler
+// whose dependencies are missing is skipped with a warning instead of taking the
+// whole harness down.
+const ROUTES = {};
+for (const name of ['stream', 'subs', 'music', 'tmdb', 'movie', 'omdb', 'suggestions']) {
+  try {
+    ROUTES['/api/' + name] = require(path.join(ROOT, 'api', name + '.js'));
+  } catch (e) {
+    console.warn('skipping /api/' + name + ':', e && e.message);
+  }
+}
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
@@ -44,9 +55,8 @@ const server = http.createServer(async (req, res) => {
   res.send = origSend;
 
   try {
-    if (url.pathname === '/api/stream') return await stream(req, res);
-    if (url.pathname === '/api/subs') return await subs(req, res);
-    if (url.pathname === '/api/music') return await music(req, res);
+    const handler = ROUTES[url.pathname];
+    if (handler) return await handler(req, res);
     res.statusCode = 404; res.end('not found');
   } catch (e) {
     res.statusCode = 500; res.end('handler threw: ' + (e && e.stack || e));
