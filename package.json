@@ -55,12 +55,11 @@
     "zone.js": "~0.15.0"
   },
   "devDependencies": {
-    "@angular-devkit/build-angular": "^20.3.23",
+    "@angular/build": "^20.3.23",
     "@angular/cli": "^20.3.23",
     "@angular/compiler-cli": "^20.3.18",
     "@types/canvas-confetti": "^1.9.0",
     "@types/jasmine": "~5.1.4",
-    "@types/jest": "^29.5.14",
     "@types/node": "^22.9.3",
     "@types/papaparse": "^5.5.2",
     "@videojs/cdn": "10.0.1",
