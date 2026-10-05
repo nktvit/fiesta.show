@@ -5,9 +5,11 @@
 **This file is the ONLY handoff. It lives on `main` (docs/handoff.md) and is updated by a docs-only commit on
 `main`. Do NOT keep or edit copies of it on feature branches** (an earlier session did, and had to merge them back).
 
-`main`: last CODE commit `4f052d4` (anything after it is docs-only), in sync with origin. Everything under "Live" is merged AND verified on production.
-Git worktrees for all of this are under `.claude/worktrees/` (`music-tab`, `relay-sot`, plus merged ones that can
-be removed: `empty-seasons`, `player-switch`, `sticky-footer`). Always work in a worktree, never in this checkout.
+`main`: last CODE commit is the music-tab merge `1eb6276` (anything after it is docs-only). Production deploys from `main`;
+what is verified live is listed below, nothing else is claimed.
+Git worktrees for all of this are under `.claude/worktrees/` (`music-tab`, `merge-music`, `relay-sot`, `mobile-player-hscroll`,
+`thumb-cache`, `music-cache`, `search-genre-tiles`, plus merged ones that can be removed: `empty-seasons`, `player-switch`,
+`sticky-footer`). Always work in a worktree, never in this checkout.
 
 ### Live on production (user asked for each merge)
 - **Empty seasons hidden** (`c3626a5`, `lib/seasons.js`): Rick and Morty shows S1-9, header "9 Seasons" (OMDB said
@@ -17,22 +19,31 @@ be removed: `empty-seasons`, `player-switch`, `sticky-footer`). Always work in a
   checked on a real iPhone.
 - **Sticky footer** (`4f052d4`): footer sits at the bottom on short pages; 30 page/viewport combos measured.
 
+### Music tab - MERGED to main (2026-10-05, `1eb6276`; user asked for the merge and the prod secrets)
+- Port of Monochrome's feature set (219-feature list: `docs/music-features.md`; the 14-package build plan is `docs/music-work-packages.json`):
+  engine (shuffle/repeat/queue/volume/speed/sleep timer/preload/gapless/ReplayGain/crossfade), queue panel + fullscreen Now Playing
+  (CD mode = spinning round cover; only an inner disc rotates, see `music-now-playing`), lyrics (native am-lyrics port, keyless providers),
+  EQ/AutoEQ/visualizer/waveform, likes + playlists + import/export, discovery (mixes/radio), context menus (slide animation, locks page
+  scroll), command palette + shortcuts, settings, scrobbling code, artist links as icon buttons (no Buy links).
+- **Production env set 2026-10-05:** `TIDAL_CLIENT_ID` and `TIDAL_CLIENT_SECRET` (Production, values copied from the repo `.env`, secret stored
+  sensitive). `MUSIC_SHARED_SESSION` is NOT set, so on production every visitor gets 30 s PREVIEWS only; full-length lossless plays only on
+  previews/local dev via the Mac mini relay session. Enabling it makes every visitor listen on the owner's personal TIDAL account (deliberate opt-in).
+- **Hidden on purpose (no accounts yet):** Music > Library tab (route and the 'Your playlists' rail still work, per-device localStorage),
+  Settings > Data tab (reachable only with `?musicdebug=1` on previews/dev), Settings > System tab (previews/dev only: `deployEnv` is stamped
+  from `VERCEL_ENV` by `scripts/set-env.js`), Downloads (off by default).
+- **Mobile nav:** the Genres tab/sheet is gone; genres are coloured tiles on the Search tab (`utils/genre-style.ts`); tab bar = Home, Search,
+  TV Shows, Top Rated, Music ("New" badge).
+- Verified before merge: production build, unit tests (500 pass + the 5 known failures), e2e P2/P10/P11/F0 in Chromium (+ WebKit for the CD overflow).
+  NOT verified: full-length playback (needs a fresh TIDAL token or relay session), real iPhone, lyrics providers live, scrobbling against real accounts.
+- Still not built: per-viewer TIDAL login (error `11102`, needs exact redirect URI + scopes from the developer dashboard), Genius annotations,
+  podcasts, Last.fm keys (`LASTFM_API_KEY`/`LASTFM_API_SECRET`), listening parties.
+
 ### Open branches (pushed, NOT merged) - the user decides when
-1. **`feature/music-tab`** (13 commits ahead): the whole Music tab. Full details: section "MUSIC TAB - details" below. Summary:
-   - `/music`, `/music/album/:id`, `/music/artist/:id`, mini player bar, Music = LAST tab in both navs with a red
-     pulsing "New" badge; `api/music.js` + `lib/tidal.js` (search/album/artist/manifest/segment proxy);
-     Media-Source-Extensions player (FLAC, AAC fallback; dash.js rejects the `flac` codec).
-   - **Full lossless** comes from the owner's TIDAL web session kept fresh on the Mac mini relay
-     (`/tidal/token`, `tools/fiesta-proxy/tidal-session.mjs`). Rule
-     (`relaySessionAllowed()` in `lib/tidal.js`): previews + local dev use it automatically, PRODUCTION only if
-     `MUSIC_SHARED_SESSION=1` (explicit opt-in; it makes every visitor listen on one personal account).
-     Anyone with a preview URL can therefore listen on the owner's account (user accepted this).
-   - Latest preview: `streamfiesta-64kyr9nzu-nktvit.vercel.app/music` (e2e 14/14, no key/token needed).
-   - **Before merging:** add `TIDAL_CLIENT_ID` and `TIDAL_CLIENT_SECRET` to Vercel PRODUCTION (currently 0
-     TIDAL/MUSIC vars there; Preview has the two). Without them `/music` errors on production; with them it
-     serves 30 s previews only. Two copies of the sticky-footer CSS now exist (main + this branch): keep one.
-   - Viewer login (PKCE, each visitor on their own TIDAL account) is NOT built: TIDAL error `11102` on the
-     authorize page; needs the exact redirect URI(s) + scopes from the developer dashboard.
+- **`fix/music-thumbnail-cache`** (off music-tab, now mergeable) and **`fix/thumbnail-cache`** (off old main): cache interceptor LRU/no-empty-caching,
+  immutable asset headers in `vercel.json`, image hints. They conflict in `cache.interceptor.ts` and `index.html`: keep the music version of the
+  interceptor and both `preconnect` lines. Unverified on a live deployment (check `curl -I` for `immutable` on a hashed bundle).
+- **`fix/mobile-player-hscroll`**: `overflow-x-clip` on the movie page `<main>`; harmless but NOT the cause of the user's report (that was the CD cover, now fixed).
+- Found, not fixed: `/og-image.png`, favicons and `site-dark.webmanifest` return the SPA `index.html` in production (not in `angular.json` assets).
 2. **`chore/relay-source-of-truth`** (1 commit): the Mac mini relay in git + `relayctl` (see below). The GitHub
    token cannot create PRs; open https://github.com/nktvit/fiesta.show/compare/main...chore/relay-source-of-truth
 
