@@ -358,7 +358,8 @@ check('shortcuts are NOT active on /tv', page.url().endsWith('/tv') && (await st
 await nav('/movie/550');
 const mv0 = (await st()).playing;
 await press(page, 'Space'); await press(page, 'm');
-check('shortcuts are NOT active on /movie/:id', page.url().includes('/movie/550') && (await st()).playing === mv0 && (await st()).muted === false);
+// /movie/550 (a TMDB id) is replaced by its IMDb id (/movie/tt0137523) once TMDB answers, which it now does in dev too.
+check('shortcuts are NOT active on /movie/:id', /\/movie\/(550|tt0137523)\b/.test(page.url()) && (await st()).playing === mv0 && (await st()).muted === false);
 await nav('/about');
 const ab0 = (await st()).playing;
 await press(page, 'Space');
