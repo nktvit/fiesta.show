@@ -14,11 +14,19 @@
 - **Sticky footer is on `main` + live** (`4f052d4`, standalone branch `fix/sticky-footer`): verified on 30
   page/viewport combos and on production. The same rule also exists in `feature/music-tab`'s `styles.css`
   (different position in the file): when merging the music branch keep ONE copy.
-- **Mac mini caveat:** `relay.mjs` on the mini is edited over time by an automated "autofix" watchdog
-  (launchd `show.fiesta.relay.autofix`, `.autofix/autofix.log`; backups `relay.mjs.bak-*` on Sep 7, 9, 13 are its
-  edits). It has not run since Sep 29 and left the file alone then. If it ever rewrites or restores `relay.mjs`,
-  the 2 music lines (import + `/tidal/token` route) can disappear -> music silently falls back to previews.
-  Check with `ssh mm 'grep -n tidal /Users/ms/Server/relay.fiesta.show/relay.mjs'` (expect 2 lines).
+- **Mac mini relay is now tracked in git (branch `chore/relay-source-of-truth`, pushed, NOT merged; the GitHub
+  token can't create PRs - open https://github.com/nktvit/fiesta.show/compare/main...chore/relay-source-of-truth).**
+  It snapshots the real `relay.mjs` (1,221 lines, incl. the 2 music lines), `tidal-session.mjs`, the autofix
+  watchdog, the launchd plists and package files into `tools/fiesta-proxy/`, and adds `npm run relay:status |
+  relay:pull | relay:deploy` (`tools/fiesta-proxy/relayctl.mjs`, README section "Source of truth and
+  deploying"). The autofix agent (`claude -p`, edits `relay.mjs` IN PLACE on the box when upstream sources
+  change) is deliberately left alone: deploy records what it wrote (`.relayctl.json` on the box) and REFUSES to
+  overwrite a mini file that changed since (`mini-ahead`) until `relay:pull` brings that change into git.
+  Verified live: baseline, dry-run, syntax-error abort (exit 2), mini-edit detection + refused deploy (exit 3),
+  pull, full deploy with restart + health check. NOT exercised live: the health-failure auto-rollback (it would
+  mean a deliberate relay outage) - test it in a quiet window. Two bugs found by those tests and fixed:
+  staged copies must keep `.mjs` for `node --check`; a `remote` field name clash (hash vs path).
+  When this merges with `feature/music-tab`: `tidal-session.mjs` is identical on both (clean merge).
 - **Music automation (`feature/music-tab`): WORKING END TO END on the preview (2026-10-05).** The mini holds
   the owner's TIDAL web session (client_id `49YxDN9a2aFV6RTG` = "Tidal Web Player - HiRes", token host
   auth.tidal.com) and renews it itself; TIDAL DOES rotate the refresh token (the module persists the new
