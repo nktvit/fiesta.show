@@ -1,9 +1,12 @@
 import {
+  ChangeDetectionStrategy,
   CUSTOM_ELEMENTS_SCHEMA,
   Component,
   ElementRef,
+  NgZone,
   computed,
   effect,
+  inject,
   input,
   output,
   signal,
@@ -27,6 +30,9 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
   schemas: [CUSTOM_ELEMENTS_SCHEMA],
   templateUrl: `./movie-player.component.html`,
   styleUrl: './movie-player.component.css',
+  // Everything the template reads is a signal or an input, so the view needs
+  // no help from zone.js: a signal write (or an input change) marks it dirty.
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MoviePlayerComponent implements OnChanges, OnDestroy {
   readonly imdbId = input<string>('');
@@ -44,6 +50,14 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
    */
   readonly autostart = input<boolean>(false);
   readonly serverChange = output<number>();
+
+  // hls.js, the <video> listeners and the player's timers fire constantly
+  // (XHR/MSE callbacks, timeupdate ~4x/s, rAF). Inside the Angular zone every
+  // one of them ends in an app-wide change-detection pass (ApplicationRef.tick)
+  // for state that is already held in signals. They are created through
+  // runOutsideAngular() instead; a signal write still schedules the (single)
+  // render that is actually needed, with or without the zone.
+  private readonly zone = inject(NgZone);
 
   readonly videoEl = viewChild<ElementRef<HTMLVideoElement>>('videoEl');
 
@@ -159,14 +173,17 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   private seekTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
-    document.addEventListener('keydown', this.onDocumentKeydown, true);
+    this.zone.runOutsideAngular(() => document.addEventListener('keydown', this.onDocumentKeydown, true));
     if (this.playerUi() === 'custom') MoviePlayerComponent.loadVideoJs();
 
     // Attach the stream once both the resolved master URL and the <video> exist.
     effect(() => {
       const url = this.masterUrl();
       const ref = this.videoEl();
-      if (url && ref) void this.attach(ref.nativeElement, url);
+      if (url && ref) {
+        this.wireVideoEvents(ref.nativeElement);
+        void this.attach(ref.nativeElement, url);
+      }
     });
 
     // Arrived with Play already pressed: start as soon as there is something
@@ -230,13 +247,41 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     event.preventDefault();
     this.pendingSeek += event.key === 'ArrowLeft' ? -MoviePlayerComponent.SEEK_STEP : MoviePlayerComponent.SEEK_STEP;
     if (this.seekTimer) return;
-    this.seekTimer = setTimeout(() => {
+    this.seekTimer = this.timeout(() => {
       this.seekTimer = null;
       const delta = this.pendingSeek;
       this.pendingSeek = 0;
       if (delta) this.seekBy(video, delta);
     }, MoviePlayerComponent.SEEK_COALESCE_MS);
   };
+
+  // A timer that does not drag a change-detection pass along when it fires:
+  // every callback here only writes a signal or pokes the <video>.
+  private timeout(fn: () => void, ms: number): ReturnType<typeof setTimeout> {
+    return this.zone.runOutsideAngular(() => setTimeout(fn, ms));
+  }
+
+  // The media events that fire all the time (timeupdate, and the waiting /
+  // playing / canplay / seeking / seeked family around every stall or seek)
+  // are bound here, outside the zone, instead of as (event) bindings in the
+  // template, which would run a full change-detection pass per event. The
+  // handlers only write signals, which schedule the render that is needed.
+  // The rare ones (play, pause, ended, loadedmetadata) stay in the template.
+  // The <video> is re-created on a Fiesta/Native switch; the old element and
+  // its listeners are dropped with it.
+  private wiredVideo: HTMLVideoElement | null = null;
+  private wireVideoEvents(video: HTMLVideoElement) {
+    if (this.wiredVideo === video) return;
+    this.wiredVideo = video;
+    this.zone.runOutsideAngular(() => {
+      video.addEventListener('timeupdate', () => this.onTimeUpdate(video));
+      video.addEventListener('waiting', () => this.onWaiting());
+      video.addEventListener('playing', () => this.onPlaying());
+      video.addEventListener('canplay', () => this.onCanPlay());
+      video.addEventListener('seeking', () => this.onSeeking());
+      video.addEventListener('seeked', () => this.onSeeked());
+    });
+  }
 
   // Video.js v10 is loaded from its own prebuilt browser bundle (@videojs/cdn,
   // copied to /vendor by angular.json), NOT bundled by Angular. Angular's build
@@ -491,196 +536,204 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     // the fallback where MSE is absent, or once hls.js has given up.
     const Hls = (await import('hls.js')).default;
     if (Hls.isSupported() && !this.hlsFailed) {
-      // Tuned against how hls.js actually measures bandwidth. Its sample is
-      //   processingMs = parsing.end - loading.start - min(actualTTFB, ewmaTTFB)
-      // so it compensates for latency only up to its *running estimate* of it.
-      // Every segment here is a cold CDN fetch relayed through a home uplink, so
-      // TTFB VARIANCE — not latency — is what depresses the estimate and walks the
-      // quality down. The settings below give ABR margin to absorb that variance
-      // instead of reacting to it.
-      const hls = new Hls({
-        enableWorker: true,
-        debug: this.hlsDebug,
-        capLevelToPlayerSize: false, // never downscale to the <video> element's pixel size
-        // Was 8_000_000, and that was itself a bug. level-controller only
-        // auto-derives a start estimate when this is left undefined, so an explicit
-        // 8e6 survives into firstAutoLevel — where the only surviving test is
-        // `adjustedbw >= maxBitrate`, and 8e6 >= 5,145,364. Every session on every
-        // connection therefore started on 1920x1072 with an empty buffer and stepped
-        // DOWN once the first real sample landed. Bandwidth-independent, which is
-        // exactly why it didn't look like a connection problem.
-        // At 5e6 the top variant's gate fails (5e6 < 5,145,364) and the middle one
-        // passes (5e6 >= 3,281,926): start at 1280x714 and climb on fragment 2.
-        // 5e6 is also exactly hls.js's own abrEwmaDefaultEstimateMax.
-        abrEwmaDefaultEstimate: 5_000_000,
-        // Previously 1.0/0.9 — maximally eager. With a spiky TTFB that produced
-        // upswitch -> underrun -> stall -> downswitch oscillation, which is the
-        // "quality drops" symptom. Back to a margin (library defaults: 0.95/0.7).
-        abrBandWidthFactor: 0.95,
-        abrBandWidthUpFactor: 0.8,
-        // `progressive: true` was removed, back to the library default of false.
-        // Honest status: this is PRECAUTIONARY, not a fix for an observed bug. It
-        // was removed while chasing an audio-delay report that turned out to be
-        // Bluetooth output latency, so nothing user-visible is known to have been
-        // caused by it. The case for leaving it off is that it is a non-default
-        // path which feeds 128KB partial chunks to the transmuxer — whose own
-        // comments note it then has "no guarantee the fetch loader gives us flush
-        // moof+mdat pairs" — and whose A/V realignment only runs once it holds
-        // enough samples of BOTH tracks. Our responses are chunked with no
-        // Content-Length, which is that jagged-input case.
-        // The cost is real: time-to-first-frame rises by about one fragment
-        // transfer (measured 143-592ms) because the fragment must land whole
-        // before transmux. Re-enable it if startup latency matters more than
-        // staying on the library's tested path.
-        // maxBufferLength is a FLOOR, not a cap: the effective forward target is
-        // min(max(8 * maxBufferSize / levelBitrate, maxBufferLength), maxMaxBufferLength),
-        // which at the declared top bitrate is min(93.3, maxMaxBufferLength). Pinning
-        // maxMaxBufferLength to 60 is what makes 60 actually mean 60.
-        maxBufferLength: 60, // default 30 — rides out an upstream hiccup
-        maxMaxBufferLength: 60, // default 600
-        backBufferLength: 90, // default Infinity — on a 2h film the back buffer grows
-        // until the browser hits its SourceBuffer quota, and the resulting eviction
-        // shows up as stalls and dropped frames late in a long watch.
-        // Deliberately NOT raising maxBufferHole or nudgeMaxRetry. Both were
-        // considered and rejected: buffer-helper merges any gap below maxBufferHole
-        // into a single range, so at 0.5 a hole of up to ~12 frames becomes invisible
-        // to hls.js, is never re-fetched, and the playhead is stepped across it with
-        // no event — it manufactures the dropped-frame symptom while hiding the
-        // evidence. nudgeMaxRetry already resets whenever playback advances, so
-        // raising it changes nothing, and each nudge moves currentTime by up to 0.6s.
-        // Our subtitles are <track> elements we fill ourselves (see
-        // subtitleTracks). With this on, hls.js's subtitle-track-controller
-        // listens to the media's textTracks `change` event and, finding a
-        // showing track that is not one of *its* tracks, calls
-        // setSubtitleTrack(-1) -> toggleTrackModes(), which sets EVERY native
-        // subtitles/captions track to disabled — i.e. it switched the
-        // viewer's choice off again. These streams carry no in-band
-        // subtitles, so nothing is lost by turning it off.
-        renderTextTracksNatively: false,
-      });
-      this.hls = hls;
-
-      // hls.js still reaches into the media element's text tracks on its own
-      // lifecycle events: timeline-controller._cleanTracks() removes every cue
-      // from every track (ours included) on MEDIA_ATTACHING and
-      // MANIFEST_LOADING, and subtitle-track-controller.toggleTrackModes() can
-      // disable them. Reproduced with a stack trace: Turkish filled with 1683
-      // cues at 314 ms, emptied by _cleanTracks at 352 ms. After each of those
-      // events, put the chosen track back and refill it.
-      const reassert = () => {
-        this.hlsTouchedTracksAt = performance.now();
-        queueMicrotask(() => this.reassertSubtitles(video));
-      };
-      hls.on(Hls.Events.MEDIA_ATTACHED, reassert);
-      hls.on(Hls.Events.MANIFEST_LOADING, reassert);
-      hls.on(Hls.Events.MANIFEST_PARSED, reassert);
-      hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, reassert);
-      hls.on(Hls.Events.SUBTITLE_TRACK_SWITCH, reassert);
-
-      // Opt-in telemetry for diagnosing playback complaints: fiesta.show/...?hlsdebug
-      // Without `debug` hls.js installs a no-op logger, so the strings that actually
-      // name these failures ("Injecting N audio frames ... due to Y ms gap", "hole
-      // between fragments detected at") are never emitted — the evidence has been
-      // absent rather than the bug. Read window.__fiestaTelemetry after a watch.
-      if (this.hlsDebug) {
-        (window as unknown as Record<string, unknown>)['__hls'] = hls;
-        const t = {
-          skew: [] as { sn: number; ms: number }[],
-          levels: [] as { at: number; level: number }[],
-          holes: 0,
-          nudges: 0,
-          stalls: 0,
-        };
-        (window as unknown as Record<string, unknown>)['__fiestaTelemetry'] = t;
-        hls.on(Hls.Events.FRAG_PARSED, (_e, d) => {
-          const a = d.frag?.elementaryStreams?.audio;
-          const v = d.frag?.elementaryStreams?.video;
-          if (a && v) t.skew.push({ sn: d.frag.sn as number, ms: +((a.startPTS - v.startPTS) * 1000).toFixed(2) });
-        });
-        hls.on(Hls.Events.LEVEL_SWITCHED, (_e, d) =>
-          t.levels.push({ at: +performance.now().toFixed(0), level: d.level }),
-        );
-        hls.on(Hls.Events.ERROR, (_e, d) => {
-          if (d.details === Hls.ErrorDetails.BUFFER_SEEK_OVER_HOLE) t.holes++;
-          if (d.details === Hls.ErrorDetails.BUFFER_NUDGE_ON_STALL) t.nudges++;
-          if (d.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR) t.stalls++;
-        });
-      }
-
-      // The quality menu reads video.videoRenditions; install it before
-      // attachMedia because Video.js re-reads it on `loadstart`.
-      const renditions = installRenditions(video, hls);
-      this.removeRenditions = renditions.remove;
-      hls.on(Hls.Events.MANIFEST_PARSED, () => renditions.list.sync());
-      hls.on(Hls.Events.LEVELS_UPDATED, () => renditions.list.sync());
-      hls.on(Hls.Events.LEVEL_SWITCHED, (_e, d) => renditions.list.setActive(d.level));
-
-      this.subsyncHls = { hls, appendEvent: Hls.Events.BUFFER_APPENDING, video };
-      this.startSubsync();
-      if (this.playerUi() === 'custom') this.installSubsyncItem(video);
-
-      hls.loadSource(master);
-      hls.attachMedia(video);
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        this.restoreProgress(video);
-        if (this.started() && !this.holdPaused) void video.play().catch(() => {}); // resume after a mid-watch escalation
-      });
-      // recoverAttempts was only ever reset on a fresh load, so the cap below was
-      // three recoveries for an entire film: a 2h watch that hiccupped three times
-      // in the first ten minutes had no budget left for the remaining 110. A
-      // fragment that buffers cleanly is proof the stream is healthy again, so
-      // spend the budget per-incident rather than per-session.
-      hls.on(Hls.Events.FRAG_BUFFERED, () => {
-        if (this.recoverAttempts !== 0) this.recoverAttempts = 0;
-      });
-      hls.on(Hls.Events.ERROR, (_evt, data) => {
-        // A stall inside an already-buffered range never fires the media element's
-        // `waiting` event, so the spinner — driven only by onWaiting/onSeeking —
-        // stayed hidden through a visible freeze. These arrive non-fatal.
-        if (
-          data.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR ||
-          data.details === Hls.ErrorDetails.BUFFER_SEEK_OVER_HOLE ||
-          data.details === Hls.ErrorDetails.BUFFER_NUDGE_ON_STALL
-        ) {
-          this.beginBuffering();
-        }
-        if (!data.fatal) return;
-        // Try to recover transient fatal errors before giving up; only surface an
-        // error once recovery is exhausted (or the failure is unrecoverable).
-        // The video element keeps the last decoded frame on screen during this
-        // window — overlay a buffering spinner instead of an error message.
-        // A fatal manifest error means hls.js has already used its own retries
-        // and holds no playlist; startLoad() would reload nothing and the player
-        // would hang without a further error. Go straight to the fallbacks.
-        const manifestFailed =
-          data.details === Hls.ErrorDetails.MANIFEST_LOAD_ERROR ||
-          data.details === Hls.ErrorDetails.MANIFEST_LOAD_TIMEOUT ||
-          data.details === Hls.ErrorDetails.MANIFEST_PARSING_ERROR;
-        if (!manifestFailed && data.type === Hls.ErrorTypes.NETWORK_ERROR && this.recoverAttempts < 3) {
-          this.recoverAttempts++;
-          this.beginBuffering();
-          hls.startLoad();
-        } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR && this.recoverAttempts < 3) {
-          this.recoverAttempts++;
-          this.beginBuffering();
-          hls.recoverMediaError();
-        } else if (!this.hlsFailed && video.canPlayType('application/vnd.apple.mpegurl')) {
-          // hls.js gave up, but this browser can play HLS itself: try that once
-          // before failPlayback()'s server escalation. Position comes back from
-          // the saved progress, as on any re-attach.
-          this.hlsFailed = true;
-          this.destroyHls();
-          this.attachNative(video, master, false);
-        } else {
-          this.failPlayback(data.details || 'playback error');
-        }
-      });
+      // Construction AND every call that registers a listener, timer or request
+      // (loadSource, attachMedia, the rAF poll for the subsync item) must happen
+      // inside runOutsideAngular: zone.js binds a callback to the zone that was
+      // current when it was registered.
+      this.zone.runOutsideAngular(() => this.startHls(Hls, video, master));
       return;
     }
 
     // Native HLS fallback (iOS Safari, or anywhere MSE is unavailable). The
     // browser drives quality here; surface a friendly message if it can't load.
     this.attachNative(video, master, false);
+  }
+
+  private startHls(Hls: typeof import('hls.js').default, video: HTMLVideoElement, master: string) {
+    // Tuned against how hls.js actually measures bandwidth. Its sample is
+    //   processingMs = parsing.end - loading.start - min(actualTTFB, ewmaTTFB)
+    // so it compensates for latency only up to its *running estimate* of it.
+    // Every segment here is a cold CDN fetch relayed through a home uplink, so
+    // TTFB VARIANCE — not latency — is what depresses the estimate and walks the
+    // quality down. The settings below give ABR margin to absorb that variance
+    // instead of reacting to it.
+    const hls = new Hls({
+      enableWorker: true,
+      debug: this.hlsDebug,
+      capLevelToPlayerSize: false, // never downscale to the <video> element's pixel size
+      // Was 8_000_000, and that was itself a bug. level-controller only
+      // auto-derives a start estimate when this is left undefined, so an explicit
+      // 8e6 survives into firstAutoLevel — where the only surviving test is
+      // `adjustedbw >= maxBitrate`, and 8e6 >= 5,145,364. Every session on every
+      // connection therefore started on 1920x1072 with an empty buffer and stepped
+      // DOWN once the first real sample landed. Bandwidth-independent, which is
+      // exactly why it didn't look like a connection problem.
+      // At 5e6 the top variant's gate fails (5e6 < 5,145,364) and the middle one
+      // passes (5e6 >= 3,281,926): start at 1280x714 and climb on fragment 2.
+      // 5e6 is also exactly hls.js's own abrEwmaDefaultEstimateMax.
+      abrEwmaDefaultEstimate: 5_000_000,
+      // Previously 1.0/0.9 — maximally eager. With a spiky TTFB that produced
+      // upswitch -> underrun -> stall -> downswitch oscillation, which is the
+      // "quality drops" symptom. Back to a margin (library defaults: 0.95/0.7).
+      abrBandWidthFactor: 0.95,
+      abrBandWidthUpFactor: 0.8,
+      // `progressive: true` was removed, back to the library default of false.
+      // Honest status: this is PRECAUTIONARY, not a fix for an observed bug. It
+      // was removed while chasing an audio-delay report that turned out to be
+      // Bluetooth output latency, so nothing user-visible is known to have been
+      // caused by it. The case for leaving it off is that it is a non-default
+      // path which feeds 128KB partial chunks to the transmuxer — whose own
+      // comments note it then has "no guarantee the fetch loader gives us flush
+      // moof+mdat pairs" — and whose A/V realignment only runs once it holds
+      // enough samples of BOTH tracks. Our responses are chunked with no
+      // Content-Length, which is that jagged-input case.
+      // The cost is real: time-to-first-frame rises by about one fragment
+      // transfer (measured 143-592ms) because the fragment must land whole
+      // before transmux. Re-enable it if startup latency matters more than
+      // staying on the library's tested path.
+      // maxBufferLength is a FLOOR, not a cap: the effective forward target is
+      // min(max(8 * maxBufferSize / levelBitrate, maxBufferLength), maxMaxBufferLength),
+      // which at the declared top bitrate is min(93.3, maxMaxBufferLength). Pinning
+      // maxMaxBufferLength to 60 is what makes 60 actually mean 60.
+      maxBufferLength: 60, // default 30 — rides out an upstream hiccup
+      maxMaxBufferLength: 60, // default 600
+      backBufferLength: 90, // default Infinity — on a 2h film the back buffer grows
+      // until the browser hits its SourceBuffer quota, and the resulting eviction
+      // shows up as stalls and dropped frames late in a long watch.
+      // Deliberately NOT raising maxBufferHole or nudgeMaxRetry. Both were
+      // considered and rejected: buffer-helper merges any gap below maxBufferHole
+      // into a single range, so at 0.5 a hole of up to ~12 frames becomes invisible
+      // to hls.js, is never re-fetched, and the playhead is stepped across it with
+      // no event — it manufactures the dropped-frame symptom while hiding the
+      // evidence. nudgeMaxRetry already resets whenever playback advances, so
+      // raising it changes nothing, and each nudge moves currentTime by up to 0.6s.
+      // Our subtitles are <track> elements we fill ourselves (see
+      // subtitleTracks). With this on, hls.js's subtitle-track-controller
+      // listens to the media's textTracks `change` event and, finding a
+      // showing track that is not one of *its* tracks, calls
+      // setSubtitleTrack(-1) -> toggleTrackModes(), which sets EVERY native
+      // subtitles/captions track to disabled — i.e. it switched the
+      // viewer's choice off again. These streams carry no in-band
+      // subtitles, so nothing is lost by turning it off.
+      renderTextTracksNatively: false,
+    });
+    this.hls = hls;
+
+    // hls.js still reaches into the media element's text tracks on its own
+    // lifecycle events: timeline-controller._cleanTracks() removes every cue
+    // from every track (ours included) on MEDIA_ATTACHING and
+    // MANIFEST_LOADING, and subtitle-track-controller.toggleTrackModes() can
+    // disable them. Reproduced with a stack trace: Turkish filled with 1683
+    // cues at 314 ms, emptied by _cleanTracks at 352 ms. After each of those
+    // events, put the chosen track back and refill it.
+    const reassert = () => {
+      this.hlsTouchedTracksAt = performance.now();
+      queueMicrotask(() => this.reassertSubtitles(video));
+    };
+    hls.on(Hls.Events.MEDIA_ATTACHED, reassert);
+    hls.on(Hls.Events.MANIFEST_LOADING, reassert);
+    hls.on(Hls.Events.MANIFEST_PARSED, reassert);
+    hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, reassert);
+    hls.on(Hls.Events.SUBTITLE_TRACK_SWITCH, reassert);
+
+    // Opt-in telemetry for diagnosing playback complaints: fiesta.show/...?hlsdebug
+    // Without `debug` hls.js installs a no-op logger, so the strings that actually
+    // name these failures ("Injecting N audio frames ... due to Y ms gap", "hole
+    // between fragments detected at") are never emitted — the evidence has been
+    // absent rather than the bug. Read window.__fiestaTelemetry after a watch.
+    if (this.hlsDebug) {
+      (window as unknown as Record<string, unknown>)['__hls'] = hls;
+      const t = {
+        skew: [] as { sn: number; ms: number }[],
+        levels: [] as { at: number; level: number }[],
+        holes: 0,
+        nudges: 0,
+        stalls: 0,
+      };
+      (window as unknown as Record<string, unknown>)['__fiestaTelemetry'] = t;
+      hls.on(Hls.Events.FRAG_PARSED, (_e, d) => {
+        const a = d.frag?.elementaryStreams?.audio;
+        const v = d.frag?.elementaryStreams?.video;
+        if (a && v) t.skew.push({ sn: d.frag.sn as number, ms: +((a.startPTS - v.startPTS) * 1000).toFixed(2) });
+      });
+      hls.on(Hls.Events.LEVEL_SWITCHED, (_e, d) =>
+        t.levels.push({ at: +performance.now().toFixed(0), level: d.level }),
+      );
+      hls.on(Hls.Events.ERROR, (_e, d) => {
+        if (d.details === Hls.ErrorDetails.BUFFER_SEEK_OVER_HOLE) t.holes++;
+        if (d.details === Hls.ErrorDetails.BUFFER_NUDGE_ON_STALL) t.nudges++;
+        if (d.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR) t.stalls++;
+      });
+    }
+
+    // The quality menu reads video.videoRenditions; install it before
+    // attachMedia because Video.js re-reads it on `loadstart`.
+    const renditions = installRenditions(video, hls);
+    this.removeRenditions = renditions.remove;
+    hls.on(Hls.Events.MANIFEST_PARSED, () => renditions.list.sync());
+    hls.on(Hls.Events.LEVELS_UPDATED, () => renditions.list.sync());
+    hls.on(Hls.Events.LEVEL_SWITCHED, (_e, d) => renditions.list.setActive(d.level));
+
+    this.subsyncHls = { hls, appendEvent: Hls.Events.BUFFER_APPENDING, video };
+    this.startSubsync();
+    if (this.playerUi() === 'custom') this.installSubsyncItem(video);
+
+    hls.loadSource(master);
+    hls.attachMedia(video);
+    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+      this.restoreProgress(video);
+      if (this.started() && !this.holdPaused) void video.play().catch(() => {}); // resume after a mid-watch escalation
+    });
+    // recoverAttempts was only ever reset on a fresh load, so the cap below was
+    // three recoveries for an entire film: a 2h watch that hiccupped three times
+    // in the first ten minutes had no budget left for the remaining 110. A
+    // fragment that buffers cleanly is proof the stream is healthy again, so
+    // spend the budget per-incident rather than per-session.
+    hls.on(Hls.Events.FRAG_BUFFERED, () => {
+      if (this.recoverAttempts !== 0) this.recoverAttempts = 0;
+    });
+    hls.on(Hls.Events.ERROR, (_evt, data) => {
+      // A stall inside an already-buffered range never fires the media element's
+      // `waiting` event, so the spinner — driven only by onWaiting/onSeeking —
+      // stayed hidden through a visible freeze. These arrive non-fatal.
+      if (
+        data.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR ||
+        data.details === Hls.ErrorDetails.BUFFER_SEEK_OVER_HOLE ||
+        data.details === Hls.ErrorDetails.BUFFER_NUDGE_ON_STALL
+      ) {
+        this.beginBuffering();
+      }
+      if (!data.fatal) return;
+      // Try to recover transient fatal errors before giving up; only surface an
+      // error once recovery is exhausted (or the failure is unrecoverable).
+      // The video element keeps the last decoded frame on screen during this
+      // window — overlay a buffering spinner instead of an error message.
+      // A fatal manifest error means hls.js has already used its own retries
+      // and holds no playlist; startLoad() would reload nothing and the player
+      // would hang without a further error. Go straight to the fallbacks.
+      const manifestFailed =
+        data.details === Hls.ErrorDetails.MANIFEST_LOAD_ERROR ||
+        data.details === Hls.ErrorDetails.MANIFEST_LOAD_TIMEOUT ||
+        data.details === Hls.ErrorDetails.MANIFEST_PARSING_ERROR;
+      if (!manifestFailed && data.type === Hls.ErrorTypes.NETWORK_ERROR && this.recoverAttempts < 3) {
+        this.recoverAttempts++;
+        this.beginBuffering();
+        hls.startLoad();
+      } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR && this.recoverAttempts < 3) {
+        this.recoverAttempts++;
+        this.beginBuffering();
+        hls.recoverMediaError();
+      } else if (!this.hlsFailed && video.canPlayType('application/vnd.apple.mpegurl')) {
+        // hls.js gave up, but this browser can play HLS itself: try that once
+        // before failPlayback()'s server escalation. Position comes back from
+        // the saved progress, as on any re-attach.
+        this.hlsFailed = true;
+        this.destroyHls();
+        this.attachNative(video, master, false);
+      } else {
+        this.failPlayback(data.details || 'playback error');
+      }
+    });
   }
 
   private preferNativeHls(video: HTMLVideoElement): boolean {
@@ -706,14 +759,15 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
       }
       this.failPlayback(native ? 'native: media error' : 'unsupported: media error');
     };
-    video.addEventListener('error', this.nativeErrorHandler, { once: true });
+    const onError = this.nativeErrorHandler;
+    this.zone.runOutsideAngular(() => video.addEventListener('error', onError, { once: true }));
   }
 
   // Mid-playback stall: hold the spinner off briefly so quick seeks/microstalls
   // don't flash an overlay over a frame that's about to advance anyway.
   private beginBuffering() {
     if (this.bufferingTimer || this.buffering()) return;
-    this.bufferingTimer = setTimeout(() => {
+    this.bufferingTimer = this.timeout(() => {
       this.bufferingTimer = null;
       if (this.started()) this.buffering.set(true);
     }, 350);
@@ -1057,7 +1111,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     }
     this.subtitleNotice.set(msg);
     if (msg) {
-      this.subtitleNoticeTimer = setTimeout(() => {
+      this.subtitleNoticeTimer = this.timeout(() => {
         this.subtitleNoticeTimer = null;
         this.subtitleNotice.set(null);
       }, 5000);
@@ -1161,7 +1215,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   // own automatic track selection kicks in). Fill the chosen track with its
   // cues if it doesn't have them yet, and persist the choice (or its absence).
   private wireSubtitlePersistence(video: HTMLVideoElement) {
-    video.textTracks.onchange = () => {
+    this.zone.runOutsideAngular(() => (video.textTracks.onchange = () => {
       // hls.js just rewrote the list (see reassertSubtitles), or the browser
       // auto-selected a track on load: not the viewer's doing, so the saved
       // preference must not follow it — but still collapse to one track.
@@ -1172,7 +1226,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
         void this.ensureCues(this.loadToken, video, key, showing);
       }
       if (!machineDriven) this.saveSubtitlePref(showing ? { lang: showing.language, label: showing.label } : null);
-    };
+    }));
   }
 
   private readSubtitlePref(): { lang: string; label: string } | null {

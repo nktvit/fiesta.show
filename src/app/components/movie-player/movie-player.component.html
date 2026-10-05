@@ -9,15 +9,9 @@
       [attr.controls]="playerUi() === 'native' ? '' : null"
       playsinline
       (loadedmetadata)="onMetadataLoaded(videoEl)"
-      (timeupdate)="onTimeUpdate(videoEl)"
       (play)="onPlaybackStarted()"
       (pause)="onPlaybackPaused(videoEl)"
       (ended)="onPlaybackEnded()"
-      (waiting)="onWaiting()"
-      (playing)="onPlaying()"
-      (canplay)="onCanPlay()"
-      (seeking)="onSeeking()"
-      (seeked)="onSeeked()"
     >
       @for (t of subtitleTracks(); track t.src) {
         <track kind="subtitles" [src]="stubVtt" [attr.srclang]="t.lang" [attr.label]="t.label" [default]="t.isDefault" (load)="onTrackLoaded($event)" (error)="onTrackLoaded($event)" />
