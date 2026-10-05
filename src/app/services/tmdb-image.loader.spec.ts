@@ -34,7 +34,7 @@ describe('tmdbImageLoader', () => {
   });
 
   it('keeps the file extension (TMDB 404s on rewritten .webp paths)', () => {
-    const result = tmdbImageLoader({ src: POSTER, width: 185 });
+    const result = tmdbImageLoader({ src: POSTER, width: 250 });
     expect(result).toBe('https://image.tmdb.org/t/p/w185/abc123.jpg');
     expect(result).not.toContain('.webp');
   });
