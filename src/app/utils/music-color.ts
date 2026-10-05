@@ -234,7 +234,8 @@ const paletteCache = new Map<string, ArtistPalette | null>();
  */
 export async function imagePalette(url: string): Promise<ArtistPalette | null> {
   if (!url || typeof document === 'undefined') return null;
-  if (paletteCache.has(url)) return paletteCache.get(url) ?? null;
+  const hit = paletteCache.get(url);
+  if (hit) return hit;
   let out: ArtistPalette | null = null;
   try {
     const img = await loadImage(proxiedImage(url));
@@ -249,6 +250,7 @@ export async function imagePalette(url: string): Promise<ArtistPalette | null> {
   } catch {
     out = null;
   }
-  paletteCache.set(url, out);
+  // Only successes are remembered: a failed load (proxy hiccup) may work next time.
+  if (out) paletteCache.set(url, out);
   return out;
 }

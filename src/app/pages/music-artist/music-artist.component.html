@@ -12,7 +12,7 @@
       class="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(48rem_34rem_at_0%_20rem,var(--ag-glow-a,transparent),transparent_70%),radial-gradient(44rem_38rem_at_100%_46rem,var(--ag-glow-b,transparent),transparent_70%)] transition-opacity duration-1000 motion-reduce:transition-none"
       [class]="palette() ? 'opacity-100' : 'opacity-0'"></div>
     <div class="px-4 py-8 md:px-12 lg:px-16">
-      <a routerLink="/music" class="mb-6 inline-block rounded text-sm text-gray-200 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ag-accent-text,#818cf8)]">&larr; Music</a>
+      <a routerLink="/music" class="mb-4 inline-flex min-h-10 items-center rounded text-sm text-gray-200 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ag-accent-text,#818cf8)]">&larr; Music</a>
 
       @switch (status()) {
         @case ('loading') {

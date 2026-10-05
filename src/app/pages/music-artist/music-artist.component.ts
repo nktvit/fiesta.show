@@ -29,12 +29,12 @@ import { shareMusicLink } from '../../utils/music-links';
  * prefers-reduced-transparency. Tailwind adds the -webkit- prefix for backdrop-blur itself.
  */
 export const GLASS_PANEL =
-  'rounded-2xl border border-white/15 bg-white/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.35)] backdrop-blur-xl ' +
+  'rounded-2xl border border-white/15 bg-white/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.35)] backdrop-blur-xl [&_.text-gray-400]:text-gray-300 ' +
   '[@supports_not_((backdrop-filter:blur(1px))_or_(-webkit-backdrop-filter:blur(1px)))]:bg-[var(--ag-panel,#161616)] ' +
   '[@supports_not_((backdrop-filter:blur(1px))_or_(-webkit-backdrop-filter:blur(1px)))]:backdrop-blur-none ' +
   '[@media(prefers-reduced-transparency:reduce)]:bg-[var(--ag-panel,#161616)] [@media(prefers-reduced-transparency:reduce)]:backdrop-blur-none';
 /** Same panel without blur, for Settings > reduce blur. */
-export const GLASS_PANEL_SOLID = 'rounded-2xl border border-white/15 bg-[var(--ag-panel,#161616)] shadow-[0_8px_32px_rgba(0,0,0,0.35)]';
+export const GLASS_PANEL_SOLID = 'rounded-2xl border border-white/15 bg-[var(--ag-panel,#161616)] shadow-[0_8px_32px_rgba(0,0,0,0.35)] [&_.text-gray-400]:text-gray-300';
 
 const PAGE = 30;
 const SHUFFLE_ALBUMS = 10;
@@ -178,8 +178,8 @@ export class MusicArtistComponent {
                   tap((l) => {
                     if (String(this.artist()?.id) !== id) return;
                     this.images.set(l);
-                    // No portrait from TIDAL: theme from the first picture we found instead.
-                    if (!this.artist()?.picture && !this.palette() && l[0]) void this.applyPalette(l[0].url, id);
+                    // No portrait from TIDAL (or its colours failed to load): theme from the first pictures we found.
+                    if (!this.palette()) void this.paletteFromImages(l.filter((i) => i.kind === 'photo').slice(0, 2).map((i) => i.url), id);
                   }),
                   catchError(() => EMPTY),
                 ),
@@ -210,6 +210,13 @@ export class MusicArtistComponent {
   private async applyPalette(url: string, id: string): Promise<void> {
     const p = await imagePalette(url);
     if (p && String(this.artist()?.id) === String(id)) this.palette.set(p);
+  }
+
+  private async paletteFromImages(urls: string[], id: string): Promise<void> {
+    for (const u of urls) {
+      if (this.palette() || String(this.artist()?.id) !== String(id)) return;
+      await this.applyPalette(u, id);
+    }
   }
 
   private setDisco(f: MusicDiscographyFilter, patch: Partial<Disco>): void {

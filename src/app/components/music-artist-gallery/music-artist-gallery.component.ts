@@ -15,7 +15,7 @@ const SOURCE_NAMES: Record<MusicArtistImage['source'], string> = {
   selector: 'app-music-artist-gallery',
   imports: [MusicDialogComponent],
   templateUrl: './music-artist-gallery.component.html',
-  host: { class: 'block' },
+  host: { class: 'block', '(document:keydown)': 'onKey($event)' },
 })
 export class MusicArtistGalleryComponent {
   readonly images = input<MusicArtistImage[]>([]);
@@ -62,6 +62,7 @@ export class MusicArtistGalleryComponent {
   }
 
   protected onKey(e: KeyboardEvent): void {
+    if (!this.open()) return;
     if (e.key === 'ArrowRight') { this.step(1); e.preventDefault(); }
     else if (e.key === 'ArrowLeft') { this.step(-1); e.preventDefault(); }
   }

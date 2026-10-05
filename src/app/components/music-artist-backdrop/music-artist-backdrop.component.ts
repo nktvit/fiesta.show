@@ -42,7 +42,7 @@ export class MusicArtistBackdropComponent {
 
   private tick(): void {
     const n = this.list().length;
-    if (n < 2 || document.hidden) return;
+    if (n < 2) return;
     const next = (this.active() + 1) % n;
     if (this.loaded().has(next)) {
       this.active.set(next);
