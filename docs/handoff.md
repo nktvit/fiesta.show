@@ -26,8 +26,11 @@ Git worktrees for all of this are under `.claude/worktrees/` (`music-tab`, `merg
   EQ/AutoEQ/visualizer/waveform, likes + playlists + import/export, discovery (mixes/radio), context menus (slide animation, locks page
   scroll), command palette + shortcuts, settings, scrobbling code, artist links as icon buttons (no Buy links).
 - **Production env set 2026-10-05:** `TIDAL_CLIENT_ID` and `TIDAL_CLIENT_SECRET` (Production, values copied from the repo `.env`, secret stored
-  sensitive). `MUSIC_SHARED_SESSION` is NOT set, so on production every visitor gets 30 s PREVIEWS only; full-length lossless plays only on
-  previews/local dev via the Mac mini relay session. Enabling it makes every visitor listen on the owner's personal TIDAL account (deliberate opt-in).
+  sensitive). `MUSIC_SHARED_SESSION=1` was then set on Production (user asked: "ok, enable it") and production redeployed, so production now plays
+  FULL LOSSLESS (verified live: manifest `presentation: FULL`, FLAC played past 49 s with no errors). This means every visitor listens on the
+  owner's personal TIDAL account via the Mac mini relay session, and lossless streams (~430 MB per listener-hour) go through Vercel. To go back to
+  30 s previews: `vercel env rm MUSIC_SHARED_SESSION production` and redeploy. If the relay session dies (`/tidal/token` 502 `refresh_failed`),
+  production silently falls back to previews: see "Mac mini relay" below.
 - **Hidden on purpose (no accounts yet):** Music > Library tab (route and the 'Your playlists' rail still work, per-device localStorage),
   Settings > Data tab (reachable only with `?musicdebug=1` on previews/dev), Settings > System tab (previews/dev only: `deployEnv` is stamped
   from `VERCEL_ENV` by `scripts/set-env.js`), Downloads (off by default).
