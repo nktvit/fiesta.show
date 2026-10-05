@@ -33,10 +33,39 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
   <link rel="manifest" href="/site-dark.webmanifest">
+  <!-- The hero image and every poster come from here: open the connection now. -->
+  <link rel="preconnect" href="https://image.tmdb.org">
+  <!-- Home only: start the trending request and preload the hero backdrop before
+       the Angular bundle has even downloaded (API -> JS -> image used to be a
+       serial chain). MainComponent reuses window.__fiestaTrending, and its pick
+       (src/app/pages/main/hero-pick.ts) must match the one below. ES5 on purpose. -->
+  <script>
+    (function () {
+      try {
+        if (location.pathname !== '/' || !window.fetch) return;
+        var p = fetch('/api/tmdb?list=trending').then(function (r) { return r.ok ? r.json() : null; });
+        window.__fiestaTrending = p;
+        p.then(function (d) {
+          var c = ((d && d.movies) || []).filter(function (m) { return m.Backdrop; }).slice(0, 5);
+          if (!c.length) return;
+          // Browsers without imagesrcset would preload the big file whatever the viewport.
+          if (!('imageSrcset' in HTMLLinkElement.prototype)) return;
+          var file = c[Math.floor(Date.now() / 86400000) % c.length].Backdrop.split('/').pop();
+          var base = 'https://image.tmdb.org/t/p/';
+          var l = document.createElement('link');
+          l.rel = 'preload'; l.as = 'image';
+          l.href = base + 'w1280/' + file;
+          // Same candidates + sizes as the hero <img> (NgOptimizedImage), so the browser reuses this fetch.
+          l.setAttribute('imagesrcset', base + 'w780/' + file + ' 780w, ' + base + 'w1280/' + file + ' 1280w');
+          l.setAttribute('imagesizes', '(max-width: 640px) 60vw, 100vw');
+          document.head.appendChild(l);
+        }).catch(function () {});
+      } catch (e) {}
+    })();
+  </script>
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
 </head>
 <body>
   <app-root></app-root>
-  <script data-name="BMC-Widget" data-cfasync="false" src="https://cdnjs.buymeacoffee.com/1.0.0/widget.prod.min.js" data-id="nktvit" data-description="Support me on Buy me a coffee!" data-message="Don't forget to grab some popcorn and friends. Happy watching!" data-color="#FFDD00" data-position="Right" data-x_margin="18" data-y_margin="18"></script>
 </body>
 </html>

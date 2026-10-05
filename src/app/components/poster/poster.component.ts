@@ -11,6 +11,7 @@ import { Router, RouterLink } from "@angular/router";
 import { IMovie } from "../../interfaces/movie.interface";
 import { NgOptimizedImage } from "@angular/common";
 import { TmdbService } from "../../services/tmdb.service";
+import { tmdbIsImage } from "../../services/tmdb-image.loader";
 
 @Component({
   selector: 'app-poster',
@@ -24,6 +25,8 @@ export class PosterComponent {
   readonly size = input<'small' | 'medium' | 'large'>();
   readonly displayTitle = input<boolean>(false);
   readonly priority = input<boolean>(false);
+  /** The `sizes` attribute for the srcset: how wide the card renders at each viewport. */
+  readonly sizes = input<string>('(max-width: 640px) 45vw, (max-width: 1024px) 25vw, 15vw');
   /**
    * When true the card body expands in place (the host collection handles it)
    * instead of navigating. The play button and the title stay real links to
@@ -107,6 +110,11 @@ export class PosterComponent {
     // is still being created throws once views are inserted mid-@for, which is
     // exactly what the expanding panel does.
     this.cdr.markForCheck();
+  }
+
+  /** A srcset only makes sense for TMDB; OMDB/other posters have a single size. */
+  get optimizable(): boolean {
+    return tmdbIsImage(this.imageUrl);
   }
 
   get sizeClasses(): string {
