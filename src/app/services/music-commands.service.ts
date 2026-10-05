@@ -8,6 +8,7 @@ import { MusicSelectionService } from './music-selection.service';
 import { MusicSettingsService, MusicSettingsTab } from './music-settings.service';
 import { MusicToastService } from './music-toast.service';
 import { MusicUiService } from './music-ui.service';
+import { IS_PREVIEW_OR_DEV } from '../utils/deploy-env';
 
 /** Ids of the rebindable keyboard actions (see MUSIC_SHORTCUTS in music-shortcuts.service.ts). */
 export type MusicShortcutId =
@@ -229,7 +230,7 @@ export class MusicCommandsService {
 
     // Settings
     add({ id: 'settings-search', label: 'Search settings…', group: 'Settings', keywords: ['find setting', 'option', '>'], run: go('/music/settings') });
-    for (const tab of SETTINGS_TABS) {
+    for (const tab of SETTINGS_TABS.filter((t) => t.id !== 'system' || IS_PREVIEW_OR_DEV)) {
       if (tab.id === 'downloads' && !this.downloads.enabled()) continue;
       add({ id: `settings-${tab.id}`, label: `Settings: ${tab.label}`, group: 'Settings', keywords: ['preferences', tab.id], run: goSettings(tab.id) });
     }

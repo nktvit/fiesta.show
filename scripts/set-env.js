@@ -17,11 +17,13 @@ const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL
 const content = isProduction
   ? `export const environment = {
   production: true,
+  deployEnv: '${process.env.VERCEL_ENV || 'production'}',
   OMDB_API_KEY: '',
 };
 `
   : `export const environment = {
   production: false,
+  deployEnv: 'development',
   OMDB_API_KEY: '${process.env.OMDB_API_KEY || ''}',
 };
 `;

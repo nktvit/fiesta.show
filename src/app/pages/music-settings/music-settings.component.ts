@@ -7,6 +7,7 @@ import { NavbarComponent } from '../../components/navbar/navbar.component';
 import { MusicDownloadService } from '../../services/music-download.service';
 import { MUSIC_SETTINGS_REGISTRY, MusicSettingEntry } from '../../services/music-settings-registry';
 import { MusicSettingsService, MusicSettingsTab } from '../../services/music-settings.service';
+import { IS_PREVIEW_OR_DEV } from '../../utils/deploy-env';
 import { searchSettings } from '../../utils/music-settings-search';
 import { MusicSettingsAudioComponent } from './sections/music-settings-audio/music-settings-audio.component';
 import { MusicSettingsDataComponent } from './sections/music-settings-data/music-settings-data.component';
@@ -52,12 +53,15 @@ export class MusicSettingsComponent {
   private downloads = inject(MusicDownloadService);
   /** The Downloads tab (and its search entries) is hidden while the downloads switch is off. */
   protected readonly downloadsOn = this.downloads.enabled;
-  protected readonly tabs = computed(() => (this.downloads.enabled() ? TABS : TABS.filter((t) => t.id !== 'downloads')));
+  /** The System tab (storage, cache clearing, API status, version) is for previews and local dev only. */
+  protected readonly tabs = computed(() =>
+    TABS.filter((t) => (t.id !== 'downloads' || this.downloads.enabled()) && (t.id !== 'system' || IS_PREVIEW_OR_DEV)),
+  );
   protected readonly tab = signal<MusicSettingsTab>(this.visible(this.settings.lastSettingsTab()));
   protected readonly query = signal('');
   protected readonly active = signal(0);
   protected readonly results = computed<MusicSettingEntry[]>(() => {
-    const registry = this.downloads.enabled() ? MUSIC_SETTINGS_REGISTRY : MUSIC_SETTINGS_REGISTRY.filter((e) => e.tab !== 'downloads');
+    const registry = MUSIC_SETTINGS_REGISTRY.filter((e) => (e.tab !== 'downloads' || this.downloads.enabled()) && (e.tab !== 'system' || IS_PREVIEW_OR_DEV));
     return searchSettings(registry, this.query(), 8);
   });
   protected readonly tabLabel = (t: MusicSettingsTab) => TABS.find((x) => x.id === t)?.label ?? t;
@@ -80,7 +84,7 @@ export class MusicSettingsComponent {
   }
 
   private visible(t: MusicSettingsTab): MusicSettingsTab {
-    return t === 'downloads' && !this.downloads.enabled() ? 'playback' : t;
+    return (t === 'downloads' && !this.downloads.enabled()) || (t === 'system' && !IS_PREVIEW_OR_DEV) ? 'playback' : t;
   }
 
   protected select(t: MusicSettingsTab): void {
