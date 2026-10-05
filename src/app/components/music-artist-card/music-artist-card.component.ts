@@ -21,6 +21,12 @@ export class MusicArtistCardComponent {
   private toast = inject(MusicToastService);
 
   protected readonly busy = signal(false);
+  /** The picture URL failed to load. */
+  protected readonly failed = signal(false);
+  protected readonly initials = computed(() => {
+    const words = this.artist().name.trim().split(/\s+/).filter(Boolean);
+    return (words.length > 1 ? words[0][0] + words[1][0] : (words[0] ?? '?').slice(0, 2)).toUpperCase();
+  });
   protected readonly item = computed<MusicLibraryItem>(() => ({ kind: 'artist', data: this.artist() }));
 
   protected async play(): Promise<void> {
