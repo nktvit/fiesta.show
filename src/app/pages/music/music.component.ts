@@ -14,7 +14,6 @@ import { NavbarComponent } from '../../components/navbar/navbar.component';
 import { MusicCatalogService, MusicSearchType } from '../../services/music-catalog.service';
 import { MusicLibraryService } from '../../services/music-library.service';
 import { MusicAlbum, MusicArtist, MusicPlaylist, MusicService, MusicTrack } from '../../services/music.service';
-import { parseMusicLink } from '../../utils/music-links';
 
 export type MusicSearchTab = 'songs' | 'albums' | 'artists' | 'playlists';
 
@@ -160,15 +159,10 @@ export class MusicComponent {
     this.run(this.text());
   }
 
-  /** Run a search for `text` (or, for a pasted TIDAL/Monochrome link, open it). */
+  /** Run a search for `text`. */
   run(text: string): void {
     const value = text.trim();
     this.suggestOn.set(false);
-    const link = parseMusicLink(value);
-    if (link) {
-      void this.router.navigateByUrl(link.route);
-      return;
-    }
     if (value) this.library.addSearch(value);
     this.text.set(value);
     void this.router.navigate([], { queryParams: { q: value || null, type: null }, queryParamsHandling: 'merge' });

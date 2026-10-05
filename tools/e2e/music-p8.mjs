@@ -1,4 +1,4 @@
-// E2E for package P8: search UX (suggest, recents, tabs, paging, paste-a-link), album /
+// E2E for package P8: search UX (suggest, recents, tabs, paging), album /
 // artist / track pages, backend actions and the OG middleware branch.
 //   node tools/e2e/music-p8.mjs [baseUrl=http://localhost:4208] [--api=http://localhost:3908] [--shots=dir] [--token-file=path]
 // Run from a dir whose node_modules has playwright(-core). Without a user token playback
@@ -230,21 +230,6 @@ await shot('playlists');
 await page.reload({ waitUntil: 'domcontentloaded' });
 await page.waitForSelector('app-music-playlist-card', { timeout: 15000 });
 check('tabs: ?type= survives a reload', page.url().includes('type=playlists'));
-
-// Paste-a-link
-const paste = async (text, re, name) => {
-  await page.goto(url('/music'), { waitUntil: 'domcontentloaded' });
-  await page.fill('input[name=q]', text);
-  await page.press('input[name=q]', 'Enter');
-  await page.waitForURL(re, { timeout: 8000 }).catch(() => {});
-  check(`paste: ${name}`, re.test(page.url()), page.url());
-};
-await paste('https://tidal.com/browse/album/1550545', /\/music\/album\/1550545/, 'tidal.com album link opens the album');
-await paste('https://listen.tidal.com/track/1550546', /\/music\/track\/1550546/, 'listen.tidal.com track link');
-await paste('https://tidal.com/browse/artist/8847?u', /\/music\/artist\/8847/, 'artist link with tracking param');
-await paste('https://tidal.com/browse/playlist/0dfc3b10-fbdb-4419-bf54-11b90051fa6c', /\/music\/playlist\/0dfc3b10-fbdb-4419-bf54-11b90051fa6c/, 'playlist uuid link');
-await paste('https://tidal.com/browse/mix/0123456789abcdef0123456789abcd', /\/music\/mix\/0123456789abcdef0123456789abcd/, 'mix link');
-await paste('https://monochrome.tf/album/1550545', /\/music\/album\/1550545/, 'monochrome.tf album link');
 
 // Album page
 await page.goto(url('/music/album/1550545'), { waitUntil: 'domcontentloaded' });
