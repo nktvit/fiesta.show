@@ -1,4 +1,6 @@
-import { contrastWithWhite, ensureContrast, hslToRgb, rgbToHsl, toHex, vibrantFromPixels } from './music-color';
+import {
+  contrastWithWhite, ensureContrast, hslToRgb, luminance, NEUTRAL_PALETTE, paletteFromHue, paletteFromPixels, rgbToHsl, toHex, vibrantFromPixels,
+} from './music-color';
 
 function solid(r: number, g: number, b: number, n = 64, a = 255): Uint8ClampedArray {
   const d = new Uint8ClampedArray(n * 4);
@@ -60,5 +62,54 @@ describe('music-color', () => {
   it('falls back to muted colours when nothing is vibrant', () => {
     const c = vibrantFromPixels(solid(120, 120, 120));
     expect(c).not.toBeNull();
+  });
+
+  describe('artist palette', () => {
+    const rgb = (hex: string) => ({ r: parseInt(hex.slice(1, 3), 16), g: parseInt(hex.slice(3, 5), 16), b: parseInt(hex.slice(5, 7), 16) });
+    const ratio = (a: string, b: string) => {
+      const [x, y] = [luminance(rgb(a)), luminance(rgb(b))].sort((p, q) => q - p);
+      return (x + 0.05) / (y + 0.05);
+    };
+
+    it('keeps white text >= 4.5 on the accent for every hue', () => {
+      for (let i = 0; i < 36; i++) {
+        for (const s of [0.1, 0.5, 1]) {
+          const p = paletteFromHue(i / 36, s);
+          expect(contrastWithWhite(rgb(p.accent))).toBeGreaterThanOrEqual(4.5);
+          expect(ratio(p.accentText, p.deep)).toBeGreaterThanOrEqual(4.5);
+        }
+      }
+    });
+
+    it('different dominant hues give different palettes', () => {
+      const red = paletteFromPixels(solid(210, 40, 50));
+      const green = paletteFromPixels(solid(40, 200, 90));
+      expect(red.accent).not.toBe(green.accent);
+      expect(red.deep).not.toBe(green.deep);
+      expect(red.neutral).toBeFalse();
+    });
+
+    it('greys, black, white and empty images get the steel fallback', () => {
+      expect(paletteFromPixels(solid(0, 0, 0))).toBe(NEUTRAL_PALETTE);
+      expect(paletteFromPixels(solid(128, 128, 128))).toBe(NEUTRAL_PALETTE);
+      expect(paletteFromPixels(solid(255, 255, 255))).toBe(NEUTRAL_PALETTE);
+      expect(paletteFromPixels(solid(255, 0, 0, 8, 0))).toBe(NEUTRAL_PALETTE);
+      expect(NEUTRAL_PALETTE.neutral).toBeTrue();
+    });
+
+    it('clamps neon and washed-out saturation', () => {
+      const neon = rgbToHsl(...Object.values(rgb(paletteFromHue(0.3, 1).secondary)) as [number, number, number]);
+      expect(neon[1]).toBeLessThanOrEqual(0.85);
+      const pale = rgbToHsl(...Object.values(rgb(paletteFromHue(0.3, 0.02).deep)) as [number, number, number]);
+      expect(pale[1]).toBeGreaterThan(0.05);
+    });
+
+    it('uses a distant second hue as the secondary, else shifts the first', () => {
+      const two = paletteFromPixels(mix(solid(220, 40, 40, 100), solid(40, 90, 220, 60)));
+      const one = paletteFromPixels(solid(220, 40, 40, 100));
+      const hue = (hex: string) => rgbToHsl(rgb(hex).r, rgb(hex).g, rgb(hex).b)[0];
+      expect(Math.abs(hue(two.secondary) - hue(two.accent))).toBeGreaterThan(0.3);
+      expect(Math.abs(hue(one.secondary) - hue(one.accent))).toBeLessThan(0.2);
+    });
   });
 });

@@ -144,3 +144,111 @@ export async function coverColor(url: string): Promise<string | null> {
   cache.set(url, out);
   return out;
 }
+
+// ---- Artist palette (glass theme of the artist page) ---------------------------------
+
+/** Colours of one artist's theme, every one a #rrggbb string. */
+export interface ArtistPalette {
+  /** Button / pill fill: white text on it is always >= 4.5:1 (5.2 so hover:brightness-110 stays AA). */
+  accent: string;
+  /** Light tint of the accent for links and text on the dark glass (>= 4.5:1 on `deep`). */
+  accentText: string;
+  /** Second hue of the image (or a hue-shifted accent), for the backdrop glow only. */
+  secondary: string;
+  /** Mid-dark tint for the glass gradient. */
+  mid: string;
+  /** Near-black tint the page fades into; every panel sits on it. */
+  deep: string;
+  /** True when the image had no usable colour (grey/black/white): a calm steel blue was used. */
+  neutral: boolean;
+}
+
+const NEUTRAL_HUE = 0.62;
+const MIN_SAT = 0.32;
+const MAX_SAT = 0.78;
+
+const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
+
+/** Builds the palette from a hue and saturation (the only inputs the look depends on). */
+export function paletteFromHue(h: number, s: number, h2?: number, s2?: number, neutral = false): ArtistPalette {
+  const sat = clamp(s, MIN_SAT, MAX_SAT);
+  const hue2 = h2 ?? (h + 0.09) % 1;
+  const sat2 = clamp(s2 ?? s, MIN_SAT, MAX_SAT);
+  // Yellows and greens read brighter at equal lightness, so they start darker.
+  const warm = h > 0.1 && h < 0.45;
+  const accent = ensureContrast(hslToRgb(h, sat, warm ? 0.36 : 0.46), 5.2);
+  return {
+    accent: toHex(accent),
+    accentText: toHex(hslToRgb(h, clamp(sat + 0.15, 0, 0.95), 0.8)),
+    secondary: toHex(hslToRgb(hue2, sat2, 0.34)),
+    mid: toHex(hslToRgb(h, sat * 0.6, 0.15)),
+    deep: toHex(hslToRgb(h, sat * 0.45, 0.07)),
+    neutral,
+  };
+}
+
+/** The fallback look (also used when an artist has no usable image). */
+export const NEUTRAL_PALETTE: ArtistPalette = paletteFromHue(NEUTRAL_HUE, 0.3, NEUTRAL_HUE + 0.06, 0.3, true);
+
+/**
+ * Palette from RGBA pixels: the strongest hue is the accent, the strongest hue at
+ * least 60 degrees away (and at least a quarter as present) is the secondary. Images with
+ * almost no colour (greys, black and white photos) get a calm steel-blue palette
+ * instead of a muddy olive.
+ */
+export function paletteFromPixels(data: ArrayLike<number>): ArtistPalette {
+  const n = BUCKETS;
+  const weight = new Array<number>(n).fill(0);
+  const sum = Array.from({ length: n }, () => [0, 0, 0]);
+  let colourful = 0;
+  let total = 0;
+  for (let i = 0; i + 3 < data.length; i += 4) {
+    if (data[i + 3] < 125) continue;
+    const [h, s, l] = rgbToHsl(data[i], data[i + 1], data[i + 2]);
+    total++;
+    if (s < 0.2 || l < 0.12 || l > 0.92) continue;
+    colourful++;
+    const k = Math.min(n - 1, Math.floor(h * n));
+    const w = s * (1 - Math.abs(l - 0.5) * 1.2);
+    if (w <= 0) continue;
+    weight[k] += w;
+    sum[k][0] += h * w; sum[k][1] += s * w; sum[k][2] += w;
+  }
+  if (total === 0 || colourful / total < 0.04) return NEUTRAL_PALETTE;
+  const order = weight.map((w, k) => ({ w, k })).filter((x) => x.w > 0).sort((a, b) => b.w - a.w);
+  if (!order.length) return NEUTRAL_PALETTE;
+  const hueAt = (k: number): [number, number] => [sum[k][0] / sum[k][2], sum[k][1] / sum[k][2]];
+  const [h, s] = hueAt(order[0].k);
+  const dist = (a: number, b: number): number => { const d = Math.abs(a - b) % n; return Math.min(d, n - d); };
+  const second = order.slice(1).find((x) => dist(x.k, order[0].k) >= 2 && x.w >= order[0].w * 0.25);
+  if (!second) return paletteFromHue(h, s);
+  const [h2, s2] = hueAt(second.k);
+  return paletteFromHue(h, s, h2, s2);
+}
+
+const paletteCache = new Map<string, ArtistPalette | null>();
+
+/**
+ * Palette of an image URL, read through the same-origin image proxy so the canvas
+ * stays untainted (TIDAL, Deezer and Wikimedia hosts). Cached per URL; null on failure.
+ */
+export async function imagePalette(url: string): Promise<ArtistPalette | null> {
+  if (!url || typeof document === 'undefined') return null;
+  if (paletteCache.has(url)) return paletteCache.get(url) ?? null;
+  let out: ArtistPalette | null = null;
+  try {
+    const img = await loadImage(proxiedImage(url));
+    const canvas = document.createElement('canvas');
+    canvas.width = SIZE;
+    canvas.height = SIZE;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (ctx) {
+      ctx.drawImage(img, 0, 0, SIZE, SIZE);
+      out = paletteFromPixels(ctx.getImageData(0, 0, SIZE, SIZE).data);
+    }
+  } catch {
+    out = null;
+  }
+  paletteCache.set(url, out);
+  return out;
+}

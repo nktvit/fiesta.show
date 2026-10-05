@@ -28,6 +28,9 @@ export function tidalImage(url: string, size: number): string {
   return url.replace(TIDAL_SIZE, `/${size}x${size}.$3$4`);
 }
 
+// Hosts the `img` action accepts (lib/music/artist-images.js keeps the server list).
+const PROXIED_HOST = /^https:\/\/((resources|image)\.tidal\.com|(e-)?cdns?-images\.dzcdn\.net|upload\.wikimedia\.org|assets\.fanart\.tv)\//;
+
 function base64url(s: string): string {
   const bytes = new TextEncoder().encode(s);
   let bin = '';
@@ -36,11 +39,11 @@ function base64url(s: string): string {
 }
 
 /**
- * A TIDAL image through `/api/music?action=img` (same origin, CORS), for
+ * An artist/cover image (TIDAL, Deezer, Wikimedia) through `/api/music?action=img` (same origin, CORS), for
  * canvases that read pixels. Other URLs (data:, '') come back unchanged.
  */
 export function proxiedImage(url: string): string {
-  if (!url || !/^https:\/\/(resources|image)\.tidal\.com\//.test(url)) return url || '';
+  if (!url || !PROXIED_HOST.test(url)) return url || '';
   return '/api/music?action=img&u=' + base64url(url);
 }
 
