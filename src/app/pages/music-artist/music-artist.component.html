@@ -117,13 +117,6 @@
               }
             </section>
 
-            @if (gallery().length) {
-              <section class="mb-5 p-4 md:p-5" [class]="glassPanel()" aria-label="Photos" data-glass-panel data-artist-gallery>
-                <h2 class="mb-3 text-lg font-semibold">Photos</h2>
-                <app-music-artist-gallery [images]="gallery()" [name]="a.name" />
-              </section>
-            }
-
             @if (similarArtists().length) {
               <section class="mb-5 p-4 md:p-5" [class]="glassPanel()" aria-label="Similar artists" data-glass-panel>
                 <h2 class="mb-4 text-lg font-semibold">Similar artists</h2>
@@ -131,6 +124,13 @@
                   @for (x of similarArtists(); track x.id) { <app-music-artist-card [artist]="x" /> }
                 </div>
               </section>
+            }
+            @if (credits().length) {
+              <p class="pb-2 text-center text-xs leading-relaxed text-gray-300" data-artist-credits>
+                @for (c of credits(); track c.text; let last = $last) {
+                  <span>{{ c.text }} (<a [href]="c.href" target="_blank" rel="noopener noreferrer" class="underline hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ag-accent-text,#818cf8)]">Wikimedia Commons</a>)</span>@if (!last) {<span aria-hidden="true"> · </span>}
+                }
+              </p>
             }
           }
         }
