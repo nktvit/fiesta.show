@@ -63,12 +63,17 @@
               [attr.aria-label]="hideUi() ? 'Show controls' : 'Hide controls'" data-cover
               class="relative block aspect-square w-full overflow-hidden bg-gray-800 shadow-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
               [class]="cd() ? 'rounded-full' : settings.coverRound() ? 'rounded-2xl' : 'rounded-none'">
-              @if (coverLarge()) {
-                <img [src]="coverLarge()" alt="" class="h-full w-full object-cover" />
-              }
-              @if (cd()) {
-                <span class="absolute left-1/2 top-1/2 h-[18%] w-[18%] -translate-x-1/2 -translate-y-1/2 rounded-full border-4 border-white/20 bg-[#121212]" aria-hidden="true"></span>
-              }
+              <!-- The disc is what spins. The button stays still as the circular clip: spinning the
+                   button itself made its bounding box (and so the scroller's scrollable area) swell
+                   by up to ~40% mid-turn, which scrolled the page sideways on phones. -->
+              <span #disc data-cover-disc class="absolute inset-0 block">
+                @if (coverLarge()) {
+                  <img [src]="coverLarge()" alt="" class="h-full w-full object-cover" />
+                }
+                @if (cd()) {
+                  <span class="absolute left-1/2 top-1/2 h-[18%] w-[18%] -translate-x-1/2 -translate-y-1/2 rounded-full border-4 border-white/20 bg-[#121212]" aria-hidden="true"></span>
+                }
+              </span>
             </button>
           </div>
 

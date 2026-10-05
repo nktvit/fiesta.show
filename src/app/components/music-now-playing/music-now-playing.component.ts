@@ -36,7 +36,7 @@ export class MusicNowPlayingComponent {
   protected readonly time = time;
 
   private readonly shell = viewChild<ElementRef<HTMLElement>>('shell');
-  private readonly cover = viewChild<ElementRef<HTMLElement>>('cover');
+  private readonly disc = viewChild<ElementRef<HTMLElement>>('disc');
 
   /** Cover-only mode: transport, meta and lyrics are removed. */
   protected readonly hideUi = signal(false);
@@ -127,7 +127,7 @@ export class MusicNowPlayingComponent {
     // prefers-reduced-motion (macOS "Reduce motion" would otherwise make the mode look broken);
     // the incidental motion (slide-in, tilt) still honours the preference.
     effect(() => {
-      const el = this.cover()?.nativeElement;
+      const el = this.disc()?.nativeElement;
       const mode = this.cd();
       const on = mode && this.player.playing();
       untracked(() => {

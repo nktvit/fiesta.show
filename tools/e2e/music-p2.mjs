@@ -246,10 +246,15 @@ const titles = (page) => page.evaluate(() => window.__music.player.queue().map((
   await page.waitForFunction(() => window.__music.player.playing(), null, { timeout: 15000 }).catch(() => {});
   await np.locator('button[aria-label="CD mode"]').click();
   await page.waitForTimeout(400);
-  const spin = () => np.locator('[data-cover]').evaluate((e) => ({ s: e.dataset.spinning, running: e.getAnimations().some((a) => a.playState === 'running'), round: /rounded-full/.test(e.className) }));
+  const spin = async () => ({ ...(await np.locator('[data-cover-disc]').evaluate((e) => ({ s: e.dataset.spinning, running: e.getAnimations().some((a) => a.playState === 'running') }))), round: /rounded-full/.test(await np.locator('[data-cover]').evaluate((e) => e.className)) });
   const playing = await page.evaluate(() => window.__music.player.playing());
   const s1 = await spin();
   check('CD mode: round cover spins while playing', playing && s1.s === 'true' && s1.running && s1.round, JSON.stringify(s1));
+  // Regression: the spinning cover must never make Now Playing scroll sideways (iPhone portrait report).
+  const overflow = async () => np.evaluate((root) => { const bad = [root, ...root.querySelectorAll('*')].filter((e) => ['auto', 'scroll'].includes(getComputedStyle(e).overflowX) && e.scrollWidth > e.clientWidth + 1); return { doc: document.documentElement.scrollWidth - innerWidth, bad: bad.map((e) => e.tagName + ' ' + (e.scrollWidth - e.clientWidth)) }; });
+  let worstOverflow = 0;
+  for (let k = 0; k < 6; k++) { const o = await overflow(); worstOverflow = Math.max(worstOverflow, o.doc, o.bad.length); await page.waitForTimeout(650); }
+  check('CD mode: no sideways overflow while the cover turns', worstOverflow === 0, String(worstOverflow));
   await page.evaluate(() => window.__music.player.pause());
   await page.waitForTimeout(400);
   const s2 = await spin();
@@ -274,9 +279,9 @@ const titles = (page) => page.evaluate(() => window.__music.player.queue().map((
   check('reduced motion: no slide animation on open', anims === 0, `${anims} animations`);
   await np.locator('button[aria-label="CD mode"]').click();
   await page.waitForTimeout(400);
-  const spin = await np.locator('[data-cover]').evaluate((e) => ({ s: e.dataset.spinning, running: e.getAnimations().some((a) => a.playState === 'running') }));
+  const spin = await np.locator('[data-cover-disc]').evaluate((e) => ({ s: e.dataset.spinning, running: e.getAnimations().some((a) => a.playState === 'running') }));
   const playingRm = await page.evaluate(() => window.__music.player.playing());
-  const tfAt = () => np.locator('[data-cover]').evaluate((e) => getComputedStyle(e).transform);
+  const tfAt = () => np.locator('[data-cover-disc]').evaluate((e) => getComputedStyle(e).transform);
   const tf1 = await tfAt();
   await page.waitForTimeout(500);
   const tf2 = await tfAt();
