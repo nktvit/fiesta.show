@@ -33,6 +33,10 @@ be removed: `empty-seasons`, `player-switch`, `sticky-footer`). Always work in a
      serves 30 s previews only. Two copies of the sticky-footer CSS now exist (main + this branch): keep one.
    - Viewer login (PKCE, each visitor on their own TIDAL account) is NOT built: TIDAL error `11102` on the
      authorize page; needs the exact redirect URI(s) + scopes from the developer dashboard.
+   - **Monochrome feature port (2026-10-05, packages F0, P1-P13 + integration Z), UNCOMMITTED in the
+     worktree:** see "MUSIC TAB - Monochrome port, integration run" below. Local: build OK, unit 501/506
+     (the 5 known MovieService failures), `tools/e2e/music-all.mjs` 16/16 scripts PASS (30 s previews).
+     NOT yet run on a Vercel preview (deploy was not permitted from the agent; the owner must deploy).
 2. **`chore/relay-source-of-truth`** (1 commit): the Mac mini relay in git + `relayctl` (see below). The GitHub
    token cannot create PRs; open https://github.com/nktvit/fiesta.show/compare/main...chore/relay-source-of-truth
 
@@ -74,6 +78,109 @@ be removed: `empty-seasons`, `player-switch`, `sticky-footer`). Always work in a
 - Pending user-supplied data: nothing is waiting on the user except the production decisions above and the
   optional viewer-login dashboard details. The TIDAL web access token pasted in chat earlier expired
   ~01:41 UTC 2026-10-05; the refresh token pasted in chat was rotated away by the relay (dead).
+
+## MUSIC TAB - Monochrome port, integration run (package Z, 2026-10-05)
+
+NOTE: this section was written on the `feature/music-tab` branch by the integration run, against the rule
+above that the handoff lives only on `main`. Move it to `main`'s handoff when the branch is reviewed.
+
+**State: uncommitted in `.claude/worktrees/music-tab`** (the orchestrator commits). Plan and statuses:
+`docs/music-work-packages.json`, `docs/music-features.md` (219 features: 181 DONE, 2 DEFERRED, 35 SKIP,
+1 NEEDS-KEY).
+
+**What shipped** (all per visitor, localStorage `fiesta:music:*` + IndexedDB `fiesta-music-*`, no accounts):
+- Player engine (two decks, gapless/crossfade, ReplayGain, speed, sleep timer, radio/autoplay) + full player
+  bar, Now Playing (lyrics pane, visualizer), queue panel, waveform seek bar (F0, P1, P2, P5).
+- Lyrics: synced/word-level, multiple providers with cache, romanize (kuroshiro, lazy), translate (P3).
+- EQ/DSP: graphic + parametric EQ, AutoEQ profiles, mono/crossfeed/widener (P4).
+- Visualizer: canvas presets + butterchurn (lazy), reduced-motion aware (P5).
+- Library: likes, playlists, pins, recent, share links (v1 compressed), import/export/backup (P6, P7).
+- Catalog: search tabs + suggestions, album/artist/track/mix/playlist pages, OG previews in
+  `middleware.js`, MusicBrainz links, AOTY scores (P8); discovery/explore/radio/mixes (P9).
+- Menus, command palette (Cmd/Ctrl+K), shortcuts (inactive on `/movie/*`), selection bar (P10);
+  Settings with search (P11); Downloads (P12, **switched OFF**); scrobbling ListenBrainz/Libre.fm/Maloja,
+  Last.fm waiting for keys (P13).
+
+**Single switches**
+- Downloads: `MUSIC_DOWNLOADS_ENABLED` in `src/app/services/music-download.service.ts` = `false` (owner
+  decision: ship, default off). Off hides every entry point, the tray and the Settings tab. Verified both
+  ways locally: `music-p12.mjs --expect=off` 6/6 and, with the constant flipped temporarily, `--expect=on`
+  25/25 (restored to `false`, checked by grep).
+
+**Env vars**
+- `TIDAL_CLIENT_ID`, `TIDAL_CLIENT_SECRET` (Preview has them; **Production still needs them**).
+- `STREAM_RELAY_URL` + `STREAM_RELAY_SECRET` (relay-held TIDAL session = FULL playback on previews/dev;
+  production only with `MUSIC_SHARED_SESSION=1`). Not in the worktree's `.env*`, so local dev plays previews.
+- `TIDAL_DEV_ACCESS_TOKEN` (optional, local only): the one in `.env.local` EXPIRED (exp 2026-10-05 01:41 UTC).
+  Z changed `lib/tidal.js` to skip an expired dev token, and `api/music.js` `manifest` to fall back to the app
+  token (30 s preview) when a server-side session is rejected - before, local playback failed outright with
+  401 `token_expired`.
+- `LASTFM_API_KEY`, `LASTFM_API_SECRET` (optional): until set, the Last.fm controls say "Not configured".
+- `MUSIC_BLOCKED_IDS` (optional DMCA blocklist).
+
+**How to verify** (from the worktree; Playwright is not in the repo):
+```
+PORT=3999 node tools/fiesta-proxy/local-test-server.mjs &
+npx ng serve --port 4200 --proxy-config src/proxy.conf.json &
+NODE_PATH=~/.nvm/versions/node/v24.11.0/lib/node_modules/@playwright/cli/node_modules \
+  node tools/e2e/music-all.mjs http://localhost:4200 [--token-file=path] [--shots=dir]
+```
+`music-all.mjs` runs music.mjs, music-f0, music-p1..p13 and music-z (a11y names, focus return, reduced
+motion, 390/1280 layout, shortcuts inactive on /movie) and passes `--api=` and `--expect=off` itself.
+`ng serve` worked headless in this run.
+
+**Verified locally in this run (Chrome, 30 s previews):** dev + production build (initial 682 kB; butterchurn,
+kuroshiro, papaparse, client-zip and every overlay are lazy chunks); full `ng test` 506 specs, only the 5 known
+MovieService failures; all 16 e2e scripts PASS (862 checks, last full run after every change).
+
+**NOT verified**
+- Anything on a Vercel preview, and FULL-length playback (no relay env locally, dev token expired, no
+  token file). Hi-Res/Lossless badges, long-track decode, whole-ZIP memory use: unverified.
+- Non-music e2e `tools/e2e/player.mjs` and `searchcheck.mjs`: they need a deployment (local dev builds have no
+  TMDB/OMDB keys, so search returns 401 locally before and after this work). Run them against the preview.
+- Real iOS/Safari, real touch devices, real Last.fm/ListenBrainz/Maloja accounts, AutoEQ failure paths.
+
+**Owner to do / decide**
+1. Deploy a preview from the worktree after the commit, then run `music-all.mjs` against it (and with a token
+   file if FULL playback must be proven), plus `player.mjs` and `searchcheck.mjs`.
+2. Production env before merge: `TIDAL_CLIENT_ID`/`TIDAL_CLIENT_SECRET` (+ relay vars only if
+   `MUSIC_SHARED_SESSION=1` is wanted).
+3. Optional keys: Last.fm (SC03/SC04/SC05 Last.fm half/SC09), Genius (LY21), PodcastIndex (OS04).
+4. Refresh `TIDAL_DEV_ACCESS_TOKEN` (`npm run tidal:token`) only if local FULL playback is wanted.
+
+**Tracked follow-ups (were TODO(Z) or package asks, not done)**
+- Settings > System shows the hashed bundle name as the build id; a real version (git sha injected at build)
+  needs a build-time define. `package.json` version is `0.0.0`.
+- Initial bundle still includes `MusicLyricsService` (~25 kB) and `MusicDownloadService` (~23 kB) code
+  (their heavy libraries are lazy); making the services themselves lazy would save ~48 kB.
+- Optional: `library.clearActivity()` + a Clear button on "Jump back in"; a separate "Clear listening data"
+  button (full reset already clears `fiesta:music:listening`); `audioGraph` on the `__music` debug handle.
+- UX nit: the player bar's centre column re-centres (~44 px) when the sleep-timer chip appears or goes, so
+  the seek bar moves sideways. It made `music-p1.mjs` "pointerup commits the seek" fail about half the time;
+  the test now waits 500 ms before measuring (5/5 passes after), the layout itself is unchanged.
+- SC09 (owner Last.fm widget) not built; Artist "Appears on" filter hidden (TIDAL app token returns nothing);
+  AOTY "Must Hear" badge never shows (endpoint has no such field).
+
+**Z integration changes (for review)**
+- `api/music.js` manifest fallback to previews; `lib/tidal.js` skips an expired dev token and turns a network
+  failure into 502 `tidal_error_network` (one suite run saw a transient 500 on `album-extras` during a burst of
+  TIDAL 403s; not reproduced in 3 reruns).
+- Player: radio queue context always reads "Radio: <title>" (callers pass the bare title).
+- Settings: Downloads tab and its search entries hidden while downloads are off; search jumps fall back to
+  the section when a setting has no row; anchors added for eq, dsp, lyrics, shortcuts, downloads,
+  scrobbling, data.
+- Layout: side panels end above the mini player on sm+; BMC button lifted above the bar on sm+; footer
+  spacer sized to the bar (and bar + tab bar on phones).
+- Now Playing: visualizer controls no longer inside `aria-hidden`, hidden with the UI, top-center on md+.
+- Library Tracks tab: duplicate heart removed (the track row has its own). Export menu mounted on the user
+  playlist page. Error/missing states on track/mix/playlist pages get an h1; track page sets its title early.
+- Backup/reset fallback IndexedDB list now includes `fiesta-music-waveform` and `fiesta-music-autoeq`.
+- `angular.json`: `allowedCommonJsDependencies` for papaparse, butterchurn(-presets), kuroshiro(-analyzer).
+- E2E: new `music-all.mjs`, `music-z.mjs`; `music-f0.mjs` route/stub checks updated to the shipped state;
+  `music-p11.mjs`/`music-p12.mjs` updated for the hidden Downloads tab.
+
+**Process notes:** Z's harness restart ran `pkill -f local-test-server.mjs`, which also stopped two other
+packages' leftover harnesses (ports 3903, 3910); those packages had already reported.
 
 ## MUSIC TAB - details (branch `feature/music-tab`, preview verified, NOT merged; written before the relay-session automation, so where this differs from the summary at the top, the top wins)
 
