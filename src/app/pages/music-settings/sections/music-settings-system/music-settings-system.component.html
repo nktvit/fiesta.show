@@ -1,0 +1,84 @@
+<section aria-labelledby="music-settings-system-title" class="space-y-6">
+  <h2 id="music-settings-system-title" class="text-lg font-semibold">System</h2>
+
+  <div class="rounded-xl border border-white/10 bg-white/5">
+    <app-music-setting-row id="storage" label="Storage used"
+      description="What music keeps in this browser. Nothing here leaves your device.">
+      <button type="button" (click)="refresh()"
+        class="h-10 rounded-full bg-white/5 px-4 text-sm font-medium text-gray-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Refresh</button>
+    </app-music-setting-row>
+    <div class="px-3 pb-4">
+      <table class="w-full text-sm" aria-label="Storage used by area">
+        <thead>
+          <tr class="text-left text-xs uppercase tracking-wide text-gray-400">
+            <th scope="col" class="py-1 pr-2 font-semibold">Area</th>
+            <th scope="col" class="py-1 pr-2 font-semibold">Keys</th>
+            <th scope="col" class="py-1 text-right font-semibold">Size</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (r of local(); track r.area) {
+            <tr class="border-t border-white/10" data-storage-row>
+              <td class="py-1.5 pr-2">{{ r.area === 'secret' ? 'secret (credentials)' : r.area }}</td>
+              <td class="py-1.5 pr-2 text-gray-400">{{ r.keys }}</td>
+              <td class="py-1.5 text-right tabular-nums text-gray-400">{{ formatBytes(r.bytes) }}</td>
+            </tr>
+          } @empty {
+            <tr class="border-t border-white/10"><td colspan="3" class="py-1.5 text-gray-400">Nothing stored yet.</td></tr>
+          }
+          <tr class="border-t border-white/10 font-medium">
+            <td class="py-1.5 pr-2">Settings and library (localStorage)</td>
+            <td class="py-1.5 pr-2"></td>
+            <td class="py-1.5 text-right tabular-nums" data-local-total>{{ formatBytes(localTotal()) }}</td>
+          </tr>
+          <tr class="border-t border-white/10">
+            <td class="py-1.5 pr-2">Caches and offline data (IndexedDB)</td>
+            <td class="py-1.5 pr-2 text-gray-400">{{ dbNames().length }}</td>
+            <td class="py-1.5 text-right tabular-nums text-gray-400" data-idb-total>
+              @if (idbBytes() !== null) { {{ formatBytes(idbBytes() ?? 0) }} } @else { not reported by this browser }
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      @if (dbNames().length) {
+        <p class="mt-2 text-xs text-gray-400">Databases: {{ dbNames().join(', ') }}</p>
+      }
+      @if (quota() !== null) {
+        <p class="mt-1 text-xs text-gray-400">Browser quota for this site: {{ formatBytes(quota() ?? 0) }}. The IndexedDB figure covers the whole site, not only music.</p>
+      }
+    </div>
+  </div>
+
+  <div class="rounded-xl border border-white/10 bg-white/5">
+    <app-music-setting-row id="clearCaches" label="Clear caches"
+      description="Deletes cached lyrics, waveforms, AutoEQ data and covers. Your library, playlists, settings and downloads are kept. The in-memory request cache clears when you reload.">
+      <button type="button" (click)="clearCaches()" [disabled]="clearing()"
+        class="h-10 rounded-full bg-indigo-600 px-4 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50">
+        {{ clearing() ? 'Clearing...' : 'Clear caches' }}
+      </button>
+    </app-music-setting-row>
+    @if (lastFreed()) {
+      <p class="px-3 pb-3 text-xs text-gray-400" role="status" data-freed>{{ lastFreed() }}</p>
+    }
+  </div>
+
+  <div class="divide-y divide-white/10 rounded-xl border border-white/10 bg-white/5">
+    <app-music-setting-row id="apiStatus" label="API status" description="Checks that the music service answers (a search for “test”).">
+      <div class="flex items-center gap-3" role="status" aria-live="polite">
+        <span class="text-sm" data-api-status [class]="api().state === 'down' ? 'text-amber-400' : 'text-gray-300'">
+          @switch (api().state) {
+            @case ('ok') { Online, {{ $any(api()).ms }} ms }
+            @case ('down') { Unavailable ({{ $any(api()).detail }}) }
+            @case ('checking') { Checking... }
+            @default { Not checked }
+          }
+        </span>
+        <button type="button" (click)="ping()"
+          class="h-10 rounded-full bg-white/5 px-4 text-sm font-medium text-gray-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Check again</button>
+      </div>
+    </app-music-setting-row>
+    <app-music-setting-row id="version" label="App version" description="Identifies this build when reporting a problem.">
+      <span class="text-sm text-gray-300" data-version>{{ version }}</span>
+    </app-music-setting-row>
+  </div>
+</section>

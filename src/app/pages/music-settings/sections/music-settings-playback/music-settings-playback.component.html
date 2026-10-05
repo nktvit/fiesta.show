@@ -1,0 +1,80 @@
+<section aria-labelledby="music-settings-playback-title" class="space-y-6">
+  <h2 id="music-settings-playback-title" class="text-lg font-semibold">Playback</h2>
+
+  <div class="divide-y divide-white/10 rounded-xl border border-white/10 bg-white/5">
+    <app-music-setting-row id="quality" label="Streaming quality"
+      description="Auto picks the best tier your browser can decode. Lower tiers use less data."
+      note="Hi-Res needs a full session; without one it plays a 30 second preview at a lower tier.">
+      <select aria-label="Streaming quality" (change)="setQuality($event)"
+        class="h-10 rounded-lg border border-white/10 bg-[#121212] px-3 text-sm focus:border-indigo-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+        @for (q of qualities; track q.value) {
+          <option [value]="q.value" [selected]="settings.quality() === q.value">{{ q.label }}</option>
+        }
+      </select>
+    </app-music-setting-row>
+
+    <app-music-setting-row id="gapless" label="Gapless playback" description="Preload the next track so albums play without a pause."
+      kind="switch" [checked]="settings.gapless()" (checkedChange)="settings.gapless.set($event)" />
+
+    <app-music-setting-row id="crossfadeSeconds" label="Crossfade" description="Blend the end of a track into the next one (0 = off)."
+      [note]="canCrossfade ? '' : 'Crossfade is not available on this device: the browser does not let the page change volume.'">
+      <div class="flex items-center gap-3">
+        <input type="range" min="0" max="12" step="1" aria-label="Crossfade seconds" [value]="settings.crossfadeSeconds()"
+          [disabled]="!canCrossfade" (input)="settings.crossfadeSeconds.set(num($event))"
+          class="h-10 w-40 accent-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-40" />
+        <span class="w-10 text-right text-sm tabular-nums text-gray-400">{{ settings.crossfadeSeconds() }} s</span>
+      </div>
+    </app-music-setting-row>
+
+    <app-music-setting-row id="autoplay" label="Autoplay similar music" description="When the queue ends, keep going with similar tracks."
+      kind="switch" [checked]="settings.autoplay()" (checkedChange)="settings.autoplay.set($event)" />
+
+    <app-music-setting-row id="skipUnavailable" label="Skip unavailable tracks" description="Move on instead of stopping when a track cannot be played."
+      kind="switch" [checked]="settings.skipUnavailable()" (checkedChange)="settings.skipUnavailable.set($event)" />
+  </div>
+
+  <div class="divide-y divide-white/10 rounded-xl border border-white/10 bg-white/5">
+    <app-music-setting-row id="replayGainMode" label="ReplayGain" description="Even out loudness between tracks (Track) or keep album dynamics (Album).">
+      <div role="group" aria-label="ReplayGain mode" class="flex gap-2">
+        @for (m of gainModes; track m.value) {
+          <button type="button" [attr.aria-pressed]="settings.replayGainMode() === m.value" (click)="settings.replayGainMode.set(m.value)"
+            class="h-10 rounded-full px-4 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+            [class]="settings.replayGainMode() === m.value ? 'bg-white text-black' : 'bg-white/5 text-gray-300 hover:text-white'">{{ m.label }}</button>
+        }
+      </div>
+    </app-music-setting-row>
+
+    <app-music-setting-row id="replayGainPreamp" label="Pre-amp" description="Gain added on top of ReplayGain, from -15 to +15 dB.">
+      <div class="flex items-center gap-3">
+        <input type="range" min="-15" max="15" step="1" aria-label="ReplayGain pre-amp in decibels" [value]="settings.replayGainPreamp()"
+          (input)="settings.replayGainPreamp.set(num($event))"
+          class="h-10 w-40 accent-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" />
+        <span class="w-16 text-right text-sm tabular-nums text-gray-400">{{ signed(settings.replayGainPreamp()) }}</span>
+      </div>
+    </app-music-setting-row>
+
+    <app-music-setting-row id="exponentialVolume" label="Exponential volume" description="Finer control at low volumes."
+      kind="switch" [checked]="settings.exponentialVolume()" (checkedChange)="settings.exponentialVolume.set($event)" />
+  </div>
+
+  <div class="divide-y divide-white/10 rounded-xl border border-white/10 bg-white/5">
+    <app-music-setting-row id="playbackRate" label="Default speed" description="Playback speed for every track.">
+      <select aria-label="Default speed" (change)="settings.playbackRate.set(num($event))"
+        class="h-10 rounded-lg border border-white/10 bg-[#121212] px-3 text-sm focus:border-indigo-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+        @for (s of speeds; track s) {
+          <option [value]="s" [selected]="settings.playbackRate() === s">{{ s }}x</option>
+        }
+      </select>
+    </app-music-setting-row>
+
+    <app-music-setting-row id="preservesPitch" label="Keep pitch" description="Keep the original pitch when the speed changes."
+      kind="switch" [checked]="settings.preservesPitch()" (checkedChange)="settings.preservesPitch.set($event)" />
+
+    <app-music-setting-row id="sleepFadeOut" label="Fade out with sleep timer" description="Lower the volume gradually before the sleep timer stops playback."
+      kind="switch" [checked]="settings.sleepFadeOut()" (checkedChange)="settings.sleepFadeOut.set($event)" />
+
+    <app-music-setting-row id="removeSilence" label="Remove silence" description="Skip silent starts and ends of tracks."
+      note="Downloads a small extra stream per track to find the silence."
+      kind="switch" [checked]="settings.removeSilence()" (checkedChange)="settings.removeSilence.set($event)" />
+  </div>
+</section>

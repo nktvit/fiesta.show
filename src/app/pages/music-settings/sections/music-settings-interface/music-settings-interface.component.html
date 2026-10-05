@@ -1,0 +1,32 @@
+<section aria-labelledby="music-settings-interface-title" class="space-y-6">
+  <h2 id="music-settings-interface-title" class="text-lg font-semibold">Interface</h2>
+
+  <div class="divide-y divide-white/10 rounded-xl border border-white/10 bg-white/5">
+    <app-music-setting-row id="coverClickAction" label="Cover click action" description="What happens when you click the cover in the player bar.">
+      <select aria-label="Cover click action" (change)="setCoverClick($event)"
+        class="h-10 rounded-lg border border-white/10 bg-[#121212] px-3 text-sm focus:border-indigo-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+        <option value="nowPlaying" [selected]="settings.coverClickAction() === 'nowPlaying'">Open Now Playing</option>
+        <option value="album" [selected]="settings.coverClickAction() === 'album'">Go to the album</option>
+      </select>
+    </app-music-setting-row>
+    @for (t of navigation; track t.key) {
+      <app-music-setting-row [id]="t.key" [label]="t.label" [description]="t.description" kind="switch" [checked]="get(t.key)" (checkedChange)="set(t.key, $event)" />
+    }
+  </div>
+
+  <div class="divide-y divide-white/10 rounded-xl border border-white/10 bg-white/5">
+    @for (t of appearance; track t.key) {
+      <app-music-setting-row [id]="t.key" [label]="t.label" [description]="t.description" kind="switch" [checked]="get(t.key)" (checkedChange)="set(t.key, $event)" />
+    }
+  </div>
+
+  <div>
+    <h3 class="mb-2 text-base font-semibold">Home sections</h3>
+    <div class="divide-y divide-white/10 rounded-xl border border-white/10 bg-white/5">
+      @for (h of homeSections; track h.key) {
+        <app-music-setting-row [id]="'home-' + h.key" [label]="h.label" kind="switch"
+          [checked]="settings.homeSections()[h.key]" (checkedChange)="setHome(h.key, $event)" />
+      }
+    </div>
+  </div>
+</section>
