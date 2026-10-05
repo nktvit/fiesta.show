@@ -256,7 +256,8 @@ async function img(q, res) {
   if (!r.ok) throw httpError(r.status === 404 ? 404 : 502, 'upstream_' + r.status);
   if (!/^image\//.test(type)) throw httpError(502, 'not_an_image');
   res.setHeader('Content-Type', type);
-  res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+  // TIDAL cover URLs are content-addressed (uuid + size), so the bytes at a URL never change.
+  res.setHeader('Cache-Control', 'public, max-age=2592000, s-maxage=2592000, immutable');
   res.status(200).end(Buffer.from(await r.arrayBuffer()));
 }
 
