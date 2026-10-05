@@ -6,6 +6,8 @@ import { environment } from '../../environments/environment';
 import { LoggerService } from './logger.service';
 
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w342';
+// Cast / search-result avatars render at ~64px; w185 matches what api/tmdb.js serves in production.
+const TMDB_PROFILE_BASE = 'https://image.tmdb.org/t/p/w185';
 const TMDB_BACKDROP_BASE = 'https://image.tmdb.org/t/p/w1280';
 
 export interface TmdbFindResult {
@@ -246,7 +248,7 @@ export class TmdbService {
         const mapPerson = (p: any) => ({
           id: p.id,
           name: p.name,
-          profilePath: p.profile_path ? `${TMDB_IMAGE_BASE}${p.profile_path}` : null,
+          profilePath: p.profile_path ? `${TMDB_PROFILE_BASE}${p.profile_path}` : null,
         });
         const cast = (res.cast || []).slice(0, 12).map((p: any) => ({ ...mapPerson(p), character: p.character || '' }));
         const directors = (res.crew || []).filter((p: any) => p.job === 'Director').map(mapPerson);
@@ -358,7 +360,7 @@ export class TmdbService {
         .map((p: any) => ({
           id: p.id,
           name: p.name,
-          profilePath: p.profile_path ? `${TMDB_IMAGE_BASE}${p.profile_path}` : null,
+          profilePath: p.profile_path ? `${TMDB_PROFILE_BASE}${p.profile_path}` : null,
           knownForDepartment: p.known_for_department || null,
         }))),
       catchError(() => of([]))

@@ -12,7 +12,7 @@
         <img [src]="heroMovie.Backdrop || heroMovie.Poster"
           [alt]="heroMovie.Title"
           class="w-full h-full object-cover object-top scale-105"
-          loading="eager">
+          loading="eager" fetchpriority="high" decoding="async">
       </div>
 
       <!-- Cinematic gradient overlays -->

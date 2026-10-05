@@ -20,10 +20,10 @@
       <!-- Backdrop: landscape crop — shorter on mobile, taller on desktop -->
       <div class="relative w-full h-[40vh] md:h-[52vh] overflow-hidden">
         @if (backdropUrl) {
-          <img [src]="backdropUrl" [alt]="movieDetails.Title"
+          <img [src]="backdropUrl" [alt]="movieDetails.Title" fetchpriority="high" decoding="async"
             class="w-full h-full object-cover object-top">
         } @else if (movieDetails.Poster && movieDetails.Poster !== 'N/A') {
-          <img [src]="movieDetails.Poster" [alt]="movieDetails.Title"
+          <img [src]="movieDetails.Poster" [alt]="movieDetails.Title" decoding="async"
             class="w-full h-full object-cover object-center blur-sm scale-110 opacity-30">
         }
         <!-- Left gradient -->
@@ -182,7 +182,7 @@
                     <a [routerLink]="['/person', d.id]" class="group flex w-16 flex-col items-center text-center">
                       <div class="h-16 w-16 overflow-hidden rounded-full bg-gray-800 ring-1 ring-white/10 transition-all duration-200 group-hover:ring-indigo-500">
                         @if (d.profilePath) {
-                          <img [src]="d.profilePath" [alt]="d.name" class="h-full w-full object-cover">
+                          <img [src]="d.profilePath" [alt]="d.name" loading="lazy" decoding="async" class="h-full w-full object-cover">
                         } @else {
                           <div class="flex h-full w-full items-center justify-center text-gray-600">
                             <svg class="h-6 w-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z"/></svg>
@@ -201,7 +201,7 @@
                     <a [routerLink]="['/person', c.id]" class="group flex w-16 flex-col items-center text-center">
                       <div class="h-16 w-16 overflow-hidden rounded-full bg-gray-800 ring-1 ring-white/10 transition-all duration-200 group-hover:ring-indigo-500">
                         @if (c.profilePath) {
-                          <img [src]="c.profilePath" [alt]="c.name" class="h-full w-full object-cover">
+                          <img [src]="c.profilePath" [alt]="c.name" loading="lazy" decoding="async" class="h-full w-full object-cover">
                         } @else {
                           <div class="flex h-full w-full items-center justify-center text-gray-600">
                             <svg class="h-6 w-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z"/></svg>
@@ -302,7 +302,7 @@
                     ? 'ring-2 ring-indigo-500 shadow-lg shadow-indigo-900/40'
                     : 'opacity-70 hover:opacity-100 hover:scale-[1.02]'">
                   <div class="relative">
-                    <img [src]="ep.still" [alt]="ep.title" class="w-full h-28 object-cover bg-gray-900">
+                    <img [src]="ep.still" [alt]="ep.title" loading="lazy" decoding="async" class="w-full h-28 object-cover bg-gray-900">
                     <span class="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold"
                       [ngClass]="ep.number === episode ? 'bg-indigo-600 text-white' : 'bg-black/70 text-white'">
                       {{ ep.number }}

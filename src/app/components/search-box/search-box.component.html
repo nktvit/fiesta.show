@@ -155,7 +155,7 @@
               <div class="flex-shrink-0 overflow-hidden bg-white/5 ring-1 ring-inset ring-white/10"
                 [ngClass]="suggestion.kind === 'person' ? 'h-10 w-10 rounded-full' : 'h-14 w-10 rounded-md'">
                 @if (suggestion.poster) {
-                  <img [src]="suggestion.poster" [alt]="suggestion.title" class="w-full h-full object-cover"
+                  <img [src]="suggestion.poster" [alt]="suggestion.title" class="w-full h-full object-cover" loading="lazy" decoding="async"
                     (error)="suggestion.poster = null"
                     (load)="$event.target.naturalWidth < 20 ? suggestion.poster = null : null">
                 } @else {
