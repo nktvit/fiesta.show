@@ -5,7 +5,7 @@
 **This file is the ONLY handoff. It lives on `main` (docs/handoff.md) and is updated by a docs-only commit on
 `main`. Do NOT keep or edit copies of it on feature branches** (an earlier session did, and had to merge them back).
 
-`main` = `4f052d4`, in sync with origin. Everything under "Live" is merged AND verified on production.
+`main`: last CODE commit `4f052d4` (anything after it is docs-only), in sync with origin. Everything under "Live" is merged AND verified on production.
 Git worktrees for all of this are under `.claude/worktrees/` (`music-tab`, `relay-sot`, plus merged ones that can
 be removed: `empty-seasons`, `player-switch`, `sticky-footer`). Always work in a worktree, never in this checkout.
 
