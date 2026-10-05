@@ -7,7 +7,11 @@
     "build": "npm install --prefix tv && npm run build --prefix tv && ng build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
-    "eval:moderation": "node --env-file=.env.local scripts/moderation-evals.mjs"
+    "eval:moderation": "node --env-file=.env.local scripts/moderation-evals.mjs",
+    "relay:status": "node tools/fiesta-proxy/relayctl.mjs status",
+    "relay:pull": "node tools/fiesta-proxy/relayctl.mjs pull",
+    "relay:deploy": "node tools/fiesta-proxy/relayctl.mjs deploy",
+    "relay:test": "node --test tools/fiesta-proxy/relayctl.test.mjs"
   },
   "browserslist": [
     "last 2 versions",

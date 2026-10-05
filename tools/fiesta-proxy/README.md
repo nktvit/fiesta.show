@@ -4,15 +4,14 @@ Server-side extractor that turns a vidsrc/vsembed embed into a clean HLS stream
 the frontend plays directly. **No hostile player runs in the browser**, so there
 are no ads, no popups, and no anti-devtools redirect.
 
-> **Read this first — where the code actually lives.** The extractor is **not** a
-> Vercel function and **not** in this repo. It is a standalone Node process,
-> `relay.mjs`, deployed at `/Users/ms/Server/relay.fiesta.show/` on a home Mac
-> mini (`ssh mm`, user `ms`) and reachable at `https://relay.fiesta.show`. That
-> directory is **not a git repo**. `tools/fiesta-proxy/relay.mjs` in *this* repo
-> is a dead 369-line snapshot of a 2026-05 design — see
-> [The repo snapshot is dead code](#the-repo-snapshot-is-dead-code). Everything
-> below describes the live file (1219 lines as of 2026-09-13).
->
+> **Read this first — where the code lives and how it ships.** The extractor is **not**
+> a Vercel function. It is a standalone Node process, `relay.mjs`, running on a home
+> Mac mini (`ssh mm`, user `ms`, dir `/Users/ms/Server/relay.fiesta.show/`, launchd
+> `show.fiesta.relay`) and reachable at `https://relay.fiesta.show`. **This repo is the
+> source of truth** (synced from the box on 2026-10-05 — see
+> [Source of truth and deploying](#source-of-truth-and-deploying)): edit the files here
+> and ship them with `npm run relay:deploy`. Never `scp` over the live file by hand.
+
 > The directory name `fiesta-proxy` is historical. The Webshare rotating
 > residential proxy it refers to is **gone** — see
 > [Anti-bot](#anti-bot-a-residential-ip-and-a-real-browser).
@@ -474,7 +473,8 @@ cancelled upstream — it is a live-ish secret for a service the stack no longer
 uses.
 
 Local dev resolves against the **live** relay; there is no local extractor.
-Running `relay.mjs` from this repo instead will not work — it is dead code.
+`relay.mjs` in this repo is the real file, but it needs the mini's residential IP, the
+browser dependencies and its `.env.local`, so it is not meant to be run on a laptop.
 
 To hit the relay directly while debugging:
 
@@ -660,25 +660,39 @@ progress, and mirror its verification procedure (step 6 above) when you're done.
   (`CONFIG.streamBase`, no `CONFIG.api`) — so a movies-only test can pass while
   TV is broken. Always test both.
 
-## The repo snapshot is dead code
+## Source of truth and deploying
 
-`tools/fiesta-proxy/relay.mjs` (369 lines) is not a mirror of production and has
-not been for months. It still implements the pre-migration chain — it greps the
-embed HTML for `src="//cloudnestra.com/rcp/…"`, a host that stopped serving this
-in 2026-08 — so **running it would fail on every title**, not merely lag behind.
+Until 2026-10 `tools/fiesta-proxy/relay.mjs` here was a dead 369-line snapshot and the
+mini held the only real copy (1,219 lines), which is why this README used to say
+"never copy the repo file over the live one". That is resolved: the repo now holds the
+real files (`relay.mjs`, `tidal-session.mjs`, `scripts/autofix-watchdog.sh`, the two
+launchd plists, `package.json`), and `relayctl.mjs` keeps the box and the repo in step.
+Secrets (`.env.local`, `tidal-session.json`) and logs are never in the repo.
 
-Entirely absent from it: the `vs_src.php` gate, `CFG`/`CONFIG` parsing, WASM
-`stream_urls` decryption, `generate.php` host tokens, the two fronts and
-`srv=1|2`, the circuit breaker and cooldowns, the resolve cache and in-flight
-de-dupe, UA rotation, the Playwright Turnstile fallback, and `/healthz`-adjacent
-stats. It does carry the segment streaming fix (`pipeline`/`Readable.fromWeb`),
-which is why it looks deceptively current.
+```
+npm run relay:status                 # compare box vs repo + health (pid, /healthz, /tidal/token route)
+npm run relay:pull                   # bring edits made ON the box into the repo, then review + commit
+npm run relay:deploy                 # repo -> box
+npm run relay:deploy -- --dry-run    # show what would change
+npm run relay:test                   # unit tests for the sync logic
+```
 
-Nothing syncs the two. **Never copy the repo file over the live one** — it would
-silently delete every capability listed above. Whether to properly reconcile it
-(a several-hundred-line diff) or delete it and treat the box as the only source
-of truth is an open question for the maintainer; until then, treat it as a
-historical artifact and read the box.
+`deploy` stages the new files next to the live ones, runs `node --check` on the box,
+backs up (`<file>.bak-<timestamp>`, newest 10 kept), swaps with atomic renames, restarts
+the service only if `relay.mjs`/`tidal-session.mjs` changed, then checks `/healthz` and
+the `/tidal/token` route. If the check fails it restores the backups and restarts
+again (exit 2). Restarting briefly interrupts live HLS streams.
+
+**The autofix agent** (`scripts/autofix-watchdog.sh`, runs `claude -p`) edits
+`relay.mjs` in place on the box when the upstream video sources change, tests it live,
+and restarts the service. That is deliberate and is not blocked. Each deploy records
+the hash it wrote (`.relayctl.json` on the box); when the box's file no longer matches,
+`status` shows `mini-ahead` (with the latest autofix log lines) and `deploy` refuses to
+overwrite it. Run `relay:pull`, read `git diff`, commit it, and carry on — so the
+agent's fixes are reviewed and kept instead of being silently lost on the next deploy.
+Only `relay.mjs`, `tidal-session.mjs` and the watchdog are deployed; `package.json`
+and the plists are tracked and compared but never written (they need `npm install` /
+a launchd reload), so `status` reports their drift as information.
 
 See `docs/stream-proxy-architecture.md` for the runtime/deployment model —
 what runs where, who pays for the bandwidth, and the failure modes.
