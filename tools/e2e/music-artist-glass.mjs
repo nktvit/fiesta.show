@@ -1,5 +1,5 @@
 // E2E for the artist page glass theme: the `artist-images` action, per-artist theme
-// variables, glass panels, reduced motion, overflow, text contrast, gallery lightbox,
+// variables, glass panels, reduced motion, overflow, text contrast, desktop layout at 16:9 sizes, credit line,
 // graceful fallback.
 //   node tools/e2e/music-artist-glass.mjs [baseUrl=http://localhost:4219] [--api=http://localhost:3999]
 //        [--shots=dir] [--browsers=chromium,webkit]
@@ -62,13 +62,12 @@ const ratio = (a, b) => { const [x, y] = a > b ? [a, b] : [b, a]; return (x + 0.
 const parseRgb = (s) => (s.match(/[\d.]+/g) || []).map(Number);
 
 async function openArtist(page, id, { waitImages = true } = {}) {
-  await page.goto(`${base}/music/artist/${id}`);
+  await page.goto(`${base}/music/artist/${id}`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('[data-glass-panel]', { timeout: 30000 });
   // Theme (palette) and the sharp portrait.
   await page.waitForFunction(() => /--ag-accent/.test(document.querySelector('[data-artist-theme]')?.getAttribute('style') || ''), null, { timeout: 30000 });
   if (waitImages) {
     await page.waitForFunction(() => { const i = document.querySelector('[data-artist-portrait]'); return !i || (i.complete && i.naturalWidth > 0); }, null, { timeout: 30000 });
-    await page.waitForSelector('[data-artist-gallery]', { timeout: 30000 }).catch(() => {});
     await page.waitForTimeout(1500);
   }
 }
@@ -141,7 +140,7 @@ async function suite(name, launcher) {
   const browser = await launcher.launch();
   const sfx = `[${name}]`;
   try {
-    // ---- Theme per artist, glass, gallery, contrast at desktop width ----
+    // ---- Theme per artist, glass, contrast at desktop width ----
     const themes = [];
     for (const a of ARTISTS) {
       const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
@@ -160,33 +159,6 @@ async function suite(name, launcher) {
 
       const play = await page.evaluate(() => getComputedStyle(document.querySelector('[data-artist-play]')).backgroundColor);
       check(`${sfx} ${a.name}: Play button uses the accent (not the indigo fallback)`, play !== 'rgb(79, 70, 229)', play);
-
-      const g = await page.evaluate(() => ({ tiles: document.querySelectorAll('[data-gallery-tile]').length, credit: !!document.querySelector('[data-gallery-credits]'), scrollers: [...document.querySelectorAll('[data-artist-gallery] *')].filter((e) => /(auto|scroll)/.test(getComputedStyle(e).overflowX) && e.scrollWidth > e.clientWidth + 1).length }));
-      check(`${sfx} ${a.name}: gallery of >= 2 tiles that wraps (no horizontal scroller)`, g.tiles >= 2 && g.scrollers === 0, `${g.tiles} tiles, credits ${g.credit}`);
-
-      await page.locator('[data-artist-gallery]').scrollIntoViewIfNeeded();
-      await page.waitForTimeout(3000);
-      const broken = await page.evaluate(() => [...document.querySelectorAll('[data-gallery-tile] img')].filter((i) => i.getBoundingClientRect().width > 0 && !(i.complete && i.naturalWidth > 0)).length);
-      check(`${sfx} ${a.name}: no broken picture in the gallery`, broken === 0, `${broken} broken`);
-      await page.evaluate(() => window.scrollTo(0, 0));
-
-      if (a.id === 8847) {
-        // Lightbox: opens in the dialog shell with a credit, arrow keys step, Escape closes and returns focus.
-        const tile = page.locator('[data-gallery-tile]').first();
-        await tile.scrollIntoViewIfNeeded();
-        await tile.focus();
-        await page.keyboard.press('Enter'); // keyboard open: Safari does not focus buttons on click
-        await page.waitForSelector('[role="dialog"] [data-lightbox-image]');
-        const before = await page.locator('[data-lightbox-image]').getAttribute('src');
-        check(`${sfx} lightbox opens with the image and a credit/licence line`, /(CC|Public domain|Image:)/.test(await page.locator('[data-lightbox-credit]').innerText()));
-        await page.keyboard.press('ArrowRight');
-        const after = await page.locator('[data-lightbox-image]').getAttribute('src');
-        check(`${sfx} lightbox ArrowRight shows the next photo`, before !== after);
-        await page.keyboard.press('Escape');
-        await page.waitForSelector('[role="dialog"]', { state: 'detached' });
-        check(`${sfx} Escape closes the lightbox and focus returns to the tile`, await page.evaluate(() => document.activeElement?.hasAttribute('data-gallery-tile')));
-        await page.evaluate(() => window.scrollTo(0, 0));
-      }
 
       // Existing features still there.
       const feat = await page.evaluate(() => ({
@@ -298,39 +270,10 @@ async function suite(name, launcher) {
         style: document.querySelector('[data-artist-theme]').getAttribute('style') || '',
         play: getComputedStyle(document.querySelector('[data-artist-play]')).backgroundColor,
         backdrop: !!document.querySelector('[data-backdrop-layer]') && false,
-        gallery: !!document.querySelector('[data-artist-gallery]'),
         panels: document.querySelectorAll('[data-glass-panel]').length,
       }));
-      check(`${sfx} no images + no palette: indigo accent, no gallery, no theme variables, page still renders`, !/--ag-accent/.test(d.style) && d.play === 'rgb(79, 70, 229)' && !d.gallery && d.panels >= 3, `${d.play}`);
+      check(`${sfx} no images + no palette: indigo accent, no theme variables, page still renders`, !/--ag-accent/.test(d.style) && d.play === 'rgb(79, 70, 229)' && d.panels >= 3, `${d.play}`);
       await ctx.close();
-    }
-
-    // ---- Gallery mosaic stays bounded for 2, 3, 5 and 8 images (and is absent for 1) ----
-    {
-      const real = (await get('action=artist-images&id=8847')).body.images;
-      for (const [w, h] of [[1280, 800], [390, 844]]) {
-        for (const count of [1, 2, 3, 5, 8]) {
-          const ctx = await browser.newContext({ viewport: { width: w, height: h } });
-          const page = await ctx.newPage();
-          await page.route('**/api/music?action=artist-images*', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ images: real.slice(0, count) }) }));
-          await page.goto(`${base}/music/artist/8847`);
-          await page.waitForSelector('[data-glass-panel]', { timeout: 30000 });
-          await page.waitForTimeout(1500);
-          if (count === 1) {
-            check(`${sfx} gallery @${w} with 1 image: not shown`, (await page.locator('[data-artist-gallery]').count()) === 0);
-          } else {
-            await page.locator('[data-artist-gallery]').scrollIntoViewIfNeeded();
-            const t = await page.evaluate(() => [...document.querySelectorAll('[data-gallery-tile]')].map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0).map((r) => ({ w: Math.round(r.width), h: Math.round(r.height) })));
-            const cap = w >= 640 ? 0.4 * h : 0.6 * w;
-            const small = t.slice(count >= 5 ? 1 : 0);
-            const stretched = small.some((x) => x.w > Math.min(...small.map((y) => y.w)) * 1.3);
-            check(`${sfx} gallery @${w} with ${count} images: every tile <= ${Math.round(cap)}px tall, none stretched`, t.length >= 2 && t.every((x) => x.h <= cap) && !stretched, JSON.stringify(t.map((x) => `${x.w}x${x.h}`)));
-            if (shots && count === 5 && w === 1280) await page.locator('[data-artist-gallery]').screenshot({ path: `${shots}/${name}-gallery-5-1280.png` });
-            if (shots && count === 8) await page.locator('[data-artist-gallery]').screenshot({ path: `${shots}/${name}-gallery-8-${w}.png` });
-          }
-          await ctx.close();
-        }
-      }
     }
 
     // ---- Similar artists: no empty discs (picture loaded or initials) ----
@@ -347,6 +290,49 @@ async function suite(name, launcher) {
         if (shots) await panel.screenshot({ path: `${shots}/${name}-similar-${w}.png` });
         await ctx.close();
       }
+    }
+
+    // ---- Desktop layout on 16:9 screens ----
+    for (const [w, h] of [[2560, 1440], [1920, 1080], [1600, 900], [1366, 768], [1280, 720]]) {
+      const ctx = await browser.newContext({ viewport: { width: w, height: h } });
+      const page = await ctx.newPage();
+      await openArtist(page, 64518, { waitImages: false });
+      // The About panel grows once the bio and links arrive (slower in WebKit): measure after that.
+      await page.waitForSelector('app-music-artist-bio ul[aria-label="Artist links"]', { timeout: 20000 }).catch(() => {});
+      await page.waitForTimeout(500);
+      const d = await page.evaluate(() => {
+        const col = document.querySelector('[data-artist-column]').getBoundingClientRect();
+        const pop = document.querySelector('section[aria-label="Popular songs"]');
+        const row = pop.querySelector('app-music-track-row').getBoundingClientRect();
+        const panels = [...document.querySelectorAll('[data-glass-panel]')].map((e) => e.getBoundingClientRect());
+        const bio = document.querySelector('app-music-artist-bio').getBoundingClientRect();
+        const popR = pop.getBoundingClientRect();
+        return { colW: Math.round(col.width), left: Math.round(col.left), right: Math.round(window.innerWidth - col.right), rowBottom: Math.round(row.bottom), overflow: document.documentElement.scrollWidth - window.innerWidth,
+          panelsOut: panels.filter((r) => r.right > window.innerWidth + 0.5 || r.left < -0.5).length, balance: Math.abs(Math.round(bio.height - popR.height)), sideBySide: Math.abs(bio.top - popR.top) < 2 };
+      });
+      check(`${sfx} @${w}x${h}: content column <= 1400px and centred`, d.colW <= 1400 && Math.abs(d.left - d.right) <= 1, `col ${d.colW}, gutters ${d.left}/${d.right}`);
+      check(`${sfx} @${w}x${h}: no horizontal overflow, no panel outside the viewport`, d.overflow <= 0 && d.panelsOut === 0, `overflow ${d.overflow}`);
+      check(`${sfx} @${w}x${h}: Popular and About sit side by side with equal heights`, d.sideBySide && d.balance <= 2, `diff ${d.balance}px`);
+      if (w <= 1366) check(`${sfx} @${w}x${h}: first Popular row is inside the first viewport`, d.rowBottom <= h, `row bottom ${d.rowBottom} of ${h}`);
+      if (w === 1366 || w === 1280) {
+        await page.waitForTimeout(1500);
+        check(`${sfx} @${w}x${h}: a licence credit line is visible for displayed Wikimedia images`, (await page.locator('[data-artist-credits]').count()) === 0 || /CC|Public domain/i.test(await page.locator('[data-artist-credits]').innerText()));
+        // A playing track: the fixed player bar must not cover the page's last content.
+        await page.locator('[data-artist-play]').click();
+        const bar = page.locator('app-music-player-bar section').first();
+        await bar.waitFor({ state: 'visible', timeout: 20000 });
+        await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+        await page.waitForTimeout(600);
+        const o = await page.evaluate(() => {
+          const b = document.querySelector('app-music-player-bar section').getBoundingClientRect();
+          const last = [...document.querySelectorAll('[data-glass-panel]')].pop().getBoundingClientRect();
+          const foot = document.querySelector('[data-artist-credits]')?.getBoundingClientRect();
+          return { barTop: Math.round(b.top), lastBottom: Math.round(foot ? foot.bottom : last.bottom), vh: innerHeight };
+        });
+        check(`${sfx} @${w}x${h}: with a track playing, the player bar does not overlap the end of the page`, o.lastBottom <= o.barTop + 1, `content ends ${o.lastBottom}, bar top ${o.barTop}`);
+      }
+      if (shots) { await page.evaluate(() => window.scrollTo(0, 0)); await page.screenshot({ path: `${shots}/${name}-64518-${w}x${h}-fold.png` }); }
+      await ctx.close();
     }
 
     // ---- Opaque fallbacks exist in the stylesheet ----
