@@ -1,0 +1,55 @@
+<main class="flex-grow bg-[#0a0a0a] text-white">
+  <app-navbar [showSearchBox]="false" [transparent]="false"></app-navbar>
+  <app-music-subnav />
+  <div class="px-4 py-8 md:px-12 lg:px-16">
+    @switch (state()) {
+      @case ('loading') {
+        <div aria-busy="true" class="max-w-4xl">
+          <div class="mb-6 h-9 w-64 animate-pulse rounded bg-white/5 motion-reduce:animate-none"></div>
+          @for (i of [1, 2, 3, 4, 5, 6]; track i) {
+            <div class="mb-2 h-14 animate-pulse rounded-lg bg-white/5 motion-reduce:animate-none"></div>
+          }
+          <span class="sr-only" role="status">Loading shared playlist</span>
+        </div>
+      }
+      @case ('invalid') {
+        <h1 class="mb-2 text-2xl font-bold md:text-3xl">This link doesn't work</h1>
+        <p class="mb-5 max-w-xl text-sm text-gray-400">The shared playlist link looks incomplete or damaged. Ask the sender to share it again.</p>
+        <a routerLink="/music" class="inline-flex h-11 items-center rounded-full bg-indigo-600 px-5 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Back to music</a>
+      }
+      @case ('failed') {
+        <h1 class="mb-1 break-words text-2xl font-bold md:text-3xl" data-testid="shared-name">{{ name() }}</h1>
+        <p class="mb-5 text-sm text-gray-400" data-testid="shared-count">{{ ids().length }} {{ ids().length === 1 ? 'track' : 'tracks' }}</p>
+        <p role="alert" class="mb-4 max-w-xl text-sm text-amber-400">We couldn't load the track details right now.</p>
+        <button type="button" (click)="retry()"
+          class="inline-flex h-11 items-center rounded-full bg-indigo-600 px-5 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Try again</button>
+      }
+      @case ('ready') {
+        <header class="mb-6">
+          <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Shared playlist</p>
+          <h1 class="mt-1 break-words text-3xl font-bold md:text-5xl" [title]="name()" data-testid="shared-name">{{ name() }}</h1>
+          @if (description()) { <p class="mt-2 max-w-2xl text-sm text-gray-300">{{ description() }}</p> }
+          <p class="mt-2 text-sm text-gray-400" data-testid="shared-count">{{ tracks().length }} {{ tracks().length === 1 ? 'song' : 'songs' }} · {{ duration() }}</p>
+        </header>
+
+        <div class="mb-6 flex flex-wrap items-center gap-2">
+          <button type="button" (click)="play(false)" [disabled]="!tracks().length"
+            class="inline-flex h-11 items-center gap-2 rounded-full bg-indigo-600 px-5 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50">
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" /></svg>Play
+          </button>
+          <button type="button" (click)="saveCopy()" [disabled]="saved() || !tracks().length"
+            class="inline-flex h-11 items-center rounded-full bg-white/5 px-5 text-sm font-medium text-gray-200 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50">
+            {{ saved() ? 'Saved' : 'Save a copy' }}
+          </button>
+          <app-music-export-menu [playlist]="{ name: name(), description: description(), tracks: tracks() }" />
+        </div>
+
+        <div class="max-w-4xl" data-list>
+          @for (t of tracks(); track t.id; let i = $index) {
+            <app-music-track-row [track]="t" [queue]="tracks()" [number]="i + 1" />
+          }
+        </div>
+      }
+    }
+  </div>
+</main>
