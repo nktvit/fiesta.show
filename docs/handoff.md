@@ -42,6 +42,16 @@ Git worktrees for all of this are under `.claude/worktrees/` (`music-tab`, `merg
   podcasts, Last.fm keys (`LASTFM_API_KEY`/`LASTFM_API_SECRET`), listening parties.
 
 ### Open branches (pushed, NOT merged) - the user decides when
+- **`feat/artist-glass`** (off main, 12 commits, e2e 131/132 in Chromium+WebKit, build passes): artist pages with extra images (`artist-images` action:
+  TIDAL profile art, Deezer exact-name match, Wikimedia Commons via MusicBrainz->Wikidata with credits, album covers), a palette taken from the
+  artist photo, glass panels + blurred cross-fading backdrop, wrapping gallery + lightbox, initials fallback on artist cards. Screenshots reviewed
+  (phone heroes good; gallery bounded after a fix). Not merged. Known: Deezer's CDN rate-blocks some IPs (proxy retries, client falls back),
+  same-name artists can get the wrong Deezer photo, `FANART_TV_KEY` (free key) would add HD backdrops. A real iPhone is unverified.
+- **Angular optimisation (audit `docs/angular-refactor-report-2026-10-04.md`)**: items #1-#7, #11, #13, #15 were being implemented on
+  `perf/startup-images`, `perf/player-page`, `perf/build-tests` and merged for verification on `perf/angular-optimisation` (workflow run
+  `wf_54b8d0e6-467`). Check `git branch -r | grep perf/` and the integration report before merging; none of it is on main. Deliberately NOT
+  done: #8 Angular 21/22 upgrade (drops iOS 15 officially; needs the owner's call on the iOS floor + a real-device test), #9 zoneless, #10
+  movie-page refactor, #12 cache collapse (the `fix/*thumbnail-cache` branches already touch the interceptor), #14 Vitest.
 - **`fix/music-thumbnail-cache`** (off music-tab, now mergeable) and **`fix/thumbnail-cache`** (off old main): cache interceptor LRU/no-empty-caching,
   immutable asset headers in `vercel.json`, image hints. They conflict in `cache.interceptor.ts` and `index.html`: keep the music version of the
   interceptor and both `preconnect` lines. Unverified on a live deployment (check `curl -I` for `immutable` on a hashed bundle).
