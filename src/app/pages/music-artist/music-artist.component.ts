@@ -117,11 +117,15 @@ export class MusicArtistComponent {
   /** Gallery pictures; a gallery of one is not shown. */
   readonly gallery = computed(() => (this.images().length >= 2 ? this.images() : []));
   protected readonly glassPanel = computed(() => (this.settings.reduceBlur() ? GLASS_PANEL_SOLID : GLASS_PANEL));
+  /** Portrait files that failed to load; the next candidate takes over. */
+  protected readonly badPortraits = signal<ReadonlySet<string>>(new Set());
   protected readonly portrait = computed(() => {
     const a = this.artist();
-    if (a?.picture) return tidalImage(a.picture, 750);
-    // TIDAL has no picture for this artist: the best photo we found stands in.
-    return this.images().find((i) => i.kind === 'photo')?.url ?? '';
+    const bad = this.badPortraits();
+    const own = a?.picture ? tidalImage(a.picture, 750) : '';
+    if (own && !bad.has(own)) return own;
+    // No TIDAL picture (or it failed): the best photo we found stands in.
+    return this.images().find((i) => i.kind === 'photo' && !bad.has(i.url))?.url ?? '';
   });
 
   readonly item = computed<MusicLibraryItem | null>(() => {
@@ -144,6 +148,10 @@ export class MusicArtistComponent {
     return this.library.favorites().tracks.filter((t) => t.artistId === a.id || !!t.artists?.some((x) => x.id === a.id)).filter((t) => !this.library.isBlocked(t));
   });
 
+  protected portraitFailed(url: string): void {
+    this.badPortraits.update((s) => new Set(s).add(url));
+  }
+
   constructor() {
     this.route.paramMap
       .pipe(
@@ -156,6 +164,7 @@ export class MusicArtistComponent {
           this.filter.set('ALBUMS');
           this.similar.set([]);
           this.images.set([]);
+          this.badPortraits.set(new Set());
           this.palette.set(null);
         }),
         switchMap((p) => {

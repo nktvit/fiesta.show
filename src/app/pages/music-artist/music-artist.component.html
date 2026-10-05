@@ -26,7 +26,7 @@
             <div class="mb-8 flex flex-col items-center gap-5 text-center sm:flex-row sm:items-end sm:text-left">
               @if (portrait()) {
                 <div class="flex-shrink-0 rounded-full border border-white/25 bg-white/10 p-1.5 shadow-[0_12px_40px_rgba(0,0,0,0.5)] backdrop-blur-md">
-                  <img [src]="portrait()" [alt]="a.name" width="176" height="176" data-artist-portrait
+                  <img [src]="portrait()" [alt]="a.name" width="176" height="176" data-artist-portrait (error)="portraitFailed(portrait())"
                     class="h-36 w-36 rounded-full bg-gray-800 object-cover md:h-44 md:w-44" />
                 </div>
               }

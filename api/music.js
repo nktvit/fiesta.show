@@ -253,7 +253,7 @@ async function img(q, res) {
     target = '';
   }
   if (!isTidalImageHost(target) && !isArtistImageHost(target)) throw httpError(400, 'bad_target');
-  const get = () => fetch(target, { headers: { 'User-Agent': 'StreamFiesta/1.0 (+https://streamfiesta.vercel.app)' } });
+  const get = () => fetch(target, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; StreamFiesta/1.0; +https://streamfiesta.vercel.app)' } });
   let r = await get();
   // Artist-photo CDNs (Deezer, Wikimedia) now and then answer 403/429/5xx under bursts: two retries.
   for (const wait of [400, 1200]) {
