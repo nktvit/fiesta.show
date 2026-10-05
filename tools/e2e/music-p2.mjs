@@ -274,8 +274,13 @@ const titles = (page) => page.evaluate(() => window.__music.player.queue().map((
   check('reduced motion: no slide animation on open', anims === 0, `${anims} animations`);
   await np.locator('button[aria-label="CD mode"]').click();
   await page.waitForTimeout(400);
-  const spin = await np.locator('[data-cover]').evaluate((e) => e.getAnimations().length);
-  check('reduced motion: CD mode never spins', spin === 0);
+  const spin = await np.locator('[data-cover]').evaluate((e) => ({ s: e.dataset.spinning, running: e.getAnimations().some((a) => a.playState === 'running') }));
+  const playingRm = await page.evaluate(() => window.__music.player.playing());
+  const tfAt = () => np.locator('[data-cover]').evaluate((e) => getComputedStyle(e).transform);
+  const tf1 = await tfAt();
+  await page.waitForTimeout(500);
+  const tf2 = await tfAt();
+  check('reduced motion: explicit CD mode still spins while playing (rotation advances)', playingRm && spin.s === 'true' && spin.running && tf1 !== 'none' && tf1 !== tf2, `${tf1} -> ${tf2}`);
   const wrap = await np.locator('[data-cover-wrap]').boundingBox();
   await page.mouse.move(wrap.x + wrap.width * 0.9, wrap.y + wrap.height * 0.1, { steps: 4 });
   check('reduced motion: no tilt', (await np.locator('[data-cover-wrap]').evaluate((e) => e.style.transform)) === '');
