@@ -47,11 +47,17 @@ Git worktrees for all of this are under `.claude/worktrees/` (`music-tab`, `merg
   (TIDAL profile art, Deezer exact-name match, Wikimedia Commons via MusicBrainz->Wikidata with credits, album covers), palette from the artist photo, glass
   panels + cross-fading backdrop, wrapping gallery + lightbox, initials fallback on artist cards. Known: Deezer's CDN rate-blocks some IPs (proxy retries,
   client falls back), same-name artists can get the wrong Deezer photo, `FANART_TV_KEY` (free key) would add HD backdrops, real iPhone unverified.
-- **Angular optimisation (audit `docs/angular-refactor-report-2026-10-04.md`)**: items #1-#7, #11, #13, #15 were being implemented on
-  `perf/startup-images`, `perf/player-page`, `perf/build-tests` and merged for verification on `perf/angular-optimisation` (workflow run
-  `wf_54b8d0e6-467`). Check `git branch -r | grep perf/` and the integration report before merging; none of it is on main. Deliberately NOT
-  done: #8 Angular 21/22 upgrade (drops iOS 15 officially; needs the owner's call on the iOS floor + a real-device test), #9 zoneless, #10
-  movie-page refactor, #12 cache collapse (the `fix/*thumbnail-cache` branches already touch the interceptor), #14 Vitest.
+- **Angular optimisation: DONE, verified, NOT merged** - branch `perf/angular-optimisation` (tip `a228cb3`; merges `perf/build-tests`, `perf/startup-images`,
+  `perf/player-page`; audit `docs/angular-refactor-report-2026-10-04.md`). Mergeable with caveats. Items done: #1 BMC widget async after render, #2
+  `@angular/animations` removed (67.9 kB lazy chunk gone), #3 hls.js + player listeners outside the zone + OnPush (change-detection ticks over 30 s of playback
+  943 -> 2), #4 TMDB image loader wired (srcset; the `.webp` URL swap dropped because TMDB 404s on it), #5 daily-deterministic hero + early trending fetch +
+  hero preload (mobile throttled LCP 10.9 s -> 2.8 s), #6 builders -> `@angular/build`, 0 build warnings, #7 the 5 MovieService specs fixed (526/526 pass),
+  #11 dev uses the same `/api/tmdb` as production via the proxy (TMDB key gone from the browser bundle), #13 NgClass -> [class] + subscription teardown, #15
+  `@defer` for comments and recommendations (movie-page chunk 116 -> 91 kB). Integration smoke 112/112 (Chromium+WebKit, 390/1280, music tab unharmed),
+  music e2e P10 108/108, P11 69/69, F0 36/36, player.mjs 9/10 same as baseline. Caveats: no real iOS 15 test; Vercel build not exercised (npm ci dry run only;
+  `bun.lockb` is stale); expect a small `index.html` conflict with `fix/*thumbnail-cache` (both add preconnect); minor: `window.__fiestaTrending` never cleared, dev
+  NG02966 priority warning on 17 images, CLS from the footer (1.0 mobile / 0.82 desktop) pre-exists and is untouched. Deliberately NOT done: #8 Angular 21/22 upgrade
+  (needs the owner's call on iOS 15), #9 zoneless, #10 movie-page refactor, #12 cache collapse, #14 Vitest.
 - **`fix/music-thumbnail-cache`** (off music-tab, now mergeable) and **`fix/thumbnail-cache`** (off old main): cache interceptor LRU/no-empty-caching,
   immutable asset headers in `vercel.json`, image hints. They conflict in `cache.interceptor.ts` and `index.html`: keep the music version of the
   interceptor and both `preconnect` lines. Unverified on a live deployment (check `curl -I` for `immutable` on a hashed bundle).
