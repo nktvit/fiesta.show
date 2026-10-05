@@ -12,6 +12,7 @@ import { NotfoundComponent } from '../../components/notfound/notfound.component'
 import { IMovie } from "../../interfaces/movie.interface";
 import { LoggerService } from "../../services/logger.service";
 import { InfiniteScrollDirective } from '../../directives/infinite-scroll.directive';
+import { genreGradient } from '../../utils/genre-style';
 
 @Component({
   selector: 'app-search-page',
@@ -35,6 +36,7 @@ export class SearchPageComponent {
       strictTemplates rejects. */
   query = '';
   genres: { id: number; name: string }[] = [];
+  readonly genreGradient = genreGradient;
 
   private movieService = inject(MovieService);
   private tmdbService = inject(TmdbService);
@@ -46,7 +48,7 @@ export class SearchPageComponent {
   ngOnInit(): void {
     // shareReplay(1) in TmdbService, and the navbar already fetches it on every
     // page — a cache hit, not a new request.
-    this.tmdbService.getGenres().subscribe(g => this.genres = g.slice(0, 10));
+    this.tmdbService.getGenres().subscribe(g => this.genres = g);
 
     this.route.queryParams.subscribe(params => {
       const query = params['query'];
