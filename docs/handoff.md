@@ -42,11 +42,11 @@ Git worktrees for all of this are under `.claude/worktrees/` (`music-tab`, `merg
   podcasts, Last.fm keys (`LASTFM_API_KEY`/`LASTFM_API_SECRET`), listening parties.
 
 ### Open branches (pushed, NOT merged) - the user decides when
-- **`feat/artist-glass`** (off main, 12 commits, e2e 131/132 in Chromium+WebKit, build passes): artist pages with extra images (`artist-images` action:
-  TIDAL profile art, Deezer exact-name match, Wikimedia Commons via MusicBrainz->Wikidata with credits, album covers), a palette taken from the
-  artist photo, glass panels + blurred cross-fading backdrop, wrapping gallery + lightbox, initials fallback on artist cards. Screenshots reviewed
-  (phone heroes good; gallery bounded after a fix). Not merged. Known: Deezer's CDN rate-blocks some IPs (proxy retries, client falls back),
-  same-name artists can get the wrong Deezer photo, `FANART_TV_KEY` (free key) would add HD backdrops. A real iPhone is unverified.
+- **`feat/artist-glass` - MERGED to main (`257ddf7`, 2026-10-05, user said "push it")** and verified live (artist page themed + glass panels, `artist-images`
+  returns 8 images from deezer/tidal/wikimedia for Daft Punk, no page errors, no overflow, Chromium + WebKit at 390/1280): artist pages with extra images
+  (TIDAL profile art, Deezer exact-name match, Wikimedia Commons via MusicBrainz->Wikidata with credits, album covers), palette from the artist photo, glass
+  panels + cross-fading backdrop, wrapping gallery + lightbox, initials fallback on artist cards. Known: Deezer's CDN rate-blocks some IPs (proxy retries,
+  client falls back), same-name artists can get the wrong Deezer photo, `FANART_TV_KEY` (free key) would add HD backdrops, real iPhone unverified.
 - **Angular optimisation (audit `docs/angular-refactor-report-2026-10-04.md`)**: items #1-#7, #11, #13, #15 were being implemented on
   `perf/startup-images`, `perf/player-page`, `perf/build-tests` and merged for verification on `perf/angular-optimisation` (workflow run
   `wf_54b8d0e6-467`). Check `git branch -r | grep perf/` and the integration report before merging; none of it is on main. Deliberately NOT
