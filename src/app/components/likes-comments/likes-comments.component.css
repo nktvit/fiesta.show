@@ -1,50 +1,3 @@
-@keyframes count-pop {
-  0% { transform: scale(1); }
-  40% { transform: scale(1.22); }
-  100% { transform: scale(1); }
-}
-
-/* The heart overshoots past full size before settling — the overshoot is what
-   makes it read as a spring rather than a fade. */
-@keyframes heart-spring {
-  0% { transform: scale(0.2); }
-  45% { transform: scale(1.35); }
-  70% { transform: scale(0.94); }
-  100% { transform: scale(1); }
-}
-
-.animate-count-pop {
-  display: inline-block;
-  animation: count-pop 0.4s ease-out;
-}
-
-/* Layout for .heart and its two svgs lives in the template as Tailwind
-   utilities (relative/inline-flex/shrink-0/absolute/inset-0) — only what
-   Tailwind can't express is here, which also keeps this file under the 2 kB
-   component-style budget. */
-.heart svg {
-  transition: opacity 0.18s ease-out, transform 0.45s cubic-bezier(0.17, 0.89, 0.32, 1.49);
-}
-
-.heart-fill {
-  opacity: 0;
-  transform: scale(0.2);
-}
-
-.heart.is-liked .heart-outline {
-  opacity: 0;
-  transform: scale(0.7);
-}
-
-.heart.is-liked .heart-fill {
-  opacity: 1;
-  transform: scale(1);
-}
-
-.heart.is-bursting .heart-fill {
-  animation: heart-spring 0.5s cubic-bezier(0.17, 0.89, 0.32, 1.49);
-}
-
 /* A spoiler-marked comment renders its own real text, blurred past legibility,
    rather than a placeholder bar — the reader still sees how long it is, and the
    layout doesn't jump when it's revealed. `overflow: hidden` matters: the blur
@@ -69,18 +22,4 @@
   filter: blur(6px);
   user-select: none;
   -webkit-user-select: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .animate-count-pop,
-  .heart.is-bursting .heart-fill {
-    animation: none;
-  }
-
-  /* The icons still need to swap — they just do it instantly. The heart burst
-     is suppressed in fireHearts(), which checks this same media query in JS
-     before it even fetches the confetti chunk. */
-  .heart svg {
-    transition: none;
-  }
 }

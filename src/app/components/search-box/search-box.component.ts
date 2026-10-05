@@ -1,10 +1,11 @@
-import { Component, ElementRef, NgZone, OnDestroy, ViewChild, inject, input } from '@angular/core';
+import { Component, DestroyRef, ElementRef, NgZone, OnDestroy, ViewChild, inject, input } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MovieService } from '../../services/movie.service';
 import { TmdbService, PersonSearchResult } from '../../services/tmdb.service';
-import { NgClass, TitleCasePipe } from '@angular/common';
+import { TitleCasePipe } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { LoggerService } from "../../services/logger.service";
-import { Subject, debounceTime, distinctUntilChanged, takeUntil, firstValueFrom } from 'rxjs';
+import { Subject, debounceTime, distinctUntilChanged, firstValueFrom } from 'rxjs';
 import { environment } from '../../../environments/environment';
 
 interface SearchSuggestion {
@@ -18,7 +19,7 @@ interface SearchSuggestion {
 
 @Component({
   selector: 'app-search-box',
-  imports: [NgClass, TitleCasePipe],
+  imports: [TitleCasePipe],
   templateUrl: './search-box.component.html',
   styleUrl: './search-box.component.css'
 })
@@ -59,7 +60,6 @@ export class SearchBoxComponent implements OnDestroy {
   private titleSuggestionsCount = 0;
   private lastSuggestionTerm = '';
   private searchTerms = new Subject<string>();
-  private destroy$ = new Subject<void>();
   protected selectedSuggestionIndex = -1;
 
   private movieService = inject(MovieService);
@@ -69,6 +69,7 @@ export class SearchBoxComponent implements OnDestroy {
   private logger = inject(LoggerService);
   private host = inject<ElementRef<HTMLElement>>(ElementRef);
   private zone = inject(NgZone);
+  private destroyRef = inject(DestroyRef);
 
   performSearch(prompt: string) {
     prompt = prompt.trim();
@@ -97,7 +98,7 @@ export class SearchBoxComponent implements OnDestroy {
 
   ngOnInit() {
     // populate the inputbox with the request in query
-    this.route.queryParams.subscribe(params => {
+    this.route.queryParams.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(params => {
       const query = params['query'];
       if (query) {
         this.searchTerm = query;
@@ -116,7 +117,7 @@ export class SearchBoxComponent implements OnDestroy {
     this.searchTerms.pipe(
       debounceTime(300), // Wait for 300ms pause
       distinctUntilChanged(), // Only emit if the value is different
-      takeUntil(this.destroy$) // Automatically unsubscribe when component is destroyed
+      takeUntilDestroyed(this.destroyRef) // Automatically unsubscribe when component is destroyed
     ).subscribe(term => {
       this.fetchSuggestions(term);
     });
@@ -127,8 +128,6 @@ export class SearchBoxComponent implements OnDestroy {
     // BMC widget hidden for the rest of the session.
     document.body.classList.remove('sf-suggest-open');
     this.removeViewportListeners();
-    this.destroy$.next();
-    this.destroy$.complete();
   }
 
   handleInput(e: any) {

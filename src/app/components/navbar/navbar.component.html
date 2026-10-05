@@ -3,13 +3,13 @@
      sm:+ only — /search renders its own field in the page body, so nothing here
      is ever the mobile search input. -->
 <header class="flex flex-wrap sm:justify-start sm:flex-nowrap w-full text-sm py-3 md:py-4 transition-all duration-500 motion-reduce:transition-none"
-  [ngClass]="transparent()
+  [class]="transparent()
     ? (scrolled ? 'bg-black/40 backdrop-blur-lg' : 'bg-gradient-to-b from-black/80 via-black/40 to-transparent')
     : 'bg-[#0a0a0a] border-b border-white/5'">
   <nav class="w-full mx-auto px-4 md:px-12 lg:px-16 flex flex-wrap basis-full items-center justify-between"
     aria-label="Global">
     <a class="sm:order-1 md:mb-0 flex-none text-xl font-bold tracking-tight" [routerLink]="['/']"
-      [ngClass]="transparent() ? 'text-white' : 'text-gray-900 dark:text-white'">
+      [class]="transparent() ? 'text-white' : 'text-gray-900 dark:text-white'">
       Stream Fiesta
     </a>
     <!-- Wrapper div, not the component host: search-box.component.css sets
@@ -23,17 +23,17 @@
     <div class="hidden sm:block sm:grow-0 sm:basis-auto sm:order-2">
       <div class="flex flex-col gap-4 mt-4 sm:flex-row sm:items-center sm:mt-0 sm:ps-6">
         <a class="font-medium text-sm transition-colors"
-          [ngClass]="currentPage === '/'
+          [class]="currentPage === '/'
             ? (transparent() ? 'text-white font-semibold' : 'text-indigo-600 dark:text-indigo-400 font-semibold')
             : (transparent() ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white')"
           [routerLink]="['/']">Home</a>
         <a class="font-medium text-sm transition-colors"
-          [ngClass]="currentPage === '/tv'
+          [class]="currentPage === '/tv'
             ? (transparent() ? 'text-white font-semibold' : 'text-indigo-600 dark:text-indigo-400 font-semibold')
             : (transparent() ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white')"
           [routerLink]="['/tv']">TV Shows</a>
         <a class="font-medium text-sm transition-colors"
-          [ngClass]="currentPage === '/top-rated'
+          [class]="currentPage === '/top-rated'
             ? (transparent() ? 'text-white font-semibold' : 'text-indigo-600 dark:text-indigo-400 font-semibold')
             : (transparent() ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white')"
           [routerLink]="['/top-rated']">Top Rated</a>
@@ -41,11 +41,11 @@
         <div class="relative genre-dropdown">
           <button (click)="isGenreOpen = !isGenreOpen"
             class="font-medium text-sm transition-colors flex items-center gap-1"
-            [ngClass]="currentPage.startsWith('/genre')
+            [class]="currentPage.startsWith('/genre')
               ? (transparent() ? 'text-white font-semibold' : 'text-indigo-600 dark:text-indigo-400 font-semibold')
               : (transparent() ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white')">
             Genres
-            <svg class="w-3.5 h-3.5 transition-transform" [ngClass]="{'rotate-180': isGenreOpen}" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+            <svg class="w-3.5 h-3.5 transition-transform" [class.rotate-180]="isGenreOpen" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
           </button>
           @if (isGenreOpen) {
             <div class="sm:absolute left-0 top-full mt-2 w-56 max-h-72 overflow-y-auto rounded-lg shadow-xl border py-1 z-50
@@ -61,7 +61,7 @@
           }
         </div>
         <a class="relative font-medium text-sm transition-colors"
-          [ngClass]="currentPage.startsWith('/music')
+          [class]="currentPage.startsWith('/music')
             ? (transparent() ? 'text-white font-semibold' : 'text-indigo-600 dark:text-indigo-400 font-semibold')
             : (transparent() ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white')"
           [routerLink]="['/music']">Music<span class="new-badge absolute -top-2.5 left-full ml-0.5 rounded-full bg-red-500 px-1.5 py-px text-[9px] font-bold uppercase leading-none tracking-wide text-white">New</span></a>

@@ -13,7 +13,7 @@
            transition-[background-color,box-shadow] duration-200 ease-out
            focus-within:ring-2 focus-within:ring-indigo-500
            motion-reduce:transition-none sm:h-12"
-    [ngClass]="surface() === 'glass'
+    [class]="surface() === 'glass'
       ? 'bg-black/40 ring-white/15 backdrop-blur-md hover:bg-black/50 focus-within:bg-black/50'
       : 'bg-[#121212] ring-white/10 hover:bg-[#161616] focus-within:bg-[#161616]'">
 
@@ -58,7 +58,7 @@
       [attr.aria-expanded]="(showSuggestions || isLoadingSuggestions) && isFocused"
       [attr.aria-controls]="showSuggestions && isFocused && suggestions.length > 0 ? uid + '-listbox' : null"
       [attr.aria-activedescendant]="showSuggestions && selectedSuggestionIndex >= 0 ? uid + '-opt-' + selectedSuggestionIndex : null"
-      [ngClass]="searchTerm.length > 0 ? 'pr-14 sm:pr-[5.5rem]' : 'pr-4 sm:pr-12'"
+      [class]="searchTerm.length > 0 ? 'pr-14 sm:pr-[5.5rem]' : 'pr-4 sm:pr-12'"
       class="h-full w-full appearance-none border-0 bg-transparent pl-14 text-base text-white
              caret-indigo-400 outline-none placeholder:text-gray-400
              focus:outline-none focus:ring-0
@@ -147,13 +147,13 @@
               role="option"
               [attr.aria-selected]="i === selectedSuggestionIndex"
               (mousedown)="selectSuggestion(suggestion)"
-              [ngClass]="{'bg-indigo-500/15 ring-1 ring-inset ring-indigo-400/25': i === selectedSuggestionIndex}"
+              [class]="i === selectedSuggestionIndex ? 'bg-indigo-500/15 ring-1 ring-inset ring-indigo-400/25' : ''"
               class="suggestion-item flex min-h-[4rem] cursor-pointer items-center gap-3 px-3 py-2
                      transition-colors duration-150 hover:bg-white/5 motion-reduce:transition-none">
               <!-- Poster / avatar thumbnail. People are a true 40x40 circle now;
                    rounded-full on the old 40x56 box rendered an ellipse. -->
               <div class="flex-shrink-0 overflow-hidden bg-white/5 ring-1 ring-inset ring-white/10"
-                [ngClass]="suggestion.kind === 'person' ? 'h-10 w-10 rounded-full' : 'h-14 w-10 rounded-md'">
+                [class]="suggestion.kind === 'person' ? 'h-10 w-10 rounded-full' : 'h-14 w-10 rounded-md'">
                 @if (suggestion.poster) {
                   <img [src]="suggestion.poster" [alt]="suggestion.title" class="w-full h-full object-cover"
                     (error)="suggestion.poster = null"

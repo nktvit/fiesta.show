@@ -1,7 +1,6 @@
 import { Component, inject, input, HostListener } from '@angular/core';
 import { SearchBoxComponent } from '../search-box/search-box.component';
 import { RouterLink, Router, NavigationEnd } from '@angular/router';
-import { NgClass } from '@angular/common';
 import { filter } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { LoggerService } from "../../services/logger.service";
@@ -9,7 +8,7 @@ import { TmdbService } from "../../services/tmdb.service";
 
 @Component({
   selector: 'app-navbar',
-  imports: [SearchBoxComponent, RouterLink, NgClass],
+  imports: [SearchBoxComponent, RouterLink],
   templateUrl: './navbar.component.html',
   styleUrl: './navbar.component.css'
 })
