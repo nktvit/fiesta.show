@@ -9,10 +9,14 @@
     <section class="relative w-full h-[80vh] sm:h-[85vh] md:h-[90vh] overflow-hidden">
       <!-- Backdrop -->
       <div class="absolute inset-0">
-        <img [src]="heroMovie.Backdrop || heroMovie.Poster"
+        <!-- fill: the section has a fixed height, so the box is sized before the
+             image arrives (no layout shift). priority: fetchpriority=high + eager. -->
+        <img [ngSrc]="heroMovie.Backdrop || heroMovie.Poster"
+          [loaderParams]="{ kind: 'backdrop' }"
           [alt]="heroMovie.Title"
-          class="w-full h-full object-cover object-top scale-105"
-          loading="eager">
+          fill priority sizes="(max-width: 640px) 60vw, 100vw"
+          [disableOptimizedSrcset]="!heroOptimizable"
+          class="w-full h-full object-cover object-top scale-105">
       </div>
 
       <!-- Cinematic gradient overlays -->

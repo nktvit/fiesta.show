@@ -17,7 +17,8 @@
         [alt]="movie().Title || 'Movie Poster'"
         fill
         [priority]="priority()"
-        sizes="(max-width: 640px) 45vw, (max-width: 1024px) 25vw, 15vw"
+        [sizes]="sizes()"
+        [disableOptimizedSrcset]="!optimizable"
         (load)="onImageLoad()"
         (error)="onImageError()"
         class="rounded-lg object-cover group-hover:opacity-90 transition-opacity duration-200"

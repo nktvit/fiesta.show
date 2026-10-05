@@ -46,6 +46,7 @@
           class="collection-card w-[120px] sm:w-[140px] md:w-[170px] lg:w-[190px] flex-shrink-0"
           [class.is-selected]="isSelected(i)">
           <app-poster
+            sizes="(min-width: 1024px) 190px, (min-width: 768px) 170px, (min-width: 640px) 140px, 120px"
             [movie]="movie"
             [displayTitle]="true"
             [priority]="i < priorityCount()"

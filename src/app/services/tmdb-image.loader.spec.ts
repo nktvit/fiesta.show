@@ -1,84 +1,53 @@
 import { tmdbImageLoader } from './tmdb-image.loader';
 
+const POSTER = 'https://image.tmdb.org/t/p/w342/abc123.jpg';
+const BACKDROP = 'https://image.tmdb.org/t/p/w1280/bd456.jpg';
+
 describe('tmdbImageLoader', () => {
-  describe('TMDB URLs', () => {
-    it('converts .jpg to .webp', () => {
-      const result = tmdbImageLoader({
-        src: 'https://image.tmdb.org/t/p/w342/abc123.jpg',
-        width: 342,
+  describe('poster tiers', () => {
+    // width requested -> folder served (posters may be up to ~30% soft, see POSTER_SOFTNESS)
+    const cases: [number, string][] = [
+      [92, 'w92'], [100, 'w92'], [154, 'w154'], [185, 'w154'], [342, 'w342'], [360, 'w342'],
+      [500, 'w342'], [780, 'w780'],
+      // posters stop at w780: no w1280 and never "original"
+      [1280, 'w780'], [3840, 'w780'],
+    ];
+    for (const [width, tier] of cases) {
+      it(`maps width ${width} to ${tier}`, () => {
+        expect(tmdbImageLoader({ src: POSTER, width })).toBe(`https://image.tmdb.org/t/p/${tier}/abc123.jpg`);
       });
-      expect(result).toContain('.webp');
-      expect(result).not.toContain('.jpg');
-    });
+    }
 
-    it('maps width 100 to w154 tier', () => {
-      const result = tmdbImageLoader({
-        src: 'https://image.tmdb.org/t/p/w342/abc123.jpg',
-        width: 100,
-      });
-      expect(result).toContain('/w154/');
+    it('defaults to w342 when no width is given', () => {
+      expect(tmdbImageLoader({ src: POSTER })).toContain('/w342/');
     });
+  });
 
-    it('maps width 185 to w185 tier', () => {
-      const result = tmdbImageLoader({
-        src: 'https://image.tmdb.org/t/p/w342/abc123.jpg',
-        width: 185,
+  describe('backdrop tiers', () => {
+    const cases: [number, string][] = [[92, 'w780'], [300, 'w780'], [342, 'w780'], [780, 'w780'], [1280, 'w1280'], [3840, 'w1280']];
+    for (const [width, tier] of cases) {
+      it(`maps width ${width} to ${tier}`, () => {
+        expect(tmdbImageLoader({ src: BACKDROP, width, loaderParams: { kind: 'backdrop' } }))
+          .toBe(`https://image.tmdb.org/t/p/${tier}/bd456.jpg`);
       });
-      expect(result).toContain('/w185/');
-    });
+    }
+  });
 
-    it('maps width 342 to w342 tier', () => {
-      const result = tmdbImageLoader({
-        src: 'https://image.tmdb.org/t/p/w342/abc123.jpg',
-        width: 342,
-      });
-      expect(result).toContain('/w342/');
-    });
-
-    it('maps width 400 to w500 tier', () => {
-      const result = tmdbImageLoader({
-        src: 'https://image.tmdb.org/t/p/w342/abc123.jpg',
-        width: 400,
-      });
-      expect(result).toContain('/w500/');
-    });
-
-    it('maps width 800 to w1280 tier', () => {
-      const result = tmdbImageLoader({
-        src: 'https://image.tmdb.org/t/p/w342/abc123.jpg',
-        width: 800,
-      });
-      expect(result).toContain('/w1280/');
-    });
-
-    it('preserves the filename', () => {
-      const result = tmdbImageLoader({
-        src: 'https://image.tmdb.org/t/p/w342/buPFnHZ3xQy6vZEHxbHgL1Pc6CR.jpg',
-        width: 185,
-      });
-      expect(result).toContain('buPFnHZ3xQy6vZEHxbHgL1Pc6CR.webp');
-    });
-
-    it('constructs a valid TMDB URL', () => {
-      const result = tmdbImageLoader({
-        src: 'https://image.tmdb.org/t/p/w342/abc123.jpg',
-        width: 185,
-      });
-      expect(result).toBe('https://image.tmdb.org/t/p/w185/abc123.webp');
-    });
+  it('keeps the file extension (TMDB 404s on rewritten .webp paths)', () => {
+    const result = tmdbImageLoader({ src: POSTER, width: 185 });
+    expect(result).toBe('https://image.tmdb.org/t/p/w185/abc123.jpg');
+    expect(result).not.toContain('.webp');
   });
 
   describe('non-TMDB URLs', () => {
     it('passes Amazon OMDB URLs through unchanged', () => {
       const amazonUrl = 'https://m.media-amazon.com/images/M/MV5BMjE.jpg';
-      const result = tmdbImageLoader({ src: amazonUrl, width: 200 });
-      expect(result).toBe(amazonUrl);
+      expect(tmdbImageLoader({ src: amazonUrl, width: 200 })).toBe(amazonUrl);
     });
 
     it('passes arbitrary URLs through unchanged', () => {
       const url = 'https://example.com/poster.jpg';
-      const result = tmdbImageLoader({ src: url, width: 300 });
-      expect(result).toBe(url);
+      expect(tmdbImageLoader({ src: url, width: 300 })).toBe(url);
     });
   });
 });

@@ -1,17 +1,18 @@
 import {Component, inject} from '@angular/core'
 import {Title, Meta} from '@angular/platform-browser'
 import {Router, RouterLink} from '@angular/router'
-import {DecimalPipe} from '@angular/common'
+import {DecimalPipe, NgOptimizedImage} from '@angular/common'
 import {NavbarComponent} from '../../components/navbar/navbar.component'
 import {MovieCollectionComponent} from "../../components/movie-collection/movie-collection.component"
 import {IMovie} from "../../interfaces/movie.interface"
 import {TmdbService} from "../../services/tmdb.service"
+import {tmdbIsImage} from "../../services/tmdb-image.loader"
 
 @Component({
   selector: 'app-main',
   templateUrl: './main.component.html',
   styleUrl: './main.component.css',
-  imports: [NavbarComponent, MovieCollectionComponent, DecimalPipe, RouterLink]
+  imports: [NavbarComponent, MovieCollectionComponent, DecimalPipe, RouterLink, NgOptimizedImage]
 })
 export class MainComponent {
   heroMovie: IMovie | null = null;
@@ -41,14 +42,6 @@ export class MainComponent {
         this.heroMovie = candidates[Math.floor(Math.random() * candidates.length)] || movies[0];
         this.trendingMovies = movies.slice(0, 20);
 
-        // Preload hero backdrop
-        if (this.heroMovie?.Backdrop) {
-          const link = document.createElement('link');
-          link.rel = 'preload';
-          link.as = 'image';
-          link.href = this.heroMovie.Backdrop;
-          document.head.appendChild(link);
-        }
       }
       this.loading = false;
     });
@@ -70,6 +63,10 @@ export class MainComponent {
     });
 
     this.tmdb.getGenres().subscribe(g => this.genres = g);
+  }
+
+  get heroOptimizable(): boolean {
+    return tmdbIsImage(this.heroMovie?.Backdrop || this.heroMovie?.Poster);
   }
 
   playHero() {
