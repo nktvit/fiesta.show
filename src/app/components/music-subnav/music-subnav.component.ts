@@ -5,7 +5,11 @@ import { IsActiveMatchOptions, RouterLink, RouterLinkActive } from '@angular/rou
 const EXACT: IsActiveMatchOptions = { paths: 'exact', queryParams: 'ignored', matrixParams: 'ignored', fragment: 'ignored' };
 const PREFIX: IsActiveMatchOptions = { paths: 'subset', queryParams: 'ignored', matrixParams: 'ignored', fragment: 'ignored' };
 
-/** Sections inside /music: Home, Explore, Library, Recent, Settings. Sits under the navbar on every music page. */
+/**
+ * Sections inside /music: Home, Explore, Recent, Settings. Sits under the navbar on every music page.
+ * The Library tab is hidden until visitors can sign in: its data is per-device only. The route and the
+ * 'Your playlists' rail on the music home still reach it, so session playlists stay usable.
+ */
 @Component({
   selector: 'app-music-subnav',
   imports: [RouterLink, RouterLinkActive],
@@ -16,7 +20,6 @@ export class MusicSubnavComponent {
   protected readonly links = [
     { label: 'Home', path: '/music', match: EXACT },
     { label: 'Explore', path: '/music/explore', match: PREFIX },
-    { label: 'Library', path: '/music/library', match: PREFIX },
     { label: 'Recent', path: '/music/recent', match: PREFIX },
     { label: 'Settings', path: '/music/settings', match: PREFIX },
   ];
