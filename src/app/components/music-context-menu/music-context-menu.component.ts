@@ -11,6 +11,7 @@ import { MusicToastService } from '../../services/music-toast.service';
 import { MusicUiService } from '../../services/music-ui.service';
 import { MusicLibraryItem, MusicService, MusicTrack } from '../../services/music.service';
 import { musicShareTarget, shareMusicTarget } from '../../utils/music-share-target';
+import { musicScrollLock } from '../../utils/music-scroll-lock';
 
 interface MenuEntry {
   id: string;
@@ -30,7 +31,7 @@ function plural(n: number, one: string, many: string): string {
 /**
  * Global host for track and card context menus (ui.contextMenu()): a popover at
  * the pointer on desktop, a bottom action sheet on phones. role=menu with arrow
- * key navigation; closes on Escape, outside click, scroll and resize.
+ * key navigation; locks page scroll while open; closes on Escape, outside click and resize.
  */
 @Component({
   selector: 'app-music-context-menu',
@@ -86,26 +87,17 @@ export class MusicContextMenuComponent {
   });
 
   constructor() {
-    // The user scrolling (wheel / touch drag / scroll keys) or turning the device moves the anchor away: close.
-    // Plain `scroll` events are not used: late-loading images shift the page without any user input.
+    // While a menu is open the page behind it is locked (it cannot scroll, so the anchor never moves
+    // away from the menu); the lock is released when the menu closes. Turning the device still closes it.
     effect((onCleanup) => {
       if (!this.ui.contextMenu() || typeof window === 'undefined') return;
-      const outside = (e: Event) => !(e.target instanceof Element && e.target.closest('[role=menu]'));
-      const onUser = (e: Event) => { if (outside(e)) this.ui.closeContextMenu(); };
-      const onKey = (e: KeyboardEvent) => {
-        if (['PageDown', 'PageUp', 'Home', 'End', ' '].includes(e.key) && outside(e)) this.ui.closeContextMenu();
-      };
+      const release = musicScrollLock.lock();
       const width = window.innerWidth;
       const onResize = () => { if (window.innerWidth !== width) this.ui.closeContextMenu(); };
-      window.addEventListener('wheel', onUser, { capture: true, passive: true });
-      window.addEventListener('touchmove', onUser, { capture: true, passive: true });
-      window.addEventListener('keydown', onKey, true);
       window.addEventListener('resize', onResize);
       onCleanup(() => {
-        window.removeEventListener('wheel', onUser, true);
-        window.removeEventListener('touchmove', onUser, true);
-        window.removeEventListener('keydown', onKey, true);
         window.removeEventListener('resize', onResize);
+        release();
       });
     });
   }

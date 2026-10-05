@@ -206,10 +206,20 @@ await menu().waitFor({ timeout: 3000 }).catch(() => {});
 const cardLabels = await menuLabels();
 check('album card menu: Play, Shuffle, Add to queue, Like, Add to playlist…, Start radio, Share, Pin, Hide', ['Play', 'Shuffle', 'Add to queue', 'Like', 'Add to playlist…', 'Start radio', 'Share', 'Pin', 'Hide album'].every((l) => cardLabels.includes(l)) && cardLabels.includes('Download') === downloadsOn, cardLabels.join(' | '));
 await shot(page, 'card-menu');
+// The menu is already open here, so the page is pinned: body.style.top holds -<scroll offset>.
+const pinned = () => M(page, () => ({ cls: document.body.classList.contains('music-overlay-open'), top: document.body.style.top }));
+const before = await pinned();
 await page.mouse.move(640, 450);
-await page.mouse.wheel(0, 120);
+await page.mouse.wheel(0, 400);
 await wait(page, 300);
-check('scrolling the page closes the menu', (await menu().count()) === 0);
+const afterWheel = await pinned();
+check('menu open: page is locked (body.music-overlay-open) and does not scroll, the menu stays open',
+  (await menu().count()) === 1 && before.cls && afterWheel.cls && before.top === afterWheel.top, JSON.stringify({ before, afterWheel }));
+await page.keyboard.press('Escape');
+await wait(page, 450);
+const y0 = -parseFloat(before.top || '0');
+check('closing the menu releases the page lock and restores the scroll position',
+  (await menu().count()) === 0 && !(await pinned()).cls && Math.abs((await M(page, () => window.scrollY)) - y0) <= 1, JSON.stringify({ y0, y: await M(page, () => window.scrollY) }));
 await card.hover();
 await cardKebab.click();
 await menu().waitFor({ timeout: 3000 }).catch(() => {});
@@ -536,6 +546,7 @@ await mp.fill('input[name=q]', QUERY); await mp.press('input[name=q]', 'Enter');
 await mp.waitForSelector('app-music-track-row', { timeout: 20000 });
 await mp.locator('app-music-track-row').first().locator('button[aria-label^="More options for "]').tap();
 await mp.locator('[role=menu]').waitFor({ timeout: 3000 }).catch(() => {});
+await mp.waitForTimeout(450); // the sheet slides up for ~260 ms
 const sheet = await mp.locator('[role=menu]').evaluate((e) => { const r = e.getBoundingClientRect(); const items = [...e.querySelectorAll('[role=menuitem]')].map((i) => i.getBoundingClientRect().height); return { bottom: Math.round(r.bottom), vh: innerHeight, left: Math.round(r.left), w: Math.round(r.width), minH: Math.min(...items) }; });
 check('phone: the menu is a bottom action sheet with >= 40px items', sheet.bottom === sheet.vh && sheet.left === 0 && sheet.w === 390 && sheet.minH >= 40, JSON.stringify(sheet));
 await shot(mp, 'phone-sheet');
