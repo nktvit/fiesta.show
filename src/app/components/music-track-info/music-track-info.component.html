@@ -1,0 +1,16 @@
+<app-music-dialog title="Track info" [open]="ui.trackInfo() !== null" (openChange)="!$event && ui.closeTrackInfo()" size="md">
+  @if (ui.trackInfo()) {
+    <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 pb-2 text-sm">
+      @for (r of rows(); track r.label) {
+        <dt class="text-gray-400">{{ r.label }}</dt>
+        <dd class="min-w-0 break-words" [title]="r.value">
+          @if (r.link) {
+            <a [routerLink]="r.link" (click)="openLink()" class="text-white hover:underline focus:outline-none focus-visible:underline">{{ r.value }}</a>
+          } @else {
+            {{ r.value }}
+          }
+        </dd>
+      }
+    </dl>
+  }
+</app-music-dialog>

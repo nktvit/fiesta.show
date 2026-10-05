@@ -1,0 +1,20 @@
+@if (ui.contextMenu()) {
+  <div class="fixed inset-0 z-[60]" [class.bg-black/60]="sheet()" (click)="ui.closeContextMenu()" (contextmenu)="$event.preventDefault(); ui.closeContextMenu()" aria-hidden="true"></div>
+  <div role="menu" [attr.aria-label]="'Actions for ' + heading()" cdkTrapFocus [cdkTrapFocusAutoCapture]="true" (keydown)="onKeydown($event)"
+    class="fixed z-[60] border border-white/10 bg-[#1f1f1f] text-sm text-white shadow-2xl"
+    [class]="sheet()
+      ? 'inset-x-0 bottom-0 max-h-[75vh] overflow-y-auto overscroll-contain rounded-t-2xl pb-[env(safe-area-inset-bottom,0px)]'
+      : 'w-56 rounded-lg py-1'"
+    [style.left.px]="sheet() ? null : pos().left" [style.top.px]="sheet() ? null : pos().top">
+    @if (sheet()) {
+      <p class="truncate px-4 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide text-gray-400" [title]="heading()">{{ heading() }}</p>
+    }
+    @for (e of entries(); track e.id) {
+      @if (e.divider) {
+        <div class="my-1 border-t border-white/10" role="separator"></div>
+      }
+      <button type="button" role="menuitem" (click)="choose(e)" [attr.data-action]="e.id"
+        class="flex h-11 w-full items-center px-4 text-left hover:bg-white/10 focus:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400 sm:h-10">{{ e.label }}</button>
+    }
+  </div>
+}

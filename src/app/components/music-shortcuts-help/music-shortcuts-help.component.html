@@ -1,0 +1,26 @@
+<app-music-dialog title="Keyboard shortcuts" [open]="ui.shortcutsHelpOpen()" (openChange)="!$event && ui.closeShortcutsHelp()" size="lg">
+  <div class="space-y-5 pb-2">
+    @for (g of groups(); track g.name) {
+      <section [attr.aria-label]="g.name">
+        <h3 class="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">{{ g.name }}</h3>
+        <dl>
+          @for (r of g.rows; track r.id) {
+            <div class="flex items-center justify-between gap-4 border-b border-white/5 py-2 text-sm last:border-b-0">
+              <dt class="min-w-0 truncate" [title]="r.label">{{ r.label }}</dt>
+              <dd class="flex flex-shrink-0 items-center gap-1" [attr.data-shortcut]="r.id">
+                @for (k of r.keys; track $index) {
+                  <kbd class="min-w-[1.75rem] rounded-md border border-white/15 bg-white/10 px-2 py-0.5 text-center font-sans text-xs text-white">{{ k }}</kbd>
+                }
+              </dd>
+            </div>
+          }
+        </dl>
+      </section>
+    }
+    <p class="text-xs text-gray-400">Shortcuts work on the music pages, and while a track is loaded elsewhere (not on movie or TV pages). They pause while you type.</p>
+  </div>
+  <div dialogFooter class="flex justify-end border-t border-white/10 px-5 py-3">
+    <button type="button" (click)="customize()"
+      class="h-10 rounded-full bg-white/10 px-4 text-sm font-medium text-white hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Customize shortcuts</button>
+  </div>
+</app-music-dialog>

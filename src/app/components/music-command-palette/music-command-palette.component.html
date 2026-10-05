@@ -1,0 +1,53 @@
+<app-music-dialog title="Command palette" [open]="ui.paletteOpen()" (openChange)="!$event && ui.closePalette()" size="lg">
+  <div class="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 focus-within:border-indigo-400">
+    <svg class="h-5 w-5 flex-shrink-0 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.500-3.500" /></svg>
+    <input #input cdkFocusInitial type="text" role="combobox" autocomplete="off" autocapitalize="off" spellcheck="false"
+      aria-label="Search commands, music and settings" aria-autocomplete="list" aria-haspopup="listbox" aria-expanded="true"
+      aria-controls="music-palette-list" [attr.aria-activedescendant]="options().length ? optionId(active()) : null"
+      [value]="query()" (input)="onInput($event)" (keydown)="onKeydown($event)"
+      placeholder="Type a command, search music, or > for settings"
+      class="h-12 min-w-0 flex-1 bg-transparent text-base text-white placeholder-gray-500 focus:outline-none" />
+  </div>
+
+  <p class="sr-only" role="status" aria-live="polite">{{ status() }}</p>
+
+  <div id="music-palette-list" role="listbox" aria-label="Results" class="mt-2 max-h-[50vh] overflow-y-auto overscroll-contain pb-2">
+    @for (s of sections(); track s.title) {
+      <div role="group" [attr.aria-label]="s.title">
+        <p class="px-2 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wide text-gray-400" aria-hidden="true">{{ s.title }}</p>
+        @for (o of s.options; track o.index) {
+          <div role="option" [id]="optionId(o.index)" [attr.aria-selected]="o.index === active()"
+            (click)="choose(o)" (mousemove)="active.set(o.index)"
+            class="flex min-h-[2.75rem] cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5"
+            [class]="o.index === active() ? 'bg-white/10' : ''">
+            @if (cover(o); as c) {
+              <img [src]="c" alt="" width="36" height="36" loading="lazy"
+                class="h-9 w-9 flex-shrink-0 bg-gray-800 object-cover" [class]="o.kind === 'artist' ? 'rounded-full' : 'rounded'" />
+            }
+            <span class="min-w-0 flex-1">
+              <span class="block truncate text-sm text-white" [title]="title(o)">{{ title(o) }}</span>
+              @if (subtitle(o)) {
+                <span class="block truncate text-xs text-gray-400" [title]="subtitle(o)">{{ subtitle(o) }}</span>
+              }
+            </span>
+            @if (o.kind === 'command' && o.hint) {
+              <kbd class="flex-shrink-0 rounded-md border border-white/15 bg-white/10 px-2 py-0.5 font-sans text-xs text-gray-300">{{ o.hint }}</kbd>
+            }
+          </div>
+        }
+      </div>
+    }
+    @if (!options().length) {
+      <p class="px-2 py-6 text-center text-sm text-gray-400" [attr.aria-busy]="searching()">{{ status() }}</p>
+    } @else if (searching()) {
+      <div class="space-y-2 px-2 pt-3" aria-busy="true" aria-hidden="true">
+        <div class="h-9 animate-pulse rounded bg-white/5 motion-reduce:animate-none"></div>
+        <div class="h-9 animate-pulse rounded bg-white/5 motion-reduce:animate-none"></div>
+      </div>
+    }
+  </div>
+
+  <p class="hidden border-t border-white/10 pt-2 text-xs text-gray-400 sm:block">
+    <kbd class="font-sans">↑</kbd> <kbd class="font-sans">↓</kbd> navigate · <kbd class="font-sans">Enter</kbd> select · <kbd class="font-sans">Esc</kbd> close · <kbd class="font-sans">&gt;</kbd> settings
+  </p>
+</app-music-dialog>

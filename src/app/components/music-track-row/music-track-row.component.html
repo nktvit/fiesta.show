@@ -1,7 +1,23 @@
-<div class="group flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-white/5 motion-reduce:transition-none"
-  [class]="current() ? 'bg-white/5' : ''">
-  <button type="button" (click)="play()"
-    class="relative flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded bg-gray-800 text-gray-400"
+<div class="group flex items-center gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-white/5 motion-reduce:transition-none [-webkit-touch-callout:none] sm:gap-3"
+  [class]="selected() ? 'bg-indigo-500/15' : current() ? 'bg-white/5' : ''"
+  [attr.data-selected]="selected() || null"
+  (contextmenu)="onContextMenu($event)"
+  (pointerdown)="onPointerDown($event)" (pointermove)="onPointerMove($event)"
+  (pointerup)="cancelPress()" (pointercancel)="cancelPress()" (pointerleave)="cancelPress()">
+  <ng-content select="[rowHandle]" />
+
+  @if (selectable()) {
+    <label class="flex-shrink-0 items-center justify-center focus-within:flex md:w-7 md:focus-within:opacity-100"
+      [class]="selectMode() ? 'flex h-10 w-10 md:w-7' : 'hidden h-10 w-10 md:flex md:w-7 md:opacity-0 md:group-hover:opacity-100'"
+      data-no-press>
+      <input type="checkbox" [checked]="selected()" (click)="onCheckbox($event)"
+        [attr.aria-label]="'Select ' + track().title"
+        class="h-5 w-5 cursor-pointer rounded border-white/30 bg-white/10 accent-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" />
+    </label>
+  }
+
+  <button type="button" (click)="play()" data-cover
+    class="relative flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded bg-gray-800 text-gray-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
     [attr.aria-label]="(active() ? 'Pause ' : 'Play ') + track().title">
     @if (showCover() && track().cover) {
       <img [src]="track().cover" alt="" width="48" height="48" loading="lazy" class="h-full w-full object-cover" />
@@ -19,15 +35,31 @@
   </button>
 
   <div class="min-w-0 flex-1">
-    <p class="truncate text-sm font-medium" [class.text-indigo-400]="current()">
-      {{ track().title }}
+    <p class="flex items-center gap-1.5 text-sm font-medium" [class.text-indigo-400]="current()">
+      @if (current()) {
+        <!-- Three bars. Moving while playing; a static pair of frames under reduced motion. -->
+        <span class="flex-shrink-0" data-playing-indicator [attr.data-state]="active() ? 'playing' : 'paused'">
+          <span class="sr-only">Now playing</span>
+          @if (active()) {
+            <svg class="h-3.5 w-3.5 motion-reduce:hidden" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
+              <rect x="1" y="2" width="3" height="10" rx="1"><animate attributeName="height" values="4;10;5;9;4" dur="0.9s" repeatCount="indefinite" /><animate attributeName="y" values="10;2;9;3;10" dur="0.9s" repeatCount="indefinite" /></rect>
+              <rect x="5.5" y="2" width="3" height="10" rx="1"><animate attributeName="height" values="9;4;10;5;9" dur="0.9s" repeatCount="indefinite" /><animate attributeName="y" values="3;10;2;9;3" dur="0.9s" repeatCount="indefinite" /></rect>
+              <rect x="10" y="2" width="3" height="10" rx="1"><animate attributeName="height" values="5;9;4;10;5" dur="0.9s" repeatCount="indefinite" /><animate attributeName="y" values="9;3;10;2;9" dur="0.9s" repeatCount="indefinite" /></rect>
+            </svg>
+            <svg class="hidden h-3.5 w-3.5 motion-reduce:block" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true"><rect x="1" y="5" width="3" height="7" rx="1" /><rect x="5.500" y="2" width="3" height="10" rx="1" /><rect x="10" y="7" width="3" height="5" rx="1" /></svg>
+          } @else {
+            <svg class="h-3.5 w-3.5" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true"><rect x="1" y="5" width="3" height="7" rx="1" /><rect x="5.500" y="2" width="3" height="10" rx="1" /><rect x="10" y="7" width="3" height="5" rx="1" /></svg>
+          }
+        </span>
+      }
+      <span class="min-w-0 truncate" [title]="track().title">{{ track().title }}</span>
       @if (track().explicit) {
-        <span class="ml-1 rounded-sm bg-white/15 px-1 text-[10px] font-semibold text-gray-300" title="Explicit">E</span>
+        <span class="flex-shrink-0 rounded-sm bg-white/15 px-1 text-[10px] font-semibold text-gray-300" title="Explicit">E</span>
       }
     </p>
     <p class="truncate text-xs text-gray-400">
       @if (track().artistId) {
-        <a [routerLink]="['/music/artist', track().artistId]" class="hover:text-white hover:underline">{{ track().artist }}</a>
+        <a [routerLink]="['/music/artist', track().artistId]" class="hover:text-white hover:underline focus:outline-none focus-visible:underline" [title]="track().artist">{{ track().artist }}</a>
       } @else {
         {{ track().artist }}
       }
@@ -35,8 +67,17 @@
   </div>
 
   @if (showAlbum() && track().albumId) {
-    <a [routerLink]="['/music/album', track().albumId]"
-      class="hidden w-1/4 truncate text-xs text-gray-400 hover:text-white hover:underline md:block">{{ track().album }}</a>
+    <a [routerLink]="['/music/album', track().albumId]" [title]="track().album"
+      class="hidden w-1/4 truncate text-xs text-gray-400 hover:text-white hover:underline focus:outline-none focus-visible:underline md:block">{{ track().album }}</a>
   }
+
+  <span data-no-press class="flex-shrink-0">
+    <app-music-like-button [item]="item()" size="sm" />
+  </span>
   <span class="w-10 flex-shrink-0 text-right text-xs tabular-nums text-gray-400">{{ time(track().duration) }}</span>
+  <button type="button" (click)="onKebab($event)" data-no-press
+    [attr.aria-label]="'More options for ' + track().title" aria-haspopup="menu" [attr.aria-expanded]="menuOpen()"
+    class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+    <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.600" /><circle cx="12" cy="12" r="1.600" /><circle cx="12" cy="19" r="1.600" /></svg>
+  </button>
 </div>

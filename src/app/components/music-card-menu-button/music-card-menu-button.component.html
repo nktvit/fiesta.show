@@ -1,0 +1,5 @@
+<button type="button" (click)="openMenu($event)" [attr.aria-label]="'More options for ' + name()" aria-haspopup="menu" [attr.aria-expanded]="open()"
+  class="flex h-10 w-10 items-center justify-center rounded-full bg-black/60 text-white transition-opacity hover:bg-black/80 focus:outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-indigo-400 motion-reduce:transition-none sm:opacity-0 sm:group-hover:opacity-100"
+  [class]="open() ? 'sm:opacity-100' : ''">
+  <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.600" /><circle cx="12" cy="12" r="1.600" /><circle cx="12" cy="19" r="1.600" /></svg>
+</button>
