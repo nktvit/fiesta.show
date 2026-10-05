@@ -2,7 +2,7 @@
   <div class="relative">
     <a [routerLink]="['/music/album', album().id]" tabindex="-1" aria-hidden="true" class="block">
       @if (album().cover) {
-        <img [src]="album().cover" alt="" width="320" height="320" loading="lazy"
+        <img [src]="album().cover" alt="" width="320" height="320" loading="lazy" decoding="async"
           class="aspect-square w-full rounded bg-gray-800 object-cover transition-transform group-hover:scale-[1.02] motion-reduce:transition-none" />
       } @else {
         <div class="aspect-square w-full rounded bg-gray-800"></div>

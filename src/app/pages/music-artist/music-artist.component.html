@@ -16,7 +16,7 @@
         @if (artist(); as a) {
           <div class="mb-8 flex flex-col gap-5 sm:flex-row sm:items-center">
             @if (a.picture) {
-              <img [src]="a.picture" alt="" width="144" height="144" class="h-28 w-28 flex-shrink-0 rounded-full bg-gray-800 object-cover md:h-36 md:w-36" />
+              <img [src]="a.picture" alt="" fetchpriority="high" decoding="async" width="144" height="144" class="h-28 w-28 flex-shrink-0 rounded-full bg-gray-800 object-cover md:h-36 md:w-36" />
             }
             <div class="min-w-0">
               <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Artist</p>

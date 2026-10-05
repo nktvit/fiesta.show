@@ -102,7 +102,7 @@
                 @for (a of albums(); track a.id) {
                   <li class="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-white/5">
                     <a [routerLink]="['/music/album', a.id]" class="flex min-w-0 flex-1 items-center gap-3 focus:outline-none focus-visible:underline">
-                      <img [src]="a.cover" alt="" width="48" height="48" loading="lazy" class="h-12 w-12 flex-shrink-0 rounded bg-gray-800 object-cover" />
+                      <img [src]="a.cover" alt="" width="48" height="48" loading="lazy" decoding="async" class="h-12 w-12 flex-shrink-0 rounded bg-gray-800 object-cover" />
                       <span class="min-w-0"><span class="block truncate text-sm font-medium" [title]="a.title">{{ a.title }}</span><span class="block truncate text-xs text-gray-400" [title]="a.artist">{{ a.artist }}</span></span>
                     </a>
                     <button type="button" (click)="pin(albumItem(a))" [attr.aria-pressed]="isPinned(albumItem(a))" [attr.aria-label]="(isPinned(albumItem(a)) ? 'Unpin ' : 'Pin ') + a.title"
@@ -139,7 +139,7 @@
                 @for (a of artists(); track a.id) {
                   <li class="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-white/5">
                     <a [routerLink]="['/music/artist', a.id]" class="flex min-w-0 flex-1 items-center gap-3 focus:outline-none focus-visible:underline">
-                      <img [src]="a.picture" alt="" width="48" height="48" loading="lazy" class="h-12 w-12 flex-shrink-0 rounded-full bg-gray-800 object-cover" />
+                      <img [src]="a.picture" alt="" width="48" height="48" loading="lazy" decoding="async" class="h-12 w-12 flex-shrink-0 rounded-full bg-gray-800 object-cover" />
                       <span class="truncate text-sm font-medium" [title]="a.name">{{ a.name }}</span>
                     </a>
                     <button type="button" (click)="pin(artistItem(a))" [attr.aria-pressed]="isPinned(artistItem(a))" [attr.aria-label]="(isPinned(artistItem(a)) ? 'Unpin ' : 'Pin ') + a.name"

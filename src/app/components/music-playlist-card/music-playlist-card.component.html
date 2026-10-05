@@ -5,11 +5,11 @@
       @if (v.collage.length) {
         <div class="grid aspect-square w-full grid-cols-2 overflow-hidden rounded bg-gray-800 transition-transform group-hover:scale-[1.02] motion-reduce:transition-none">
           @for (c of v.collage; track c) {
-            <img [src]="c" alt="" width="160" height="160" loading="lazy" class="aspect-square w-full object-cover" />
+            <img [src]="c" alt="" width="160" height="160" loading="lazy" decoding="async" class="aspect-square w-full object-cover" />
           }
         </div>
       } @else if (v.cover) {
-        <img [src]="v.cover" alt="" width="320" height="320" loading="lazy"
+        <img [src]="v.cover" alt="" width="320" height="320" loading="lazy" decoding="async"
           class="aspect-square w-full rounded bg-gray-800 object-cover transition-transform group-hover:scale-[1.02] motion-reduce:transition-none" />
       } @else {
         <div class="flex aspect-square w-full items-center justify-center rounded bg-gray-800 text-gray-500">

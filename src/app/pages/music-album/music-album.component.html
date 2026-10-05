@@ -21,7 +21,7 @@
             [style]="headerStyle()" data-testid="album-header">
             <a routerLink="/music" class="mb-6 inline-block text-sm text-gray-300 hover:text-white">&larr; Music</a>
             <div class="flex flex-col gap-6 sm:flex-row sm:items-end">
-              <img [src]="a.cover" alt="" width="224" height="224" class="aspect-square w-56 rounded bg-gray-800 object-cover shadow-xl" />
+              <img [src]="a.cover" alt="" fetchpriority="high" decoding="async" width="224" height="224" class="aspect-square w-56 rounded bg-gray-800 object-cover shadow-xl" />
               <div class="min-w-0">
                 <p class="text-xs font-semibold uppercase tracking-wide text-gray-300">{{ a.type === 'EP' ? 'EP' : a.type === 'SINGLE' ? 'Single' : a.type === 'COMPILATION' ? 'Compilation' : 'Album' }}</p>
                 <h1 class="my-1 text-2xl font-bold md:text-4xl">{{ a.title }}</h1>

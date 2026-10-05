@@ -52,7 +52,7 @@
               <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6" /><circle cx="15" cy="6" r="1.6" /><circle cx="9" cy="12" r="1.6" /><circle cx="15" cy="12" r="1.6" /><circle cx="9" cy="18" r="1.6" /><circle cx="15" cy="18" r="1.6" /></svg>
             </button>
             @if (row.track.cover) {
-              <img [src]="row.track.cover" alt="" width="40" height="40" loading="lazy" class="h-10 w-10 flex-shrink-0 rounded bg-gray-800 object-cover" />
+              <img [src]="row.track.cover" alt="" width="40" height="40" loading="lazy" decoding="async" class="h-10 w-10 flex-shrink-0 rounded bg-gray-800 object-cover" />
             } @else {
               <span class="h-10 w-10 flex-shrink-0 rounded bg-gray-800" aria-hidden="true"></span>
             }

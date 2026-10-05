@@ -14,7 +14,7 @@
             <span class="min-w-0 flex-1 truncate" [title]="o.label">{{ o.label }}</span>
           } @else {
             @if (o.image) {
-              <img [src]="o.image" alt="" width="36" height="36" loading="lazy"
+              <img [src]="o.image" alt="" width="36" height="36" loading="lazy" decoding="async"
                 class="h-9 w-9 flex-shrink-0 bg-gray-800 object-cover" [class]="o.kind === 'artist' ? 'rounded-full' : 'rounded'" />
             } @else {
               <span class="h-9 w-9 flex-shrink-0 bg-gray-800" [class]="o.kind === 'artist' ? 'rounded-full' : 'rounded'"></span>

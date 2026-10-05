@@ -21,7 +21,7 @@
             class="flex min-h-[2.75rem] cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5"
             [class]="o.index === active() ? 'bg-white/10' : ''">
             @if (cover(o); as c) {
-              <img [src]="c" alt="" width="36" height="36" loading="lazy"
+              <img [src]="c" alt="" width="36" height="36" loading="lazy" decoding="async"
                 class="h-9 w-9 flex-shrink-0 bg-gray-800 object-cover" [class]="o.kind === 'artist' ? 'rounded-full' : 'rounded'" />
             }
             <span class="min-w-0 flex-1">

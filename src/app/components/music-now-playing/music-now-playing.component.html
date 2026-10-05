@@ -185,7 +185,7 @@
                       <button type="button" (click)="player.playAt(player.index() + 1 + i)" [title]="'Play ' + n.title"
                         class="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
                         @if (n.cover) {
-                          <img [src]="n.cover" alt="" width="40" height="40" loading="lazy" class="h-10 w-10 flex-shrink-0 rounded bg-gray-800 object-cover" />
+                          <img [src]="n.cover" alt="" width="40" height="40" loading="lazy" decoding="async" class="h-10 w-10 flex-shrink-0 rounded bg-gray-800 object-cover" />
                         }
                         <span class="min-w-0 flex-1">
                           <span class="block truncate text-sm">{{ n.title }}</span>

@@ -20,7 +20,7 @@
     class="relative flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded bg-gray-800 text-gray-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
     [attr.aria-label]="(active() ? 'Pause ' : 'Play ') + track().title">
     @if (showCover() && track().cover) {
-      <img [src]="track().cover" alt="" width="48" height="48" loading="lazy" class="h-full w-full object-cover" />
+      <img [src]="track().cover" alt="" width="48" height="48" loading="lazy" decoding="async" class="h-full w-full object-cover" />
     } @else {
       <span class="text-sm tabular-nums">{{ number() ?? '' }}</span>
     }

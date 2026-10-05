@@ -23,7 +23,7 @@
         @if (playlist(); as p) {
           <div class="mb-8 flex flex-col gap-6 sm:flex-row sm:items-end" data-testid="playlist-header">
             @if (p.cover) {
-              <img [src]="p.cover" alt="" width="224" height="224" class="aspect-square w-56 rounded bg-gray-800 object-cover shadow-xl" />
+              <img [src]="p.cover" alt="" fetchpriority="high" decoding="async" width="224" height="224" class="aspect-square w-56 rounded bg-gray-800 object-cover shadow-xl" />
             } @else {
               <div class="flex aspect-square w-56 items-center justify-center rounded bg-gray-800 text-gray-500">
                 <svg class="h-12 w-12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M3 6h12M3 12h8M3 18h8M17 14v6M14 17h6" /></svg>

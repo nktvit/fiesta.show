@@ -15,7 +15,7 @@
           } @else if (covers().length >= 4) {
             <div class="grid h-full w-full grid-cols-2" data-cover-collage>
               @for (c of covers(); track c) {
-                <img [src]="c" alt="" loading="lazy" class="aspect-square h-full w-full object-cover" />
+                <img [src]="c" alt="" loading="lazy" decoding="async" class="aspect-square h-full w-full object-cover" />
               }
             </div>
           } @else if (covers().length) {
