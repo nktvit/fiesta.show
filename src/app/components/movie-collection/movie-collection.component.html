@@ -45,8 +45,10 @@
           data-card
           class="collection-card w-[120px] sm:w-[140px] md:w-[170px] lg:w-[190px] flex-shrink-0"
           [class.is-selected]="isSelected(i)">
+          <!-- The card widths (120/140/170/190px) in rem: NgOptimizedImage rejects px
+               in `sizes` in dev mode (NG02952), which left every row poster without a src. -->
           <app-poster
-            sizes="(min-width: 1024px) 190px, (min-width: 768px) 170px, (min-width: 640px) 140px, 120px"
+            sizes="(min-width: 1024px) 11.875rem, (min-width: 768px) 10.625rem, (min-width: 640px) 8.75rem, 7.5rem"
             [movie]="movie"
             [displayTitle]="true"
             [priority]="i < priorityCount()"
