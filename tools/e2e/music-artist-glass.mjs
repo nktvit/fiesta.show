@@ -48,6 +48,8 @@ for (const a of ARTISTS) {
   const dz = (await get('action=artist-images&id=8847')).body.images.find((i) => i.source === 'deezer');
   const wk = (await get('action=artist-images&id=8847')).body.images.find((i) => i.source === 'wikimedia');
   for (const [label, im] of [['deezer', dz], ['wikimedia', wk]]) {
+    const direct = await fetch(im.url, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; StreamFiesta/1.0)' } }).then((x) => x.status).catch(() => 0);
+    if (direct === 403 || direct === 429) { check(`img proxy serves ${label} (skipped: ${label} CDN is rate-blocking this IP right now, direct ${direct})`, true); continue; }
     const r2 = await fetch(`${api}/api/music?action=img&u=${b64(im.url)}`);
     check(`img proxy serves ${label} (CORS, image/*)`, r2.status === 200 && /^image\//.test(r2.headers.get('content-type') || '') && r2.headers.get('access-control-allow-origin') === '*', `${r2.status}`);
   }
@@ -161,6 +163,12 @@ async function suite(name, launcher) {
 
       const g = await page.evaluate(() => ({ tiles: document.querySelectorAll('[data-gallery-tile]').length, credit: !!document.querySelector('[data-gallery-credits]'), scrollers: [...document.querySelectorAll('[data-artist-gallery] *')].filter((e) => /(auto|scroll)/.test(getComputedStyle(e).overflowX) && e.scrollWidth > e.clientWidth + 1).length }));
       check(`${sfx} ${a.name}: gallery of >= 2 tiles that wraps (no horizontal scroller)`, g.tiles >= 2 && g.scrollers === 0, `${g.tiles} tiles, credits ${g.credit}`);
+
+      await page.locator('[data-artist-gallery]').scrollIntoViewIfNeeded();
+      await page.waitForTimeout(3000);
+      const broken = await page.evaluate(() => [...document.querySelectorAll('[data-gallery-tile] img')].filter((i) => i.getBoundingClientRect().width > 0 && !(i.complete && i.naturalWidth > 0)).length);
+      check(`${sfx} ${a.name}: no broken picture in the gallery`, broken === 0, `${broken} broken`);
+      await page.evaluate(() => window.scrollTo(0, 0));
 
       if (a.id === 8847) {
         // Lightbox: opens in the dialog shell with a credit, arrow keys step, Escape closes and returns focus.
@@ -295,6 +303,50 @@ async function suite(name, launcher) {
       }));
       check(`${sfx} no images + no palette: indigo accent, no gallery, no theme variables, page still renders`, !/--ag-accent/.test(d.style) && d.play === 'rgb(79, 70, 229)' && !d.gallery && d.panels >= 3, `${d.play}`);
       await ctx.close();
+    }
+
+    // ---- Gallery mosaic stays bounded for 2, 3, 5 and 8 images (and is absent for 1) ----
+    {
+      const real = (await get('action=artist-images&id=8847')).body.images;
+      for (const [w, h] of [[1280, 800], [390, 844]]) {
+        for (const count of [1, 2, 3, 5, 8]) {
+          const ctx = await browser.newContext({ viewport: { width: w, height: h } });
+          const page = await ctx.newPage();
+          await page.route('**/api/music?action=artist-images*', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ images: real.slice(0, count) }) }));
+          await page.goto(`${base}/music/artist/8847`);
+          await page.waitForSelector('[data-glass-panel]', { timeout: 30000 });
+          await page.waitForTimeout(1500);
+          if (count === 1) {
+            check(`${sfx} gallery @${w} with 1 image: not shown`, (await page.locator('[data-artist-gallery]').count()) === 0);
+          } else {
+            await page.locator('[data-artist-gallery]').scrollIntoViewIfNeeded();
+            const t = await page.evaluate(() => [...document.querySelectorAll('[data-gallery-tile]')].map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0).map((r) => ({ w: Math.round(r.width), h: Math.round(r.height) })));
+            const cap = w >= 640 ? 0.4 * h : 0.6 * w;
+            const small = t.slice(count >= 5 ? 1 : 0);
+            const stretched = small.some((x) => x.w > Math.min(...small.map((y) => y.w)) * 1.3);
+            check(`${sfx} gallery @${w} with ${count} images: every tile <= ${Math.round(cap)}px tall, none stretched`, t.length >= 2 && t.every((x) => x.h <= cap) && !stretched, JSON.stringify(t.map((x) => `${x.w}x${x.h}`)));
+            if (shots && count === 5 && w === 1280) await page.locator('[data-artist-gallery]').screenshot({ path: `${shots}/${name}-gallery-5-1280.png` });
+            if (shots && count === 8) await page.locator('[data-artist-gallery]').screenshot({ path: `${shots}/${name}-gallery-8-${w}.png` });
+          }
+          await ctx.close();
+        }
+      }
+    }
+
+    // ---- Similar artists: no empty discs (picture loaded or initials) ----
+    {
+      for (const [w, h] of [[1280, 800], [390, 844]]) {
+        const ctx = await browser.newContext({ viewport: { width: w, height: h } });
+        const page = await ctx.newPage();
+        await openArtist(page, 8847, { waitImages: false });
+        const panel = page.locator('section[aria-label="Similar artists"]');
+        await panel.scrollIntoViewIfNeeded();
+        await page.waitForTimeout(3500);
+        const d = await page.evaluate(() => [...document.querySelectorAll('section[aria-label="Similar artists"] app-music-artist-card')].map((c) => { const i = c.querySelector('img[width="320"]'); return i ? (i.complete && i.naturalWidth > 0 ? 'img' : 'empty') : c.querySelector('[data-artist-initials]') ? 'initials' : 'empty'; }));
+        check(`${sfx} similar artists @${w}: ${d.length} cards, none an empty disc`, d.length >= 3 && !d.includes('empty'), d.join(','));
+        if (shots) await panel.screenshot({ path: `${shots}/${name}-similar-${w}.png` });
+        await ctx.close();
+      }
     }
 
     // ---- Opaque fallbacks exist in the stylesheet ----
