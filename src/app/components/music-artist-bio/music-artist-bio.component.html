@@ -30,11 +30,18 @@
 }
 
 @if (linkViews().length) {
-  <ul class="mt-3 flex flex-wrap gap-2" aria-label="Artist links">
-    @for (l of linkViews(); track l.url) {
+  <ul class="mt-4 flex flex-wrap gap-2" aria-label="Artist links">
+    @for (l of linkViews(); track l.key) {
       <li>
         <a [href]="l.url" target="_blank" rel="noopener noreferrer" [title]="l.host" [attr.aria-label]="l.label + ' (opens in a new tab)'"
-          class="inline-flex min-h-10 items-center rounded-full border border-white/10 bg-white/5 px-3 text-xs text-gray-200 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{{ l.label }}</a>
+          class="inline-flex h-10 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3.5 text-sm font-medium text-gray-200 transition-colors hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 motion-reduce:transition-none">
+          @if (l.path) {
+            <svg class="h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path [attr.d]="l.path" /></svg>
+          } @else {
+            <svg class="h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" /></svg>
+          }
+          {{ l.label }}
+        </a>
       </li>
     }
   </ul>

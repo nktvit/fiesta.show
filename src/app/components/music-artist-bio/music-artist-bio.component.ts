@@ -3,40 +3,10 @@ import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { catchError, of, switchMap, tap } from 'rxjs';
 import { MusicArtistBio, MusicArtistLink, MusicCatalogService } from '../../services/music-catalog.service';
+import { artistLinkViews } from '../../utils/music-artist-links';
 import { MusicDialogComponent } from '../music-dialog/music-dialog.component';
 
 const EXCERPT_CHARS = 320;
-
-const LINK_LABELS: Record<string, string> = {
-  musicbrainz: 'MusicBrainz',
-  'official homepage': 'Website',
-  'social network': 'Social',
-  streaming: 'Streaming',
-  'free streaming': 'Streaming',
-  'streaming music': 'Streaming',
-  youtube: 'YouTube',
-  soundcloud: 'SoundCloud',
-  bandcamp: 'Bandcamp',
-  wikipedia: 'Wikipedia',
-  wikidata: 'Wikidata',
-  discogs: 'Discogs',
-  allmusic: 'AllMusic',
-  'last.fm': 'Last.fm',
-  lyrics: 'Lyrics',
-  bandsintown: 'Bandsintown',
-  songkick: 'Songkick',
-  patronage: 'Support',
-  'purchase for download': 'Buy',
-};
-
-/** Site name from a URL ("open.spotify.com" -> "spotify.com"). */
-function hostOf(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '');
-  } catch {
-    return url;
-  }
-}
 
 /** Artist bio excerpt with a Read-more dialog, plus external links (MusicBrainz et al). */
 @Component({
@@ -66,9 +36,7 @@ export class MusicArtistBioComponent {
   });
   readonly paragraphs = computed(() => this.text().split(/\n{2,}/).map((p) => p.trim()).filter(Boolean));
   readonly mentioned = computed(() => this.bio()?.links ?? []);
-  readonly linkViews = computed(() =>
-    this.links().map((l) => ({ ...l, label: LINK_LABELS[l.type] ?? hostOf(l.url), host: hostOf(l.url) })),
-  );
+  readonly linkViews = computed(() => artistLinkViews(this.links()));
 
   constructor() {
     toObservable(this.artistId)
