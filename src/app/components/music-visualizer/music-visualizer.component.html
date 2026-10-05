@@ -1,0 +1,49 @@
+<div #stage class="absolute inset-0 overflow-hidden" data-viz-stage aria-hidden="true"></div>
+
+@if (status() === 'unavailable') {
+  <p role="status" class="absolute inset-x-0 top-1/2 -translate-y-1/2 px-6 text-center text-sm text-amber-400">
+    Visualizer unavailable in this browser
+  </p>
+} @else if (status() === 'error') {
+  <p role="status" class="absolute inset-x-0 top-1/2 -translate-y-1/2 px-6 text-center text-sm text-amber-400">
+    This visualizer could not start here. Try another preset.
+  </p>
+} @else if (paused() && status() === 'ready') {
+  <div role="status" class="pointer-events-auto absolute z-20 inset-x-0 top-1/2 flex -translate-y-1/2 flex-col items-center gap-3 px-6 text-center">
+    <p class="text-sm text-gray-400">Animation is paused because your device prefers reduced motion.</p>
+    <button type="button" (click)="toggleAnimateAnyway()"
+      class="h-10 rounded-full bg-indigo-600 px-4 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+      Animate anyway
+    </button>
+  </div>
+}
+
+@if (showControls()) {
+  <div class="pointer-events-auto absolute z-20 bottom-[calc(1rem+env(safe-area-inset-bottom,0px))] left-4 md:bottom-auto md:left-1/2 md:top-[calc(1rem+env(safe-area-inset-top,0px))] md:-translate-x-1/2 flex max-w-[calc(100%-2rem)] flex-wrap items-center gap-2 rounded-2xl md:rounded-full border border-white/10 bg-[#121212]/95 px-3 py-1.5 text-xs text-gray-300 backdrop-blur-md">
+    <label class="flex items-center gap-2">
+      <span class="sr-only">Visualizer preset</span>
+      <select aria-label="Visualizer preset" [value]="preset()" (change)="pick($any($event.target).value)"
+        class="h-10 rounded-full border border-white/10 bg-white/5 px-3 text-sm text-white focus:border-indigo-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+        @for (p of presets; track p.id) {
+          <option [value]="p.id" [selected]="p.id === preset()" class="bg-[#121212] text-white">{{ p.label }}</option>
+        }
+      </select>
+    </label>
+    <button type="button" (click)="toggleCycle()" [attr.aria-pressed]="cfg().cycle" aria-label="Auto-cycle presets" title="Auto-cycle presets"
+      [class]="'flex h-10 items-center gap-1.5 rounded-full px-3 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 ' + (cfg().cycle ? 'bg-white text-black' : 'bg-white/5 text-gray-300 hover:bg-white/10')">
+      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3" /></svg>
+      Cycle
+    </button>
+    <label class="flex items-center gap-2 pr-1">
+      <span class="text-gray-400">Sensitivity</span>
+      <input type="range" min="0.25" max="2" step="0.05" [value]="cfg().sensitivity" (input)="setSensitivity($any($event.target).value)"
+        aria-label="Visualizer sensitivity" class="h-10 w-24 accent-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" />
+    </label>
+    @if (reducedMotion()) {
+      <button type="button" (click)="toggleAnimateAnyway()" [attr.aria-pressed]="cfg().animateAnyway" aria-label="Animate anyway"
+        [class]="'h-10 rounded-full px-3 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 ' + (cfg().animateAnyway ? 'bg-white text-black' : 'bg-white/5 text-gray-300 hover:bg-white/10')">
+        Animate anyway
+      </button>
+    }
+  </div>
+}
