@@ -3,13 +3,22 @@ import { HttpClientTestingModule, HttpTestingController } from '@angular/common/
 
 import { MovieService } from './movie.service';
 import { LoggerService } from './logger.service';
+import { environment } from '../../environments/environment';
+
+// The generated environment.ts differs per machine (no key locally, production
+// flag on Vercel), so the spec pins both instead of relying on whatever is there.
+const TEST_OMDB_KEY = 'test-omdb-key';
 
 describe('MovieService', () => {
   let service: MovieService;
   let httpMock: HttpTestingController;
   let logger: jasmine.SpyObj<LoggerService>;
+  let originalEnv: { production: boolean; OMDB_API_KEY: string };
 
   beforeEach(() => {
+    originalEnv = { production: environment.production, OMDB_API_KEY: environment.OMDB_API_KEY };
+    environment.production = false;
+    environment.OMDB_API_KEY = TEST_OMDB_KEY;
     logger = jasmine.createSpyObj<LoggerService>('LoggerService', ['log', 'error']);
 
     TestBed.configureTestingModule({
@@ -26,6 +35,8 @@ describe('MovieService', () => {
 
   afterEach(() => {
     httpMock.verify();
+    environment.production = originalEnv.production;
+    environment.OMDB_API_KEY = originalEnv.OMDB_API_KEY;
   });
 
   it('updates search state from a successful search response', () => {
@@ -35,7 +46,7 @@ describe('MovieService', () => {
       responseBody = response;
     });
 
-    const req = httpMock.expectOne('https://www.omdbapi.com/?apikey=a1128251&s=matrix&page=3');
+    const req = httpMock.expectOne(`https://www.omdbapi.com/?apikey=${TEST_OMDB_KEY}&s=matrix&page=3`);
     expect(req.request.method).toBe('GET');
 
     req.flush({
@@ -57,7 +68,7 @@ describe('MovieService', () => {
 
     service.searchMovies('missing').subscribe();
 
-    const req = httpMock.expectOne('https://www.omdbapi.com/?apikey=a1128251&s=missing&page=1');
+    const req = httpMock.expectOne(`https://www.omdbapi.com/?apikey=${TEST_OMDB_KEY}&s=missing&page=1`);
     req.flush({ Response: 'False', Error: 'Movie not found!' });
 
     expect(service['searchResults'].value).toEqual([]);
@@ -73,7 +84,7 @@ describe('MovieService', () => {
       responseBody = response;
     });
 
-    const req = httpMock.expectOne('https://www.omdbapi.com/?apikey=a1128251&s=broken&page=1');
+    const req = httpMock.expectOne(`https://www.omdbapi.com/?apikey=${TEST_OMDB_KEY}&s=broken&page=1`);
     req.flush('network error', { status: 500, statusText: 'Server Error' });
 
     expect(responseBody).toBeNull();
@@ -89,7 +100,7 @@ describe('MovieService', () => {
       responseBody = response;
     });
 
-    const req = httpMock.expectOne('https://www.omdbapi.com/?apikey=a1128251&i=tt0133093&plot=full');
+    const req = httpMock.expectOne(`https://www.omdbapi.com/?apikey=${TEST_OMDB_KEY}&i=tt0133093&plot=full`);
     expect(req.request.method).toBe('GET');
     req.flush(
       { imdbID: 'tt0133093', Title: 'The Matrix', Type: 'movie' },
@@ -116,7 +127,7 @@ describe('MovieService', () => {
       responseBody = response;
     });
 
-    const req = httpMock.expectOne('https://www.omdbapi.com/?apikey=a1128251&i=tt0133093&plot=full');
+    const req = httpMock.expectOne(`https://www.omdbapi.com/?apikey=${TEST_OMDB_KEY}&i=tt0133093&plot=full`);
     req.flush({ Title: 'Missing imdbID' }, { status: 200, statusText: 'OK' });
 
     expect(responseBody).toBeNull();
