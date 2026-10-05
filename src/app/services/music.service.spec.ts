@@ -42,4 +42,11 @@ describe('MusicService', () => {
     expect(req.request.params.get('quality')).toBe('HIGH');
     req.flush({ presentation: 'FULL', quality: 'HIGH', signedIn: true, kind: 'segments', codec: 'mp4a.40.2' });
   });
+
+  it('manifest accepts the Hi-Res tier', () => {
+    service.manifest(1, 'HI_RES_LOSSLESS').subscribe((m) => expect(m.trackReplayGain).toBe(-5.8));
+    const req = http.expectOne((r) => r.url === '/api/music');
+    expect(req.request.params.get('quality')).toBe('HI_RES_LOSSLESS');
+    req.flush({ presentation: 'FULL', quality: 'LOSSLESS', signedIn: true, kind: 'segments', codec: 'flac', trackReplayGain: -5.8 });
+  });
 });

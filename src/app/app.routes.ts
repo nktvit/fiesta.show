@@ -13,6 +13,15 @@ export const routes: Routes = [
   {path: 'music', loadComponent: () => import('./pages/music/music.component').then(m => m.MusicComponent)},
   {path: 'music/album/:id', loadComponent: () => import('./pages/music-album/music-album.component').then(m => m.MusicAlbumComponent)},
   {path: 'music/artist/:id', loadComponent: () => import('./pages/music-artist/music-artist.component').then(m => m.MusicArtistComponent)},
+  {path: 'music/explore', loadComponent: () => import('./pages/music-explore/music-explore.component').then(m => m.MusicExploreComponent)},
+  {path: 'music/library', loadComponent: () => import('./pages/music-library/music-library.component').then(m => m.MusicLibraryComponent)},
+  {path: 'music/library/playlist/:id', loadComponent: () => import('./pages/music-user-playlist/music-user-playlist.component').then(m => m.MusicUserPlaylistComponent)},
+  {path: 'music/recent', loadComponent: () => import('./pages/music-recent/music-recent.component').then(m => m.MusicRecentComponent)},
+  {path: 'music/settings', loadComponent: () => import('./pages/music-settings/music-settings.component').then(m => m.MusicSettingsComponent)},
+  {path: 'music/shared', loadComponent: () => import('./pages/music-shared-playlist/music-shared-playlist.component').then(m => m.MusicSharedPlaylistComponent)},
+  {path: 'music/track/:id', loadComponent: () => import('./pages/music-track/music-track.component').then(m => m.MusicTrackComponent)},
+  {path: 'music/mix/:id', loadComponent: () => import('./pages/music-mix/music-mix.component').then(m => m.MusicMixComponent)},
+  {path: 'music/playlist/:id', loadComponent: () => import('./pages/music-playlist/music-playlist.component').then(m => m.MusicPlaylistComponent)},
 
   {path: '**', redirectTo: '', pathMatch: 'full'},
 ]

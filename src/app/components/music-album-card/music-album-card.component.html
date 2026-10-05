@@ -1,0 +1,27 @@
+<div class="group">
+  <div class="relative">
+    <a [routerLink]="['/music/album', album().id]" tabindex="-1" aria-hidden="true" class="block">
+      @if (album().cover) {
+        <img [src]="album().cover" alt="" width="320" height="320" loading="lazy"
+          class="aspect-square w-full rounded bg-gray-800 object-cover transition-transform group-hover:scale-[1.02] motion-reduce:transition-none" />
+      } @else {
+        <div class="aspect-square w-full rounded bg-gray-800"></div>
+      }
+    </a>
+    <button type="button" (click)="play()" [attr.aria-label]="'Play ' + album().title" [disabled]="busy()"
+      class="absolute bottom-2 right-2 flex h-11 w-11 items-center justify-center rounded-full bg-indigo-600 text-white shadow-lg transition-opacity hover:bg-indigo-500 focus:outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-indigo-400 motion-reduce:transition-none sm:opacity-0 sm:group-hover:opacity-100">
+      @if (busy()) {
+        <svg class="h-5 w-5 animate-spin motion-reduce:animate-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9" stroke-linecap="round" /></svg>
+      } @else {
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" /></svg>
+      }
+    </button>
+    <div class="absolute right-1 top-1">
+      <app-music-card-menu-button [item]="item()" />
+    </div>
+  </div>
+  <a [routerLink]="['/music/album', album().id]" class="block focus:outline-none focus-visible:underline">
+    <p class="mt-2 truncate text-sm font-medium" [title]="album().title">{{ album().title }}</p>
+    <p class="truncate text-xs text-gray-400" [title]="line()">{{ line() }}</p>
+  </a>
+</div>

@@ -85,6 +85,24 @@ body.nav-sheet-open #bmc-close-btn {
   display: none !important;
 }
 
+/* Music overlays (side panels, sheets, dialogs, Now Playing): the same lock as
+   the genre sheet, under its own class so the two never release each other.
+   utils/music-scroll-lock.ts ref-counts it and supplies `top: -<scrollY>px`. */
+body.music-overlay-open {
+  overflow: hidden;
+  position: fixed;
+  left: 0;
+  right: 0;
+  width: 100%;
+}
+
+body.music-overlay-open > div,
+body.music-overlay-open #bmc-wbtn,
+body.music-overlay-open #bmc-iframe,
+body.music-overlay-open #bmc-close-btn {
+  display: none !important;
+}
+
 @media screen and (max-width: 767px) {
   input, select, textarea {
     font-size: 16px;
@@ -126,6 +144,14 @@ app-root > div > router-outlet + * {
   body.has-music-bar #bmc-wbtn,
   body.has-music-bar > div[style*="bottom: 16px"] {
     bottom: calc(8.75rem + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}
+
+/* sm and up the mini player sits at bottom: 0 (~81px tall) and the BMC button
+   (bottom-right, 18px margin) covered its volume controls. Lift it above the bar. */
+@media screen and (min-width: 640px) {
+  body.has-music-bar #bmc-wbtn {
+    bottom: calc(5.0625rem + 18px) !important;
   }
 }
 

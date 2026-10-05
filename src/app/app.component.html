@@ -2,9 +2,24 @@
   <router-outlet></router-outlet>
   <app-footer></app-footer>
   @if (player.track()) {
-    <!-- The mini player is fixed; this keeps the footer from sliding under it. -->
-    <div class="h-20" aria-hidden="true"></div>
+    <!-- The mini player is fixed (81px tall on sm+; 63px above the 56px tab bar on phones);
+         this keeps the footer from sliding under it. -->
+    <div class="h-[calc(7.5rem+env(safe-area-inset-bottom,0px))] sm:h-[5.25rem]" aria-hidden="true"></div>
   }
   <app-music-player-bar></app-music-player-bar>
+  <app-music-toast-host></app-music-toast-host>
+  <!-- Music overlays load on first use. A @defer block stays mounted once loaded,
+       so each overlay shows/hides itself from its own MusicUiService signal. -->
+  @defer (when ui.panel() === 'queue') { <app-music-queue-panel /> }
+  @defer (when ui.panel() === 'lyrics') { <app-music-lyrics-panel /> }
+  @defer (when ui.nowPlayingOpen()) { <app-music-now-playing /> }
+  @defer (when ui.paletteOpen()) { <app-music-command-palette /> }
+  @defer (when ui.shortcutsHelpOpen()) { <app-music-shortcuts-help /> }
+  @defer (when ui.trackInfo()) { <app-music-track-info /> }
+  @defer (when ui.contextMenu()) { <app-music-context-menu /> }
+  @defer (when ui.addToPlaylist()) { <app-music-add-to-playlist-dialog /> }
+  @defer (when ui.importOpen()) { <app-music-import-dialog /> }
+  @defer (on idle) { <app-music-selection-bar /> }
+  @defer (on idle) { <app-music-downloads-tray /> }
   <app-bottom-nav></app-bottom-nav>
 </div>
