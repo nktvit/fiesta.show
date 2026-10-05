@@ -1,0 +1,133 @@
+<main class="flex-grow bg-[#0a0a0a] text-white">
+  <app-navbar [showSearchBox]="false" [transparent]="false"></app-navbar>
+  <app-music-subnav />
+  <div class="px-4 py-8 md:px-12 lg:px-16">
+    @let p = playlist();
+    @if (!p) {
+      <h1 class="mb-2 text-2xl font-bold md:text-3xl">Playlist not found</h1>
+      <p class="mb-5 text-sm text-gray-400">This playlist isn't in your library on this device. It may have been deleted.</p>
+      <a routerLink="/music/library" [queryParams]="{ tab: 'playlists' }" class="inline-flex h-11 items-center rounded-full bg-indigo-600 px-5 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Back to your library</a>
+    } @else {
+      <header class="mb-6 flex flex-col gap-5 sm:flex-row sm:items-end">
+        <div class="h-44 w-44 flex-shrink-0 self-center overflow-hidden rounded bg-gray-800 sm:h-52 sm:w-52 sm:self-auto" data-cover>
+          @if (p.cover) {
+            <img [src]="p.cover" alt="" class="h-full w-full object-cover" data-cover-custom />
+          } @else if (covers().length >= 4) {
+            <div class="grid h-full w-full grid-cols-2" data-cover-collage>
+              @for (c of covers(); track c) {
+                <img [src]="c" alt="" loading="lazy" class="aspect-square h-full w-full object-cover" />
+              }
+            </div>
+          } @else if (covers().length) {
+            <img [src]="covers()[0]" alt="" class="h-full w-full object-cover" />
+          } @else {
+            <div class="flex h-full w-full items-center justify-center text-gray-500">
+              <svg class="h-14 w-14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></svg>
+            </div>
+          }
+        </div>
+        <div class="min-w-0 flex-1">
+          <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Playlist</p>
+          <h1 class="mt-1 break-words text-3xl font-bold md:text-5xl" [title]="p.name">{{ p.name }}</h1>
+          @if (p.description) { <p class="mt-2 max-w-2xl text-sm text-gray-300">{{ p.description }}</p> }
+          <p class="mt-2 text-sm text-gray-400" data-meta>{{ p.tracks.length }} {{ p.tracks.length === 1 ? 'song' : 'songs' }} · {{ duration() }}</p>
+        </div>
+      </header>
+
+      <div class="mb-6 flex flex-wrap items-center gap-2">
+        <button type="button" (click)="play(false)" [disabled]="!rows().length"
+          class="inline-flex h-11 items-center gap-2 rounded-full bg-indigo-600 px-5 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" /></svg>Play
+        </button>
+        <button type="button" (click)="play(true)" [disabled]="!rows().length"
+          class="inline-flex h-11 items-center gap-2 rounded-full bg-white/5 px-5 text-sm font-medium text-gray-200 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5" /></svg>Shuffle
+        </button>
+        <button type="button" (click)="editorOpen.set(true)"
+          class="inline-flex h-11 items-center rounded-full bg-white/5 px-5 text-sm font-medium text-gray-200 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Edit</button>
+        <button type="button" (click)="share()"
+          class="inline-flex h-11 items-center rounded-full bg-white/5 px-5 text-sm font-medium text-gray-200 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Share</button>
+        <app-music-export-menu [playlist]="{ name: p.name, description: p.description, tracks: p.tracks }" />
+        <button type="button" (click)="togglePin()" [attr.aria-pressed]="pinned()"
+          class="inline-flex h-11 items-center rounded-full bg-white/5 px-5 text-sm font-medium text-gray-200 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{{ pinned() ? 'Unpin' : 'Pin' }}</button>
+        <button type="button" (click)="confirmDelete.set(true)"
+          class="inline-flex h-11 items-center rounded-full bg-white/5 px-5 text-sm font-medium text-amber-400 hover:text-amber-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Delete</button>
+        @if (p.tracks.length > 1) {
+          <label class="sr-only" for="music-playlist-sort">Sort tracks</label>
+          <select id="music-playlist-sort" [ngModel]="sort()" (ngModelChange)="onSort($event)" name="sort"
+            class="h-11 rounded-full border border-white/10 bg-[#121212] px-4 text-sm text-white focus:border-indigo-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+            @for (s of sorts; track s.value) {
+              <option [value]="s.value">{{ s.label }}</option>
+            }
+          </select>
+        }
+      </div>
+
+      @if (!p.tracks.length) {
+        <div class="max-w-4xl rounded-xl border border-white/10 bg-white/5 px-6 py-10 text-center" data-empty>
+          <p class="text-base font-medium">This playlist is empty</p>
+          <p class="mt-1 text-sm text-gray-400">Use Add to playlist on any song to fill it.</p>
+          <a routerLink="/music" class="mt-4 inline-flex h-11 items-center rounded-full bg-indigo-600 px-5 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Search for music</a>
+        </div>
+      } @else {
+        <div class="max-w-4xl" cdkDropList [cdkDropListDisabled]="!canReorder()" (cdkDropListDropped)="drop($event)" data-list>
+          @for (r of rows(); track r.track.id; let i = $index; let first = $first; let last = $last) {
+            <div cdkDrag class="flex items-center gap-1 rounded-lg bg-[#0a0a0a]" [attr.data-row]="i" data-playlist-row>
+              @if (canReorder()) {
+                <span cdkDragHandle aria-hidden="true" title="Drag to reorder"
+                  class="flex h-10 w-8 flex-shrink-0 cursor-grab touch-none items-center justify-center text-gray-500 hover:text-gray-300">
+                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6" /><circle cx="15" cy="6" r="1.6" /><circle cx="9" cy="12" r="1.6" /><circle cx="15" cy="12" r="1.6" /><circle cx="9" cy="18" r="1.6" /><circle cx="15" cy="18" r="1.6" /></svg>
+                </span>
+              }
+              <app-music-track-row class="min-w-0 flex-1" [track]="r.track" [queue]="queue()" />
+              @if (canReorder()) {
+                <button type="button" data-move="up" (click)="move(i, -1)" [disabled]="first" [attr.aria-label]="'Move ' + r.track.title + ' up'"
+                  class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-30">
+                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6" /></svg>
+                </button>
+                <button type="button" data-move="down" (click)="move(i, 1)" [disabled]="last" [attr.aria-label]="'Move ' + r.track.title + ' down'"
+                  class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-30">
+                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+                </button>
+              }
+              <button type="button" (click)="remove(r)" [attr.aria-label]="'Remove ' + r.track.title + ' from playlist'" data-remove
+                class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
+              </button>
+            </div>
+          }
+        </div>
+        @if (!canReorder()) {
+          <p class="mt-2 max-w-4xl text-xs text-gray-400">Switch to Custom order to drag or move songs.</p>
+        }
+      }
+
+      @if (freshRecs().length) {
+        <section class="mt-10 max-w-4xl" aria-labelledby="music-recs-heading" data-recs>
+          <div class="mb-2 flex items-center gap-3">
+            <h2 id="music-recs-heading" class="mr-auto text-lg font-semibold">Recommended songs</h2>
+            <button type="button" (click)="refreshRecs()" [disabled]="recsLoading()"
+              class="inline-flex h-10 items-center rounded-full bg-white/5 px-4 text-xs text-gray-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50">Refresh</button>
+          </div>
+          @for (t of freshRecs(); track t.id) {
+            <div class="flex items-center gap-2">
+              <app-music-track-row class="min-w-0 flex-1" [track]="t" [queue]="freshRecs()" />
+              <button type="button" (click)="addRec(t)" [attr.aria-label]="'Add ' + t.title + ' to playlist'" data-add-rec
+                class="inline-flex h-10 flex-shrink-0 items-center rounded-full bg-white/5 px-4 text-xs font-medium text-gray-200 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Add</button>
+            </div>
+          }
+        </section>
+      }
+    }
+  </div>
+
+  <app-music-playlist-editor [playlist]="playlist()" [(open)]="editorOpen" />
+
+  <app-music-dialog title="Delete playlist?" [(open)]="confirmDelete" size="sm">
+    <p class="text-sm text-gray-300">"{{ playlist()?.name }}" and its order are deleted from this browser. The songs themselves are not affected.</p>
+    <div class="mt-4 flex justify-end gap-2">
+      <button type="button" (click)="confirmDelete.set(false)" class="h-11 rounded-full bg-white/5 px-5 text-sm text-gray-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Cancel</button>
+      <button type="button" (click)="deletePlaylist()" data-confirm-delete class="h-11 rounded-full bg-indigo-600 px-5 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Delete</button>
+    </div>
+  </app-music-dialog>
+</main>

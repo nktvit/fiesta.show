@@ -1,0 +1,271 @@
+<main class="flex-grow bg-[#0a0a0a] text-white">
+  <app-navbar [showSearchBox]="false" [transparent]="false"></app-navbar>
+  <app-music-subnav />
+  <div class="px-4 py-8 md:px-12 lg:px-16">
+    <h1 class="mb-6 text-2xl font-bold md:text-3xl">Your Library</h1>
+
+    <app-music-pins-row />
+
+    <div role="tablist" aria-label="Library sections" class="-mx-1 mb-6 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      @for (t of tabs; track t.id; let i = $index) {
+        <button type="button" role="tab" [id]="'music-library-tab-' + t.id" [attr.aria-selected]="tab() === t.id" [attr.tabindex]="tab() === t.id ? 0 : -1"
+          (click)="setTab(t.id)" (keydown)="onTabKey($event, i)"
+          class="inline-flex h-10 flex-shrink-0 items-center rounded-full px-4 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 motion-reduce:transition-none"
+          [class]="tab() === t.id ? 'bg-white text-black' : 'bg-white/5 text-gray-300 hover:text-white'">{{ t.label }}</button>
+      }
+    </div>
+
+    <ng-template #emptyState let-what="what" let-hint="hint">
+      <div class="rounded-xl border border-white/10 bg-white/5 px-6 py-12 text-center" data-empty>
+        <p class="text-base font-medium">{{ what }}</p>
+        <p class="mt-1 text-sm text-gray-400">{{ hint }}</p>
+        <a routerLink="/music" class="mt-5 inline-flex h-11 items-center rounded-full bg-indigo-600 px-5 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Search for music</a>
+      </div>
+    </ng-template>
+
+    <ng-template #filterBox let-label="label">
+      <input type="search" name="libraryFilter" [value]="filter()" (input)="filter.set($any($event.target).value)" [attr.aria-label]="label" [placeholder]="label"
+        class="h-11 w-full min-w-0 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white placeholder-gray-500 focus:border-indigo-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 sm:max-w-xs" />
+    </ng-template>
+
+    <ng-template #viewToggle>
+      <div class="inline-flex rounded-full bg-white/5 p-1" role="group" aria-label="Layout">
+        <button type="button" (click)="view.set('grid')" aria-label="Grid view" [attr.aria-pressed]="view() === 'grid'"
+          class="flex h-10 w-10 items-center justify-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+          [class]="view() === 'grid' ? 'bg-white text-black' : 'text-gray-300 hover:text-white'">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4" width="6" height="6" rx="1" /><rect x="4" y="14" width="6" height="6" rx="1" /><rect x="14" y="14" width="6" height="6" rx="1" /></svg>
+        </button>
+        <button type="button" (click)="view.set('list')" aria-label="List view" [attr.aria-pressed]="view() === 'list'"
+          class="flex h-10 w-10 items-center justify-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+          [class]="view() === 'list' ? 'bg-white text-black' : 'text-gray-300 hover:text-white'">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
+        </button>
+      </div>
+    </ng-template>
+
+    <div role="tabpanel" [attr.aria-labelledby]="'music-library-tab-' + tab()">
+      @switch (tab()) {
+        @case ('tracks') {
+          @if (!allTracks().length) {
+            <ng-container *ngTemplateOutlet="emptyState; context: { what: 'No liked tracks yet', hint: 'Tap the heart on any song to keep it here.' }" />
+          } @else {
+            <div class="mb-4 flex flex-wrap items-center gap-2">
+              <button type="button" (click)="playAll(false)"
+                class="inline-flex h-11 items-center gap-2 rounded-full bg-indigo-600 px-5 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" /></svg>Play
+              </button>
+              <button type="button" (click)="playAll(true)"
+                class="inline-flex h-11 items-center gap-2 rounded-full bg-white/5 px-5 text-sm font-medium text-gray-200 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5" /></svg>Shuffle
+              </button>
+              <ng-container *ngTemplateOutlet="filterBox; context: { label: 'Filter liked tracks' }" />
+              <label class="sr-only" for="music-library-sort">Sort tracks</label>
+              <select id="music-library-sort" [ngModel]="sort()" (ngModelChange)="onSort($event)" name="sort"
+                class="h-11 rounded-full border border-white/10 bg-[#121212] px-4 text-sm text-white focus:border-indigo-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+                @for (s of sorts; track s.value) {
+                  <option [value]="s.value">{{ s.label }}</option>
+                }
+              </select>
+              <span class="text-xs text-gray-400" aria-live="polite">{{ count(tracks().length, 'track', 'tracks') }}</span>
+            </div>
+            <div class="max-w-4xl">
+              @for (t of tracks(); track t.id) {
+                <!-- app-music-track-row carries its own like button. -->
+                <app-music-track-row [track]="t" [queue]="tracks()" />
+              } @empty {
+                <p class="px-2 py-6 text-sm text-gray-400">No liked track matches "{{ filter() }}".</p>
+              }
+            </div>
+          }
+        }
+
+        @case ('albums') {
+          @if (!liked().albums.length) {
+            <ng-container *ngTemplateOutlet="emptyState; context: { what: 'No liked albums yet', hint: 'Like an album and it shows up here.' }" />
+          } @else {
+            <div class="mb-4 flex flex-wrap items-center gap-2">
+              <ng-container *ngTemplateOutlet="filterBox; context: { label: 'Filter albums' }" />
+              <ng-container *ngTemplateOutlet="viewToggle" />
+            </div>
+            @if (view() === 'grid') {
+              <ul class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                @for (a of albums(); track a.id) {
+                  <li class="min-w-0">
+                    <app-music-album-card [album]="a" />
+                    <button type="button" (click)="pin(albumItem(a))" [attr.aria-pressed]="isPinned(albumItem(a))" [attr.aria-label]="(isPinned(albumItem(a)) ? 'Unpin ' : 'Pin ') + a.title"
+                      class="mt-1 inline-flex h-10 items-center rounded-full bg-white/5 px-3 text-xs text-gray-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{{ isPinned(albumItem(a)) ? 'Unpin' : 'Pin' }}</button>
+                  </li>
+                }
+              </ul>
+            } @else {
+              <ul class="max-w-4xl">
+                @for (a of albums(); track a.id) {
+                  <li class="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-white/5">
+                    <a [routerLink]="['/music/album', a.id]" class="flex min-w-0 flex-1 items-center gap-3 focus:outline-none focus-visible:underline">
+                      <img [src]="a.cover" alt="" width="48" height="48" loading="lazy" class="h-12 w-12 flex-shrink-0 rounded bg-gray-800 object-cover" />
+                      <span class="min-w-0"><span class="block truncate text-sm font-medium" [title]="a.title">{{ a.title }}</span><span class="block truncate text-xs text-gray-400" [title]="a.artist">{{ a.artist }}</span></span>
+                    </a>
+                    <button type="button" (click)="pin(albumItem(a))" [attr.aria-pressed]="isPinned(albumItem(a))" [attr.aria-label]="(isPinned(albumItem(a)) ? 'Unpin ' : 'Pin ') + a.title"
+                      class="h-10 rounded-full bg-white/5 px-3 text-xs text-gray-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{{ isPinned(albumItem(a)) ? 'Unpin' : 'Pin' }}</button>
+                    <app-music-like-button [item]="albumItem(a)" size="sm" />
+                  </li>
+                }
+              </ul>
+            }
+            @if (!albums().length) { <p class="py-6 text-sm text-gray-400">No liked album matches "{{ filter() }}".</p> }
+          }
+        }
+
+        @case ('artists') {
+          @if (!liked().artists.length) {
+            <ng-container *ngTemplateOutlet="emptyState; context: { what: 'No liked artists yet', hint: 'Like an artist to follow them here.' }" />
+          } @else {
+            <div class="mb-4 flex flex-wrap items-center gap-2">
+              <ng-container *ngTemplateOutlet="filterBox; context: { label: 'Filter artists' }" />
+              <ng-container *ngTemplateOutlet="viewToggle" />
+            </div>
+            @if (view() === 'grid') {
+              <ul class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                @for (a of artists(); track a.id) {
+                  <li class="min-w-0">
+                    <app-music-artist-card [artist]="a" />
+                    <button type="button" (click)="pin(artistItem(a))" [attr.aria-pressed]="isPinned(artistItem(a))" [attr.aria-label]="(isPinned(artistItem(a)) ? 'Unpin ' : 'Pin ') + a.name"
+                      class="mt-1 inline-flex h-10 items-center rounded-full bg-white/5 px-3 text-xs text-gray-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{{ isPinned(artistItem(a)) ? 'Unpin' : 'Pin' }}</button>
+                  </li>
+                }
+              </ul>
+            } @else {
+              <ul class="max-w-4xl">
+                @for (a of artists(); track a.id) {
+                  <li class="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-white/5">
+                    <a [routerLink]="['/music/artist', a.id]" class="flex min-w-0 flex-1 items-center gap-3 focus:outline-none focus-visible:underline">
+                      <img [src]="a.picture" alt="" width="48" height="48" loading="lazy" class="h-12 w-12 flex-shrink-0 rounded-full bg-gray-800 object-cover" />
+                      <span class="truncate text-sm font-medium" [title]="a.name">{{ a.name }}</span>
+                    </a>
+                    <button type="button" (click)="pin(artistItem(a))" [attr.aria-pressed]="isPinned(artistItem(a))" [attr.aria-label]="(isPinned(artistItem(a)) ? 'Unpin ' : 'Pin ') + a.name"
+                      class="h-10 rounded-full bg-white/5 px-3 text-xs text-gray-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{{ isPinned(artistItem(a)) ? 'Unpin' : 'Pin' }}</button>
+                    <app-music-like-button [item]="artistItem(a)" size="sm" />
+                  </li>
+                }
+              </ul>
+            }
+            @if (!artists().length) { <p class="py-6 text-sm text-gray-400">No liked artist matches "{{ filter() }}".</p> }
+          }
+        }
+
+        @case ('playlists') {
+          <div class="mb-4 flex flex-wrap items-center gap-2">
+            <button type="button" (click)="editorOpen.set(true)"
+              class="inline-flex h-11 items-center gap-2 rounded-full bg-indigo-600 px-5 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>New playlist
+            </button>
+            <button type="button" (click)="openFolderDialog('new')"
+              class="inline-flex h-11 items-center rounded-full bg-white/5 px-5 text-sm font-medium text-gray-200 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">New folder</button>
+            @if (library.playlists().length) { <ng-container *ngTemplateOutlet="filterBox; context: { label: 'Filter playlists' }" /> }
+          </div>
+
+          @if (library.folders().length) {
+            <div class="mb-4 flex flex-wrap items-center gap-2" role="group" aria-label="Folders">
+              <button type="button" (click)="folderFilter.set('all')" [attr.aria-pressed]="folderFilter() === 'all'"
+                class="inline-flex h-10 items-center rounded-full px-4 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+                [class]="folderFilter() === 'all' ? 'bg-white text-black' : 'bg-white/5 text-gray-300 hover:text-white'">All</button>
+              @for (f of library.folders(); track f.id) {
+                <button type="button" (click)="folderFilter.set(f.id)" [attr.aria-pressed]="folderFilter() === f.id" data-folder-chip
+                  class="inline-flex h-10 items-center rounded-full px-4 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+                  [class]="folderFilter() === f.id ? 'bg-white text-black' : 'bg-white/5 text-gray-300 hover:text-white'"><span class="max-w-[10rem] truncate" [title]="f.name">{{ f.name }}</span></button>
+              }
+              @if (folderFilter() !== 'all') {
+                <button type="button" (click)="openFolderDialog('rename')"
+                  class="inline-flex h-10 items-center rounded-full bg-white/5 px-3 text-xs text-gray-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Rename folder</button>
+                <button type="button" (click)="askDeleteFolder()"
+                  class="inline-flex h-10 items-center rounded-full bg-white/5 px-3 text-xs text-amber-400 hover:text-amber-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Delete folder</button>
+              }
+            </div>
+          }
+
+          @if (!library.playlists().length && !liked().playlists.length) {
+            <ng-container *ngTemplateOutlet="emptyState; context: { what: 'No playlists yet', hint: 'Create a playlist, or find one to save.' }" />
+          }
+
+          @if (myPlaylists().length) {
+            <ul class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6" aria-label="Your playlists">
+              @for (p of myPlaylists(); track p.id) {
+                <li class="relative min-w-0" data-user-playlist>
+                  <app-music-playlist-card [playlist]="p" />
+                  <div class="mt-1 flex flex-wrap gap-1">
+                    <button type="button" (click)="pin(playlistItem(p))" [attr.aria-pressed]="isPinned(playlistItem(p))" [attr.aria-label]="(isPinned(playlistItem(p)) ? 'Unpin ' : 'Pin ') + p.name"
+                      class="inline-flex h-10 items-center rounded-full bg-white/5 px-3 text-xs text-gray-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{{ isPinned(playlistItem(p)) ? 'Unpin' : 'Pin' }}</button>
+                    <button type="button" [id]="'music-move-btn-' + p.id" (click)="toggleMoveMenu(p.id, $event)" aria-haspopup="menu" [attr.aria-expanded]="moveMenu() === p.id"
+                      [attr.aria-label]="'Move ' + p.name + ' to folder'"
+                      class="inline-flex h-10 items-center rounded-full bg-white/5 px-3 text-xs text-gray-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Move to folder</button>
+                  </div>
+                  @if (moveMenu() === p.id) {
+                    <div role="menu" aria-label="Move to folder" (keydown)="onMenuKey($event, p.id)" (click)="$event.stopPropagation()"
+                      class="absolute left-0 z-[60] mt-1 w-48 rounded-lg border border-white/10 bg-[#121212]/95 p-1 shadow-xl" [class.backdrop-blur-md]="!settings.reduceBlur()">
+                      @for (f of library.folders(); track f.id) {
+                        <button type="button" role="menuitem" (click)="move(p, f.id)" [disabled]="p.folderId === f.id"
+                          class="flex h-10 w-full items-center rounded-md px-3 text-left text-sm hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:text-gray-500"><span class="truncate" [title]="f.name">{{ f.name }}</span></button>
+                      } @empty {
+                        <p class="px-3 py-2 text-xs text-gray-400">No folders yet. Use New folder first.</p>
+                      }
+                      @if (p.folderId) {
+                        <button type="button" role="menuitem" (click)="move(p, null)"
+                          class="flex h-10 w-full items-center rounded-md px-3 text-left text-sm text-indigo-400 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Remove from folder</button>
+                      }
+                    </div>
+                  }
+                </li>
+              }
+            </ul>
+          } @else if (library.playlists().length) {
+            <p class="py-4 text-sm text-gray-400">{{ filter() ? 'No playlist matches "' + filter() + '".' : 'This folder is empty. Use Move to folder on a playlist.' }}</p>
+          }
+
+          @if (savedPlaylists().length && folderFilter() === 'all') {
+            <h2 class="mb-3 mt-8 text-lg font-semibold">Saved playlists</h2>
+            <ul class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+              @for (p of savedPlaylists(); track p.uuid) {
+                <li class="min-w-0"><app-music-playlist-card [playlist]="p" /></li>
+              }
+            </ul>
+          }
+        }
+
+        @case ('mixes') {
+          @if (!liked().mixes.length) {
+            <ng-container *ngTemplateOutlet="emptyState; context: { what: 'No liked mixes yet', hint: 'Like a mix and it shows up here.' }" />
+          } @else {
+            <div class="mb-4"><ng-container *ngTemplateOutlet="filterBox; context: { label: 'Filter mixes' }" /></div>
+            <ul class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+              @for (m of mixes(); track m.id) {
+                <li class="min-w-0"><app-music-playlist-card [playlist]="m" /></li>
+              }
+            </ul>
+          }
+        }
+      }
+    </div>
+  </div>
+
+  <app-music-playlist-editor [(open)]="editorOpen" [folderId]="folderFilter() === 'all' ? null : folderFilter()" (saved)="onCreated($event)" />
+
+  <app-music-dialog [title]="folderDialog()?.mode === 'rename' ? 'Rename folder' : 'New folder'" [open]="folderDialog() !== null" (openChange)="!$event && folderDialog.set(null)" size="sm">
+    <form (submit)="$event.preventDefault(); saveFolder()" class="space-y-3">
+      <label for="music-folder-name" class="block text-xs font-medium text-gray-400">Folder name</label>
+      <input id="music-folder-name" type="text" name="folderName" [(ngModel)]="folderName" maxlength="60" required
+        class="h-11 w-full rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-white placeholder-gray-500 focus:border-indigo-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" />
+      <div class="flex justify-end gap-2">
+        <button type="button" (click)="folderDialog.set(null)" class="h-11 rounded-full bg-white/5 px-5 text-sm text-gray-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Cancel</button>
+        <button type="submit" [disabled]="!folderName.trim()" class="h-11 rounded-full bg-indigo-600 px-5 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50">Save</button>
+      </div>
+    </form>
+  </app-music-dialog>
+
+  <app-music-dialog title="Delete folder?" [open]="confirmFolder() !== null" (openChange)="!$event && confirmFolder.set(null)" size="sm">
+    <p class="text-sm text-gray-300">"{{ confirmFolder()?.name }}" is removed. Its playlists stay in your library.</p>
+    <div class="mt-4 flex justify-end gap-2">
+      <button type="button" (click)="confirmFolder.set(null)" class="h-11 rounded-full bg-white/5 px-5 text-sm text-gray-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Cancel</button>
+      <button type="button" (click)="deleteFolder()" class="h-11 rounded-full bg-indigo-600 px-5 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Delete</button>
+    </div>
+  </app-music-dialog>
+</main>

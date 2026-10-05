@@ -1,0 +1,20 @@
+@if (pins().length) {
+  <section aria-labelledby="music-pins-heading" class="mb-8">
+    <h2 id="music-pins-heading" class="mb-3 text-lg font-semibold">Pinned</h2>
+    <ul class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+      @for (p of pins(); track p.key) {
+        <li class="min-w-0" data-pin>
+          @switch (p.item.kind) {
+            @case ('album') { <app-music-album-card [album]="p.item.data" /> }
+            @case ('artist') { <app-music-artist-card [artist]="p.item.data" /> }
+            @case ('playlist') { <app-music-playlist-card [playlist]="p.item.data" /> }
+            @case ('mix') { <app-music-playlist-card [playlist]="p.item.data" /> }
+            @case ('userPlaylist') { <app-music-playlist-card [playlist]="p.item.data" /> }
+          }
+          <button type="button" (click)="unpin(p.item)" [attr.aria-label]="'Unpin ' + name(p.item)"
+            class="mt-1 inline-flex h-10 items-center rounded-full bg-white/5 px-3 text-xs text-gray-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Unpin</button>
+        </li>
+      }
+    </ul>
+  </section>
+}

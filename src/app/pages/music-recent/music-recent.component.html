@@ -1,0 +1,45 @@
+<main class="flex-grow bg-[#0a0a0a] text-white">
+  <app-navbar [showSearchBox]="false" [transparent]="false"></app-navbar>
+  <app-music-subnav />
+  <div class="px-4 py-8 md:px-12 lg:px-16">
+    <div class="mb-6 flex flex-wrap items-center gap-3">
+      <h1 class="mr-auto text-2xl font-bold md:text-3xl">Recently played</h1>
+      @if (total()) {
+        <button type="button" (click)="playAll()"
+          class="inline-flex h-11 items-center gap-2 rounded-full bg-indigo-600 px-5 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" /></svg>Play all
+        </button>
+        <button type="button" (click)="confirmOpen.set(true)"
+          class="inline-flex h-11 items-center rounded-full bg-white/5 px-5 text-sm font-medium text-gray-200 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Clear history</button>
+      }
+    </div>
+
+    @if (!total()) {
+      <div class="rounded-xl border border-white/10 bg-white/5 px-6 py-12 text-center" data-empty>
+        <p class="text-base font-medium">Nothing played yet</p>
+        <p class="mt-1 text-sm text-gray-400">Songs you listen to will appear here.</p>
+        <a routerLink="/music" class="mt-5 inline-flex h-11 items-center rounded-full bg-indigo-600 px-5 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Search for music</a>
+      </div>
+    } @else {
+      @for (g of groups(); track g.label) {
+        <section class="mb-8 max-w-4xl" [attr.aria-label]="g.label">
+          <h2 class="mb-2 text-lg font-semibold" data-group>{{ g.label }}</h2>
+          @for (r of g.rows; track $index) {
+            <div class="flex items-center gap-2">
+              <app-music-track-row class="min-w-0 flex-1" [track]="r.track" [queue]="r.rest" />
+              <span class="hidden w-24 flex-shrink-0 text-right text-xs text-gray-400 sm:block">{{ when(r.playedAt) }}</span>
+            </div>
+          }
+        </section>
+      }
+    }
+  </div>
+
+  <app-music-dialog title="Clear history?" [(open)]="confirmOpen" size="sm">
+    <p class="text-sm text-gray-300">Your listening history is deleted from this browser. Liked songs and playlists are not touched.</p>
+    <div class="mt-4 flex justify-end gap-2">
+      <button type="button" (click)="confirmOpen.set(false)" class="h-11 rounded-full bg-white/5 px-5 text-sm text-gray-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Cancel</button>
+      <button type="button" (click)="clear()" class="h-11 rounded-full bg-indigo-600 px-5 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Clear history</button>
+    </div>
+  </app-music-dialog>
+</main>
