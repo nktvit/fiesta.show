@@ -1,11 +1,13 @@
-import {AfterViewChecked, Component, inject, PLATFORM_ID, OnDestroy} from '@angular/core';
-import {isPlatformBrowser, NgClass} from '@angular/common';
+import {AfterViewChecked, Component, DestroyRef, inject, PLATFORM_ID, OnDestroy} from '@angular/core';
+import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
+import {isPlatformBrowser} from '@angular/common';
 import {MovieService} from '../../services/movie.service';
 import {ActivatedRoute, Router, RouterLink} from '@angular/router';
 import {DomSanitizer, SafeResourceUrl} from '@angular/platform-browser';
 import {NavbarComponent} from '../../components/navbar/navbar.component';
 import {BackButtonComponent} from '../../components/back-button/back-button.component';
 import {MoviePlayerComponent} from "../../components/movie-player/movie-player.component";
+import {LikeBadgeComponent} from "../../components/like-badge/like-badge.component";
 import {LikesCommentsComponent} from "../../components/likes-comments/likes-comments.component";
 import {catchError, of, switchMap, tap} from "rxjs";
 import {PosterComponent} from "../../components/poster/poster.component";
@@ -26,7 +28,7 @@ interface EpisodeInfo {
 
 @Component({
   selector: 'app-movie-page',
-  imports: [NavbarComponent, BackButtonComponent, NgClass, MoviePlayerComponent, LikesCommentsComponent, PosterComponent, RouterLink, ExpandableTextComponent],
+  imports: [NavbarComponent, BackButtonComponent, MoviePlayerComponent, LikeBadgeComponent, LikesCommentsComponent, PosterComponent, RouterLink, ExpandableTextComponent],
   templateUrl: './movie-page.component.html',
   styleUrl: './movie-page.component.css'
 })
@@ -80,11 +82,12 @@ export class MoviePageComponent implements AfterViewChecked, OnDestroy {
   private sanitizer = inject(DomSanitizer);
   private titleService = inject(Title);
   private metaService = inject(Meta);
+  private destroyRef = inject(DestroyRef);
 
   ngOnInit() {
     this.isLoading = true;
 
-    this.route.queryParams.subscribe(params => {
+    this.route.queryParams.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(params => {
       this.season = params['s'] ? +params['s'] : null;
       this.episode = params['e'] ? +params['e'] : null;
       this.server = params['srv'] ? +params['srv'] : 0;
@@ -196,7 +199,8 @@ export class MoviePageComponent implements AfterViewChecked, OnDestroy {
         this.loadTrailer();
         this.loadBackdrop();
         this.loadCredits();
-      })
+      }),
+      takeUntilDestroyed(this.destroyRef)
     ).subscribe();
   }
 

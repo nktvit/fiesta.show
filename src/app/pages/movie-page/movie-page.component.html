@@ -146,7 +146,7 @@
               </a>
             }
             @if (imdbId && !invalidResponse) {
-              <app-likes-comments mode="like" [imdbId]="imdbId" [type]="type" [season]="season" [episode]="episode"></app-likes-comments>
+              <app-like-badge [imdbId]="imdbId" [type]="type" [season]="season" [episode]="episode"></app-like-badge>
             }
           </div>
 
@@ -278,7 +278,7 @@
               @for (s of seasonNumbers; track s) {
                 <button (click)="onSeasonChange(s)"
                   class="flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all duration-200"
-                  [ngClass]="s === season
+                  [class]="s === season
                     ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-900/50'
                     : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'">
                   {{ seasonNames.get(s) || 'Season ' + s }}
@@ -298,13 +298,13 @@
               @for (ep of episodes; track ep.number) {
                 <button (click)="goToEpisode(season!, ep.number)"
                   class="flex-shrink-0 w-48 rounded-lg overflow-hidden text-left transition-all duration-200"
-                  [ngClass]="ep.number === episode
+                  [class]="ep.number === episode
                     ? 'ring-2 ring-indigo-500 shadow-lg shadow-indigo-900/40'
                     : 'opacity-70 hover:opacity-100 hover:scale-[1.02]'">
                   <div class="relative">
                     <img [src]="ep.still" [alt]="ep.title" class="w-full h-28 object-cover bg-gray-900">
                     <span class="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold"
-                      [ngClass]="ep.number === episode ? 'bg-indigo-600 text-white' : 'bg-black/70 text-white'">
+                      [class]="ep.number === episode ? 'bg-indigo-600 text-white' : 'bg-black/70 text-white'">
                       {{ ep.number }}
                     </span>
                     @if (ep.number === episode) {
@@ -325,7 +325,7 @@
                   </div>
                   <div class="px-2.5 py-2 bg-[#181818]">
                     <p class="text-xs font-medium truncate"
-                      [ngClass]="ep.number === episode ? 'text-indigo-400' : 'text-white'">
+                      [class]="ep.number === episode ? 'text-indigo-400' : 'text-white'">
                       {{ ep.title }}
                     </p>
                     @if (ep.airDate) {
@@ -341,14 +341,14 @@
               @for (ep of episodes; track ep.number) {
                 <button (click)="goToEpisode(season!, ep.number)"
                   class="w-full flex items-center gap-4 px-5 py-3 text-left transition-all duration-200 border-b border-white/5 last:border-0"
-                  [ngClass]="ep.number === episode ? 'bg-indigo-600/10' : 'hover:bg-white/5'">
+                  [class]="ep.number === episode ? 'bg-indigo-600/10' : 'hover:bg-white/5'">
                   <span class="flex-shrink-0 w-8 h-8 rounded-md flex items-center justify-center text-xs font-bold"
-                    [ngClass]="ep.number === episode ? 'bg-indigo-600 text-white' : 'bg-white/5 text-gray-500'">
+                    [class]="ep.number === episode ? 'bg-indigo-600 text-white' : 'bg-white/5 text-gray-500'">
                     {{ ep.number }}
                   </span>
                   <div class="flex-grow min-w-0">
                     <p class="text-sm font-medium truncate"
-                      [ngClass]="ep.number === episode ? 'text-indigo-300' : 'text-white'">
+                      [class]="ep.number === episode ? 'text-indigo-300' : 'text-white'">
                       {{ ep.title }}
                     </p>
                     @if (ep.airDate) {
@@ -384,22 +384,38 @@
       }
 
       <!-- ── RECOMMENDATIONS ────────────────────────────────────────── -->
+      <!-- Below the fold: the rail is only rendered once its slot scrolls into
+           view. The placeholder is exactly as tall as the rail (236/266/296 px
+           at the <640 / sm / md+ poster widths) so swapping it in shifts nothing. -->
       @if (recommendations.length > 0) {
-        <section class="mt-12 mb-10">
-          <h2 class="text-lg md:text-xl font-bold text-white mb-3">You Might Also Like</h2>
-          <div class="flex gap-2 md:gap-3 overflow-x-auto pb-4 -mx-4 md:-mx-8 px-4 md:px-8 scrollbar-hide">
-            @for (movie of recommendations; track movie.tmdbId ?? movie.imdbID) {
-              <div class="w-[120px] sm:w-[140px] md:w-[160px] flex-shrink-0 transition-transform duration-200 hover:scale-105">
-                <app-poster [movie]="movie" [displayTitle]="true" class="rounded-lg overflow-hidden"></app-poster>
-              </div>
-            }
-          </div>
-        </section>
+        @defer (on viewport) {
+          <section class="mt-12 mb-10">
+            <h2 class="text-lg md:text-xl font-bold text-white mb-3">You Might Also Like</h2>
+            <div class="flex gap-2 md:gap-3 overflow-x-auto pb-4 -mx-4 md:-mx-8 px-4 md:px-8 scrollbar-hide">
+              @for (movie of recommendations; track movie.tmdbId ?? movie.imdbID) {
+                <div class="w-[120px] sm:w-[140px] md:w-[160px] flex-shrink-0 transition-transform duration-200 hover:scale-105">
+                  <app-poster [movie]="movie" [displayTitle]="true" class="rounded-lg overflow-hidden"></app-poster>
+                </div>
+              }
+            </div>
+          </section>
+        } @placeholder {
+          <section class="mt-12 mb-10 h-[236px] sm:h-[266px] md:h-[296px]" aria-hidden="true"></section>
+        }
       }
 
       <!-- ── COMMENTS ──────────────────────────────────────────────── -->
+      <!-- Deferred until its slot is on screen (the chunk is prefetched when the
+           browser is idle), so the thread, its 25 kB template and its two API
+           calls cost nothing for a visitor who never scrolls this far. The
+           placeholder wears the card's own chrome at a typical height; the
+           thread is the last thing on the page, so growing into it moves nothing. -->
       @if (imdbId && !invalidResponse) {
-        <app-likes-comments mode="comments" [imdbId]="imdbId" [type]="type" [season]="season" [episode]="episode"></app-likes-comments>
+        @defer (on viewport; prefetch on idle) {
+          <app-likes-comments [imdbId]="imdbId" [type]="type" [season]="season" [episode]="episode"></app-likes-comments>
+        } @placeholder {
+          <div class="mt-6 min-h-[22rem] rounded-xl border border-white/5 bg-[#111111] shadow-2xl" aria-hidden="true"></div>
+        }
       }
 
     </div><!-- /max-w-5xl -->
