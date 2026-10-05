@@ -10,6 +10,8 @@
 //   captions  picking English shows a track with cues and saves the pref
 //   native    the Native switch swaps to browser controls at the same position,
 //             survives a reload, and the Fiesta switch swaps back
+//   mobile    on a phone (390 and 360 wide) with the player open, the page has no
+//             horizontal overflow and <main> is not a sideways-scrollable box
 //   fallback  ?hls=native plays natively; with hls.js's requests blocked the
 //             player falls back to native HLS (WebKit/Chromium only)
 //
@@ -216,6 +218,29 @@ async function run(name) {
       return (await page.evaluate(videoState)).skin;
     });
 
+    await check('mobile', async () => {
+      const fails = [];
+      for (const width of [390, 360]) {
+        const mctx = await browser.newContext({ viewport: { width, height: 800 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+        const mpage = await mctx.newPage();
+        try {
+          await openPlayer(mpage);
+          const m = await mpage.evaluate(() => {
+            const main = document.querySelector('main');
+            main.scrollLeft = 30; // overflow-x:hidden still lets script and focus move it
+            const moved = main.scrollLeft;
+            main.scrollLeft = 0;
+            return { iw: innerWidth, sw: document.documentElement.scrollWidth, moved };
+          });
+          if (m.sw > m.iw) fails.push(`${width}px: page ${m.sw}px wide`);
+          if (m.moved) fails.push(`${width}px: <main> scrolls sideways`);
+        } finally {
+          await mctx.close();
+        }
+      }
+      return fails.length === 0 || fails.join('; ');
+    });
+
     if (name !== 'firefox') {
       await check('forcedNative', async () => {
         await openPlayer(page, '&hls=native');
@@ -241,7 +266,7 @@ async function run(name) {
   } finally {
     await browser.close();
   }
-  res.pass = Object.keys(res.checks).length >= 8 && Object.values(res.checks).every((v) => v === true || v === null);
+  res.pass = Object.keys(res.checks).length >= 9 && Object.values(res.checks).every((v) => v === true || v === null);
   return res;
 }
 
