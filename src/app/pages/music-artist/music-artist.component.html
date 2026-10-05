@@ -2,116 +2,139 @@
   <app-navbar [showSearchBox]="false" [transparent]="false"></app-navbar>
   <app-music-subnav />
 
-  <div class="px-4 py-8 md:px-12 lg:px-16">
-    <a routerLink="/music" class="mb-6 inline-block text-sm text-gray-400 hover:text-white">&larr; Music</a>
+  <div class="relative isolate overflow-hidden bg-[var(--ag-deep,#0a0a0a)] transition-colors duration-700 motion-reduce:transition-none" [style]="theme()" data-artist-theme>
+    @if (status() === 'done' && backdropUrls().length) {
+      <app-music-artist-backdrop [urls]="backdropUrls()" />
+    }
 
-    @switch (status()) {
-      @case ('loading') {
-        <div class="h-40 animate-pulse rounded bg-white/5 motion-reduce:animate-none" aria-busy="true" aria-label="Loading artist"></div>
-      }
-      @case ('error') {
-        <p class="text-sm text-amber-400">Couldn't load this artist.</p>
-      }
-      @case ('done') {
-        @if (artist(); as a) {
-          <div class="mb-8 flex flex-col gap-5 sm:flex-row sm:items-center">
-            @if (a.picture) {
-              <img [src]="a.picture" alt="" width="144" height="144" class="h-28 w-28 flex-shrink-0 rounded-full bg-gray-800 object-cover md:h-36 md:w-36" />
-            }
-            <div class="min-w-0">
-              <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Artist</p>
-              <h1 class="my-1 text-2xl font-bold md:text-4xl">{{ a.name }}</h1>
-              <div class="mt-3 flex flex-wrap items-center gap-2">
-                @if (topTracks().length) {
-                  <button type="button" (click)="playTop()"
-                    class="inline-flex h-11 items-center gap-2 rounded-full bg-indigo-600 px-6 text-sm font-semibold text-white hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
-                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" /></svg>
-                    Play top songs
+    <!-- Palette glow: two soft pools of colour so the glass panels have something to blur. Fades in with the theme. -->
+    <div aria-hidden="true" data-artist-glow
+      class="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(48rem_34rem_at_0%_20rem,var(--ag-glow-a,transparent),transparent_70%),radial-gradient(44rem_38rem_at_100%_46rem,var(--ag-glow-b,transparent),transparent_70%)] transition-opacity duration-1000 motion-reduce:transition-none"
+      [class]="palette() ? 'opacity-100' : 'opacity-0'"></div>
+    <div class="px-4 py-8 md:px-12 lg:px-16">
+      <a routerLink="/music" class="mb-4 inline-flex min-h-10 items-center rounded text-sm text-gray-200 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ag-accent-text,#818cf8)]">&larr; Music</a>
+
+      @switch (status()) {
+        @case ('loading') {
+          <div class="h-40 animate-pulse rounded bg-white/5 motion-reduce:animate-none" aria-busy="true" aria-label="Loading artist"></div>
+        }
+        @case ('error') {
+          <p class="text-sm text-amber-400">Couldn't load this artist.</p>
+        }
+        @case ('done') {
+          @if (artist(); as a) {
+            <div class="mb-8 flex flex-col items-center gap-5 text-center sm:flex-row sm:items-end sm:text-left">
+              @if (portrait()) {
+                <div class="flex-shrink-0 rounded-full border border-white/25 bg-white/10 p-1.5 shadow-[0_12px_40px_rgba(0,0,0,0.5)] backdrop-blur-md">
+                  <img [src]="portrait()" [alt]="a.name" width="176" height="176" data-artist-portrait (error)="portraitFailed(portrait())"
+                    class="h-36 w-36 rounded-full bg-gray-800 object-cover md:h-44 md:w-44" />
+                </div>
+              }
+              <div class="min-w-0">
+                <p class="text-xs font-semibold uppercase tracking-wide text-gray-200">Artist</p>
+                <h1 class="my-1 text-3xl font-bold tracking-tight [text-shadow:0_2px_24px_rgba(0,0,0,0.5)] md:text-5xl">{{ a.name }}</h1>
+                <div class="mt-3 flex flex-wrap items-center justify-center gap-2 sm:justify-start">
+                  @if (topTracks().length) {
+                    <button type="button" (click)="playTop()" data-artist-play
+                      class="inline-flex h-11 items-center gap-2 rounded-full bg-[var(--ag-accent,#4f46e5)] px-6 text-sm font-semibold text-white shadow-lg transition-[filter,background-color] duration-700 hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ag-accent-text,#818cf8)] motion-reduce:transition-none">
+                      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" /></svg>
+                      Play top songs
+                    </button>
+                  }
+                  <button type="button" (click)="shuffleAll()" [disabled]="shuffleBusy()"
+                    class="inline-flex h-11 items-center gap-2 rounded-full border border-white/20 bg-white/10 px-5 text-sm font-medium text-white backdrop-blur-md hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ag-accent-text,#818cf8)] disabled:opacity-60">
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5" /></svg>
+                    Shuffle
                   </button>
-                }
-                <button type="button" (click)="shuffleAll()" [disabled]="shuffleBusy()"
-                  class="inline-flex h-11 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-5 text-sm font-medium text-white hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-60">
-                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5" /></svg>
-                  Shuffle
-                </button>
-                <button type="button" (click)="radio()"
-                  class="inline-flex h-11 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-5 text-sm font-medium text-white hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
-                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="2" /><path d="M8.5 8.5a5 5 0 0 0 0 7M15.5 8.5a5 5 0 0 1 0 7M5.6 5.6a9 9 0 0 0 0 12.8M18.4 5.6a9 9 0 0 1 0 12.8" /></svg>
-                  Radio
-                </button>
-                @if (item(); as it) {
-                  <app-music-like-button [item]="it" />
-                }
-                <button type="button" (click)="share()" aria-label="Share artist" title="Share"
-                  class="flex h-11 w-11 items-center justify-center rounded-full text-gray-300 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
-                  <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3M7 8l5-5 5 5M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5" /></svg>
-                </button>
+                  <button type="button" (click)="radio()"
+                    class="inline-flex h-11 items-center gap-2 rounded-full border border-white/20 bg-white/10 px-5 text-sm font-medium text-white backdrop-blur-md hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ag-accent-text,#818cf8)]">
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="2" /><path d="M8.5 8.5a5 5 0 0 0 0 7M15.5 8.5a5 5 0 0 1 0 7M5.6 5.6a9 9 0 0 0 0 12.8M18.4 5.6a9 9 0 0 1 0 12.8" /></svg>
+                    Radio
+                  </button>
+                  @if (item(); as it) {
+                    <app-music-like-button [item]="it" />
+                  }
+                  <button type="button" (click)="share()" aria-label="Share artist" title="Share"
+                    class="flex h-11 w-11 items-center justify-center rounded-full text-gray-100 hover:bg-white/15 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ag-accent-text,#818cf8)]">
+                    <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3M7 8l5-5 5 5M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5" /></svg>
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
 
-          <div class="mb-10">
-            <app-music-artist-bio [artistId]="a.id" [name]="a.name" />
-          </div>
-
-          @if (topTracks().length) {
-            <section class="mb-10 max-w-4xl" aria-label="Popular songs">
-              <h2 class="mb-2 text-lg font-semibold">Popular</h2>
-              @for (t of shownTop(); track t.id) {
-                <app-music-track-row [track]="t" [queue]="topTracks()"></app-music-track-row>
-              }
-              @if (canExpandTop()) {
-                <button type="button" (click)="showAllTop()" [disabled]="topBusy()"
-                  class="mt-2 min-h-10 rounded-full px-4 text-sm font-medium text-gray-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Show all</button>
-              } @else if (topExpanded() && topMore()) {
-                <button type="button" (click)="loadMoreTop()" [disabled]="topBusy()"
-                  class="mt-2 min-h-10 rounded-full px-4 text-sm font-medium text-gray-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-60">{{ topBusy() ? 'Loading...' : 'Show more' }}</button>
-              }
-            </section>
-          }
-
-          @if (inLibrary().length) {
-            <section class="mb-10 max-w-4xl" aria-label="In your library">
-              <h2 class="mb-2 text-lg font-semibold">In your library</h2>
-              @for (t of inLibrary(); track t.id) {
-                <app-music-track-row [track]="t" [queue]="inLibrary()"></app-music-track-row>
-              }
-            </section>
-          }
-
-          <section class="mb-10" aria-label="Discography">
-            <h2 class="mb-3 text-lg font-semibold">Discography</h2>
-            <div class="mb-4 flex flex-wrap gap-2" role="group" aria-label="Discography filter">
-              @for (f of pills(); track f.id) {
-                <button type="button" (click)="selectFilter(f.id)" [attr.aria-pressed]="filter() === f.id"
-                  class="min-h-10 rounded-full px-4 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 motion-reduce:transition-none"
-                  [class]="filter() === f.id ? 'bg-white text-black' : 'bg-white/5 text-gray-300 hover:text-white'">{{ f.label }}</button>
-              }
-            </div>
-            <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-              @for (al of albums(); track al.id) {
-                <app-music-album-card [album]="al" />
-              } @empty {
-                <p class="col-span-full text-sm text-gray-400">Nothing here yet.</p>
-              }
-            </div>
-            @if (currentDisco().more) {
-              <div class="mt-6 flex justify-center">
-                <button type="button" (click)="loadMoreAlbums()" [disabled]="currentDisco().busy"
-                  class="h-11 rounded-full border border-white/10 bg-white/5 px-6 text-sm font-medium text-white hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-60">
-                  {{ currentDisco().busy ? 'Loading...' : 'Load more' }}
-                </button>
+            <div class="mb-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,24rem)] lg:items-start">
+              <div class="min-w-0 space-y-5">
+                @if (topTracks().length) {
+                  <section class="p-4 md:p-5" [class]="glassPanel()" aria-label="Popular songs" data-glass-panel>
+                    <h2 class="mb-2 text-lg font-semibold">Popular</h2>
+                    @for (t of shownTop(); track t.id) {
+                      <app-music-track-row [track]="t" [queue]="topTracks()"></app-music-track-row>
+                    }
+                    @if (canExpandTop()) {
+                      <button type="button" (click)="showAllTop()" [disabled]="topBusy()"
+                        class="mt-2 min-h-10 rounded-full px-4 text-sm font-medium text-gray-200 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ag-accent-text,#818cf8)]">Show all</button>
+                    } @else if (topExpanded() && topMore()) {
+                      <button type="button" (click)="loadMoreTop()" [disabled]="topBusy()"
+                        class="mt-2 min-h-10 rounded-full px-4 text-sm font-medium text-gray-200 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ag-accent-text,#818cf8)] disabled:opacity-60">{{ topBusy() ? 'Loading...' : 'Show more' }}</button>
+                    }
+                  </section>
+                }
+                @if (inLibrary().length) {
+                  <section class="p-4 md:p-5" [class]="glassPanel()" aria-label="In your library" data-glass-panel>
+                    <h2 class="mb-2 text-lg font-semibold">In your library</h2>
+                    @for (t of inLibrary(); track t.id) {
+                      <app-music-track-row [track]="t" [queue]="inLibrary()"></app-music-track-row>
+                    }
+                  </section>
+                }
               </div>
+              <app-music-artist-bio [artistId]="a.id" [name]="a.name" class="p-4 empty:hidden md:p-5" [class]="glassPanel()" data-glass-panel />
+            </div>
+
+            <section class="mb-5 p-4 md:p-5" [class]="glassPanel()" aria-label="Discography" data-glass-panel>
+              <h2 class="mb-3 text-lg font-semibold">Discography</h2>
+              <div class="mb-4 flex flex-wrap gap-2" role="group" aria-label="Discography filter">
+                @for (f of pills(); track f.id) {
+                  <button type="button" (click)="selectFilter(f.id)" [attr.aria-pressed]="filter() === f.id"
+                    class="min-h-10 rounded-full px-4 py-1.5 text-sm font-medium transition-colors duration-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ag-accent-text,#818cf8)] motion-reduce:transition-none"
+                    [class]="filter() === f.id ? 'bg-[var(--ag-accent,#4f46e5)] text-white' : 'bg-white/10 text-gray-100 hover:bg-white/20'">{{ f.label }}</button>
+                }
+              </div>
+              <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                @for (al of albums(); track al.id) {
+                  <app-music-album-card [album]="al" />
+                } @empty {
+                  <p class="col-span-full text-sm text-gray-200">Nothing here yet.</p>
+                }
+              </div>
+              @if (currentDisco().more) {
+                <div class="mt-6 flex justify-center">
+                  <button type="button" (click)="loadMoreAlbums()" [disabled]="currentDisco().busy"
+                    class="h-11 rounded-full border border-white/20 bg-white/10 px-6 text-sm font-medium text-white hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ag-accent-text,#818cf8)] disabled:opacity-60">
+                    {{ currentDisco().busy ? 'Loading...' : 'Load more' }}
+                  </button>
+                </div>
+              }
+            </section>
+
+            @if (gallery().length) {
+              <section class="mb-5 p-4 md:p-5" [class]="glassPanel()" aria-label="Photos" data-glass-panel data-artist-gallery>
+                <h2 class="mb-3 text-lg font-semibold">Photos</h2>
+                <app-music-artist-gallery [images]="gallery()" [name]="a.name" />
+              </section>
             }
-          </section>
 
-          @if (similarArtists().length) {
-            <app-music-rail title="Similar artists">
-              @for (x of similarArtists(); track x.id) { <app-music-artist-card [artist]="x" /> }
-            </app-music-rail>
+            @if (similarArtists().length) {
+              <section class="mb-5 p-4 md:p-5" [class]="glassPanel()" aria-label="Similar artists" data-glass-panel>
+                <h2 class="mb-4 text-lg font-semibold">Similar artists</h2>
+                <div class="grid grid-cols-3 gap-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
+                  @for (x of similarArtists(); track x.id) { <app-music-artist-card [artist]="x" /> }
+                </div>
+              </section>
+            }
           }
         }
       }
-    }
+    </div>
   </div>
 </main>

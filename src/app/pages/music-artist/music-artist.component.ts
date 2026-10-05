@@ -4,19 +4,37 @@ import { Meta, Title } from '@angular/platform-browser';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { catchError, EMPTY, firstValueFrom, merge, switchMap, tap } from 'rxjs';
 import { MusicAlbumCardComponent } from '../../components/music-album-card/music-album-card.component';
+import { MusicArtistBackdropComponent } from '../../components/music-artist-backdrop/music-artist-backdrop.component';
+import { MusicArtistGalleryComponent } from '../../components/music-artist-gallery/music-artist-gallery.component';
 import { MusicArtistBioComponent } from '../../components/music-artist-bio/music-artist-bio.component';
 import { MusicArtistCardComponent } from '../../components/music-artist-card/music-artist-card.component';
 import { MusicLikeButtonComponent } from '../../components/music-like-button/music-like-button.component';
-import { MusicRailComponent } from '../../components/music-rail/music-rail.component';
 import { MusicSubnavComponent } from '../../components/music-subnav/music-subnav.component';
 import { MusicTrackRowComponent } from '../../components/music-track-row/music-track-row.component';
 import { NavbarComponent } from '../../components/navbar/navbar.component';
-import { MusicCatalogService, MusicDiscographyFilter } from '../../services/music-catalog.service';
+import { MusicArtistImage, MusicCatalogService, MusicDiscographyFilter } from '../../services/music-catalog.service';
 import { MusicLibraryService } from '../../services/music-library.service';
 import { MusicPlayerService } from '../../services/music-player.service';
+import { MusicSettingsService } from '../../services/music-settings.service';
 import { MusicToastService } from '../../services/music-toast.service';
 import { MusicAlbum, MusicArtist, MusicLibraryItem, MusicService, MusicTrack } from '../../services/music.service';
+import { artistThemeVars } from '../../utils/music-artist-theme';
+import { ArtistPalette, imagePalette } from '../../utils/music-color';
+import { tidalImage } from '../../utils/music-format';
 import { shareMusicLink } from '../../utils/music-links';
+
+/**
+ * Glass panel: translucent tinted fill over the palette gradient, blur, hairline border, soft shadow.
+ * Opaque tinted fill without backdrop-filter support (unprefixed or -webkit-) and under
+ * prefers-reduced-transparency. Tailwind adds the -webkit- prefix for backdrop-blur itself.
+ */
+export const GLASS_PANEL =
+  'rounded-2xl border border-white/15 bg-white/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.35)] backdrop-blur-xl [&_.text-gray-400]:text-gray-300 ' +
+  '[@supports_not_((backdrop-filter:blur(1px))_or_(-webkit-backdrop-filter:blur(1px)))]:bg-[var(--ag-panel,#161616)] ' +
+  '[@supports_not_((backdrop-filter:blur(1px))_or_(-webkit-backdrop-filter:blur(1px)))]:backdrop-blur-none ' +
+  '[@media(prefers-reduced-transparency:reduce)]:bg-[var(--ag-panel,#161616)] [@media(prefers-reduced-transparency:reduce)]:backdrop-blur-none';
+/** Same panel without blur, for Settings > reduce blur. */
+export const GLASS_PANEL_SOLID = 'rounded-2xl border border-white/15 bg-[var(--ag-panel,#161616)] shadow-[0_8px_32px_rgba(0,0,0,0.35)] [&_.text-gray-400]:text-gray-300';
 
 const PAGE = 30;
 const SHUFFLE_ALBUMS = 10;
@@ -56,8 +74,8 @@ function shuffled<T>(list: T[]): T[] {
 @Component({
   selector: 'app-music-artist',
   imports: [
-    NavbarComponent, RouterLink, MusicTrackRowComponent, MusicSubnavComponent, MusicRailComponent, MusicAlbumCardComponent,
-    MusicArtistCardComponent, MusicLikeButtonComponent, MusicArtistBioComponent,
+    NavbarComponent, RouterLink, MusicTrackRowComponent, MusicSubnavComponent, MusicAlbumCardComponent,
+    MusicArtistCardComponent, MusicLikeButtonComponent, MusicArtistBioComponent, MusicArtistBackdropComponent, MusicArtistGalleryComponent,
   ],
   templateUrl: './music-artist.component.html',
 })
@@ -70,6 +88,7 @@ export class MusicArtistComponent {
   private toast = inject(MusicToastService);
   private library = inject(MusicLibraryService);
   protected readonly player = inject(MusicPlayerService);
+  protected readonly settings = inject(MusicSettingsService);
 
   readonly filters = ARTIST_FILTERS;
   readonly artist = signal<MusicArtist | null>(null);
@@ -82,6 +101,32 @@ export class MusicArtistComponent {
   private readonly similar = signal<MusicArtist[]>([]);
   readonly status = signal<'loading' | 'done' | 'error'>('loading');
   readonly shuffleBusy = signal(false);
+  /** Pictures of the artist (artist-images action); [] until loaded or when none exist. */
+  readonly images = signal<MusicArtistImage[]>([]);
+  /** Colour theme from the artist's picture; null = indigo fallback look. */
+  readonly palette = signal<ArtistPalette | null>(null);
+  /** `--ag-*` custom properties bound on the page root; every one null (removed) without a palette. */
+  readonly theme = computed(() => artistThemeVars(this.palette()));
+  /** Backdrop rotation: the portrait first (instant), then up to two photos from other sources. */
+  readonly backdropUrls = computed(() => {
+    const a = this.artist();
+    const first = a?.picture ? [tidalImage(a.picture, 750)] : [];
+    const photos = this.images().filter((i) => i.kind === 'photo' && i.source !== 'tidal').map((i) => i.url);
+    return [...new Set([...first, ...photos])].slice(0, 3);
+  });
+  /** Gallery pictures; a gallery of one is not shown. */
+  readonly gallery = computed(() => (this.images().length >= 2 ? this.images() : []));
+  protected readonly glassPanel = computed(() => (this.settings.reduceBlur() ? GLASS_PANEL_SOLID : GLASS_PANEL));
+  /** Portrait files that failed to load; the next candidate takes over. */
+  protected readonly badPortraits = signal<ReadonlySet<string>>(new Set());
+  protected readonly portrait = computed(() => {
+    const a = this.artist();
+    const bad = this.badPortraits();
+    const own = a?.picture ? tidalImage(a.picture, 750) : '';
+    if (own && !bad.has(own)) return own;
+    // No TIDAL picture (or it failed): the best photo we found stands in.
+    return this.images().find((i) => i.kind === 'photo' && !bad.has(i.url))?.url ?? '';
+  });
 
   readonly item = computed<MusicLibraryItem | null>(() => {
     const a = this.artist();
@@ -103,6 +148,10 @@ export class MusicArtistComponent {
     return this.library.favorites().tracks.filter((t) => t.artistId === a.id || !!t.artists?.some((x) => x.id === a.id)).filter((t) => !this.library.isBlocked(t));
   });
 
+  protected portraitFailed(url: string): void {
+    this.badPortraits.update((s) => new Set(s).add(url));
+  }
+
   constructor() {
     this.route.paramMap
       .pipe(
@@ -114,6 +163,9 @@ export class MusicArtistComponent {
           this.disco.set(emptyDisco());
           this.filter.set('ALBUMS');
           this.similar.set([]);
+          this.images.set([]);
+          this.badPortraits.set(new Set());
+          this.palette.set(null);
         }),
         switchMap((p) => {
           const id = p.get('id') ?? '';
@@ -127,9 +179,19 @@ export class MusicArtistComponent {
               this.title.setTitle(`${r.artist.name} | Stream Fiesta`);
               this.meta.updateTag({ name: 'description', content: `Listen to ${r.artist.name}: top songs and albums in lossless on Stream Fiesta.` });
               this.library.recordActivity({ kind: 'artist', data: r.artist });
+              if (r.artist.picture) void this.applyPalette(tidalImage(r.artist.picture, 320), id);
             }),
             switchMap(() =>
               merge(
+                this.catalog.artistImages(id).pipe(
+                  tap((l) => {
+                    if (String(this.artist()?.id) !== id) return;
+                    this.images.set(l);
+                    // No portrait from TIDAL (or its colours failed to load): theme from the first pictures we found.
+                    if (!this.palette()) void this.paletteFromImages(l.filter((i) => i.kind === 'photo').slice(0, 2).map((i) => i.url), id);
+                  }),
+                  catchError(() => EMPTY),
+                ),
                 this.catalog.similarArtists(id).pipe(tap((l) => this.similar.set(l)), catchError(() => EMPTY)),
                 ...(['EPSANDSINGLES', 'COMPILATIONS', 'APPEARS_ON'] as const).map((f) =>
                   this.catalog.artistAlbums(id, f, 0, PAGE).pipe(
@@ -151,6 +213,19 @@ export class MusicArtistComponent {
         takeUntilDestroyed(inject(DestroyRef)),
       )
       .subscribe();
+  }
+
+  /** Reads the colours of `url` and, if this artist is still showing, fades the theme in. */
+  private async applyPalette(url: string, id: string): Promise<void> {
+    const p = await imagePalette(url);
+    if (p && String(this.artist()?.id) === String(id)) this.palette.set(p);
+  }
+
+  private async paletteFromImages(urls: string[], id: string): Promise<void> {
+    for (const u of urls) {
+      if (this.palette() || String(this.artist()?.id) !== String(id)) return;
+      await this.applyPalette(u, id);
+    }
   }
 
   private setDisco(f: MusicDiscographyFilter, patch: Partial<Disco>): void {

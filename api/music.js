@@ -13,7 +13,7 @@
 //   suggest, search-type                                      lib/music/search.js
 //   track, tracks, album-extras, artist-bio, similar-artists,
 //   similar-albums, artist-albums, artist-toptracks,
-//   artist-links, aoty                                        lib/music/catalog.js
+//   artist-links, artist-images, aoty                         lib/music/catalog.js
 //   mix, track-mix, artist-mix, playlist, explore, page       lib/music/discovery.js
 //   lastfm (GET or POST)                                      lib/music/scrobble.js
 // Full-length playback needs the viewer's own token (see lib/tidal.js);
@@ -27,6 +27,7 @@ const {
 } = require('../lib/tidal');
 const search_ = require('../lib/music/search');
 const catalog = require('../lib/music/catalog');
+const { isArtistImageHost } = require('../lib/music/artist-images');
 const discovery = require('../lib/music/discovery');
 const scrobble = require('../lib/music/scrobble');
 
@@ -51,6 +52,7 @@ const DELEGATED = {
   'artist-albums': [catalog, 'artistAlbums'],
   'artist-toptracks': [catalog, 'artistTopTracks'],
   'artist-links': [catalog, 'artistLinks'],
+  'artist-images': [catalog, 'artistImages'],
   aoty: [catalog, 'aoty'],
   mix: [discovery, 'mix'],
   'track-mix': [discovery, 'trackMix'],
@@ -250,8 +252,14 @@ async function img(q, res) {
   } catch {
     target = '';
   }
-  if (!isTidalImageHost(target)) throw httpError(400, 'bad_target');
-  const r = await fetch(target);
+  if (!isTidalImageHost(target) && !isArtistImageHost(target)) throw httpError(400, 'bad_target');
+  const get = () => fetch(target, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; StreamFiesta/1.0; +https://streamfiesta.vercel.app)' } });
+  let r = await get();
+  // Artist-photo CDNs (Deezer, Wikimedia) now and then answer 403/429/5xx under bursts: two retries.
+  for (const wait of [400, 1200]) {
+    if (r.ok || r.status === 404) break;
+    r = await new Promise((res) => setTimeout(res, wait)).then(get);
+  }
   const type = r.headers.get('content-type') || '';
   if (!r.ok) throw httpError(r.status === 404 ? 404 : 502, 'upstream_' + r.status);
   if (!/^image\//.test(type)) throw httpError(502, 'not_an_image');

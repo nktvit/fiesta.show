@@ -1,11 +1,12 @@
 <div class="group text-center">
   <div class="relative">
     <a [routerLink]="['/music/artist', artist().id]" tabindex="-1" aria-hidden="true" class="block">
-      @if (artist().picture) {
-        <img [src]="artist().picture" alt="" width="320" height="320" loading="lazy"
+      @if (artist().picture && !failed()) {
+        <img [src]="artist().picture" alt="" width="320" height="320" loading="lazy" (error)="failed.set(true)"
           class="mx-auto aspect-square w-full rounded-full bg-gray-800 object-cover transition-transform group-hover:scale-[1.02] motion-reduce:transition-none" />
       } @else {
-        <div class="mx-auto aspect-square w-full rounded-full bg-gray-800"></div>
+        <!-- No picture (or it failed to load): initials on the page tint instead of an empty disc. -->
+        <div data-artist-initials class="mx-auto flex aspect-square w-full items-center justify-center rounded-full bg-[var(--ag-mid,#1f2937)] text-2xl font-semibold text-gray-100 ring-1 ring-white/10 sm:text-3xl">{{ initials() }}</div>
       }
     </a>
     <button type="button" (click)="play()" [attr.aria-label]="'Play ' + artist().name" [disabled]="busy()"

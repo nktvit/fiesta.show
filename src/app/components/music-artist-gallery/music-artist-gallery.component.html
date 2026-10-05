@@ -1,0 +1,46 @@
+<ul class="grid auto-rows-[6.25rem] grid-cols-2 gap-2 sm:auto-rows-[8rem] sm:grid-cols-4 lg:auto-rows-[9rem]" aria-label="Photos of {{ name() }}">
+  @for (t of tiles(); track t.image.url; let i = $index) {
+    <li class="min-w-0" [class]="t.cls">
+      <button type="button" (click)="show(i)" [attr.aria-label]="t.label" aria-haspopup="dialog" data-gallery-tile
+        class="group block h-full w-full overflow-hidden rounded-xl bg-white/5 ring-1 ring-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ag-accent-text,#818cf8)]">
+        <img [src]="t.image.url" alt="" loading="lazy" (error)="drop(t.image.url)" decoding="async" [attr.width]="t.image.w" [attr.height]="t.image.h"
+          class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04] motion-reduce:transition-none" />
+      </button>
+    </li>
+  }
+</ul>
+@if (credits().length) {
+  <p class="mt-3 text-xs leading-relaxed text-gray-300" data-gallery-credits>
+    @for (c of credits(); track c.url; let last = $last) {
+      <span>{{ c.credit }}</span>@if (!last) {<span aria-hidden="true"> · </span>}
+    }
+  </p>
+}
+<p class="mt-1 text-xs text-gray-300">Images: {{ sources() }}</p>
+
+<app-music-dialog [title]="'Photos of ' + name()" [(open)]="open" size="lg">
+  @if (current(); as c) {
+    <div>
+      <div class="relative flex min-h-[40vh] items-center justify-center overflow-hidden rounded-xl bg-black/40">
+        <img [src]="c.url" [alt]="'Photo ' + (index() + 1) + ' of ' + list().length + ' of ' + name()" decoding="async"
+          class="max-h-[60vh] w-full object-contain" data-lightbox-image />
+      </div>
+      <p class="mt-3 text-xs text-gray-300" data-lightbox-credit>
+        @if (c.credit) { {{ c.credit }} · <a [href]="c.page || c.url" target="_blank" rel="noopener noreferrer" class="inline-flex min-h-10 items-center underline hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ag-accent-text,#818cf8)]">Commons page</a> } @else { Image: {{ sourceName(c) }} }
+      </p>
+      @if (list().length > 1) {
+        <div class="mt-3 flex items-center justify-between gap-2 pb-2">
+          <button type="button" (click)="step(-1)" aria-label="Previous photo"
+            class="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ag-accent-text,#818cf8)]">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
+          </button>
+          <span class="text-sm tabular-nums text-gray-300" aria-live="polite">{{ index() + 1 }} / {{ list().length }}</span>
+          <button type="button" (click)="step(1)" aria-label="Next photo"
+            class="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ag-accent-text,#818cf8)]">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+          </button>
+        </div>
+      }
+    </div>
+  }
+</app-music-dialog>

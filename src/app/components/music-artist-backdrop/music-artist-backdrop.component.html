@@ -1,0 +1,7 @@
+@for (i of layers(); track i) {
+  <img [src]="list()[i]" alt="" decoding="async" [attr.fetchpriority]="i === 0 ? 'high' : null" [attr.loading]="i === 0 ? null : 'lazy'"
+    (load)="onLoad(i)" data-backdrop-layer
+    class="absolute inset-0 h-full w-full origin-center scale-125 object-cover opacity-0 blur-2xl brightness-[.65] saturate-150 transition-opacity duration-[2500ms] motion-safe:animate-ag-drift motion-reduce:transition-none"
+    [class.opacity-90]="active() === i && loaded().has(i)" />
+}
+<div class="absolute inset-0 bg-[linear-gradient(to_bottom,var(--ag-deep-a,rgba(10,10,10,0.45))_0%,transparent_35%,var(--ag-deep,#0a0a0a)_100%)]"></div>
