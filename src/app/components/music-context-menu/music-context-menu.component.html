@@ -1,7 +1,8 @@
 @if (ui.contextMenu()) {
-  <div class="fixed inset-0 z-[60]" [class.bg-black/60]="sheet()" (click)="ui.closeContextMenu()" (contextmenu)="$event.preventDefault(); ui.closeContextMenu()" aria-hidden="true"></div>
+  <div class="fixed inset-0 z-[60]" [class.bg-black/60]="sheet()" animate.enter="ctx-fade-in" animate.leave="ctx-fade-out" (click)="ui.closeContextMenu()" (contextmenu)="$event.preventDefault(); ui.closeContextMenu()" aria-hidden="true"></div>
   <div role="menu" [attr.aria-label]="'Actions for ' + heading()" cdkTrapFocus [cdkTrapFocusAutoCapture]="true" (keydown)="onKeydown($event)"
     class="fixed z-[60] border border-white/10 bg-[#1f1f1f] text-sm text-white shadow-2xl"
+    [animate.enter]="sheet() ? 'ctx-sheet-in' : 'ctx-pop-in'" [animate.leave]="sheet() ? 'ctx-sheet-out' : 'ctx-pop-out'"
     [class]="sheet()
       ? 'inset-x-0 bottom-0 max-h-[75vh] overflow-y-auto overscroll-contain rounded-t-2xl pb-[env(safe-area-inset-bottom,0px)]'
       : 'w-56 rounded-lg py-1'"

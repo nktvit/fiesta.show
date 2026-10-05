@@ -181,3 +181,22 @@ video-skin video::-webkit-media-text-track-container {
   transition: translate var(--media-caption-track-duration, 0s) ease-out;
   transition-delay: var(--media-caption-track-delay, 0s);
 }
+
+/* Music context menu: slides in and out (Angular animate.enter / animate.leave keep the
+   element mounted until the leave animation ends). Phone = bottom sheet rising from the
+   edge; desktop = popover easing a few px from the cursor. Reduced motion cuts instead. */
+@keyframes ctx-sheet-in { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@keyframes ctx-sheet-out { from { transform: translateY(0); } to { transform: translateY(100%); } }
+@keyframes ctx-pop-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes ctx-pop-out { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-8px); } }
+@keyframes ctx-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ctx-fade-out { from { opacity: 1; } to { opacity: 0; } }
+.ctx-sheet-in { animation: ctx-sheet-in 260ms cubic-bezier(0.32, 0.72, 0, 1) both; }
+.ctx-sheet-out { animation: ctx-sheet-out 200ms cubic-bezier(0.4, 0, 1, 1) both; }
+.ctx-pop-in { animation: ctx-pop-in 140ms ease-out both; }
+.ctx-pop-out { animation: ctx-pop-out 110ms ease-in both; }
+.ctx-fade-in { animation: ctx-fade-in 200ms ease-out both; }
+.ctx-fade-out { animation: ctx-fade-out 200ms ease-in both; }
+@media (prefers-reduced-motion: reduce) {
+  .ctx-sheet-in, .ctx-sheet-out, .ctx-pop-in, .ctx-pop-out, .ctx-fade-in, .ctx-fade-out { animation: none; }
+}
