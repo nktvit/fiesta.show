@@ -1,0 +1,23 @@
+@if (selection.count() > 0) {
+  <section role="region" aria-label="Selected tracks"
+    class="fixed inset-x-0 z-[45] border-t border-white/10 bg-[#121212]/95 pb-[env(safe-area-inset-bottom,0px)]"
+    [class.backdrop-blur-md]="!settings.reduceBlur()"
+    [class]="player.track()
+      ? 'bottom-[calc(7.75rem+env(safe-area-inset-bottom,0px))] sm:bottom-[4.25rem]'
+      : 'bottom-[calc(3.5rem+env(safe-area-inset-bottom,0px))] sm:bottom-0'">
+    <div class="mx-auto flex max-w-screen-2xl items-center gap-2 px-3 py-2 md:px-12 lg:px-16">
+      <p class="flex-shrink-0 pr-1 text-sm font-semibold text-white" aria-live="polite" data-selection-count>{{ selection.count() }} selected</p>
+      <div class="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
+        <button type="button" (click)="play()" class="flex h-10 flex-shrink-0 items-center rounded-full bg-indigo-600 px-4 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Play</button>
+        <button type="button" (click)="playNext()" class="flex h-10 flex-shrink-0 items-center rounded-full bg-white/10 px-4 text-sm font-medium text-white hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Play next</button>
+        <button type="button" (click)="addToQueue()" class="flex h-10 flex-shrink-0 items-center rounded-full bg-white/10 px-4 text-sm font-medium text-white hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Add to queue</button>
+        <button type="button" (click)="like()" class="flex h-10 flex-shrink-0 items-center rounded-full bg-white/10 px-4 text-sm font-medium text-white hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Like</button>
+        <button type="button" (click)="addToPlaylist()" class="flex h-10 flex-shrink-0 items-center rounded-full bg-white/10 px-4 text-sm font-medium text-white hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Add to playlist</button>
+        @if (downloads.enabled()) {
+          <button type="button" (click)="download()" class="flex h-10 flex-shrink-0 items-center rounded-full bg-white/10 px-4 text-sm font-medium text-white hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Download</button>
+        }
+      </div>
+      <button type="button" (click)="selection.clear()" class="flex h-10 flex-shrink-0 items-center rounded-full px-3 text-sm font-medium text-gray-300 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Clear</button>
+    </div>
+  </section>
+}

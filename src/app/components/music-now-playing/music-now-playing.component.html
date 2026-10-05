@@ -1,0 +1,215 @@
+@if (ui.nowPlayingOpen()) {
+  <section #shell role="dialog" aria-modal="true" aria-label="Now playing" cdkTrapFocus [cdkTrapFocusAutoCapture]="true" (keydown)="onKeydown($event)"
+    data-now-playing [attr.data-accent]="accentForLyrics()" (scroll)="shell.scrollTop = 0; shell.scrollLeft = 0"
+    class="fixed inset-0 z-[50] flex flex-col overflow-hidden bg-[#121212] pb-[env(safe-area-inset-bottom,0px)] pt-[env(safe-area-inset-top,0px)] text-white transition-[background-color] duration-500 motion-reduce:transition-none"
+    [style.background-image]="background()"
+    [class.transition-transform]="!dragging() && dragY() === 0"
+    [style.transform]="dragY() ? 'translateY(' + dragY() + 'px)' : null">
+
+    @if (settings.dynamicColor() && coverLarge() && !settings.reduceBlur()) {
+      <!-- Clipped wrapper: the scaled image must not add scrollable overflow to the dialog. -->
+      <div class="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+        <img [src]="coverLarge()" alt="" class="h-full w-full scale-125 object-cover opacity-20 blur-3xl" />
+      </div>
+    }
+    @if (visualizer()) {
+      <!-- Not aria-hidden: the visualizer's preset controls must stay reachable (its canvas hides itself).
+           Hidden with the rest of the UI in the immersive view. -->
+      <div class="absolute inset-0">
+        <app-music-visualizer [active]="true" [coverUrl]="coverLarge()" [showControls]="!hideUi()" />
+      </div>
+    }
+
+    <!-- Drag handle: swipe down to dismiss (phones). -->
+    <div class="relative z-10 flex touch-none justify-center pb-1 pt-3 lg:hidden" (pointerdown)="startDrag($event)" data-drag-handle aria-hidden="true">
+      <span class="h-1.5 w-12 rounded-full bg-white/30"></span>
+    </div>
+
+    <header class="relative z-10 flex items-center gap-2 px-4 pt-1 lg:px-8 lg:pt-4">
+      <button type="button" (click)="ui.closeNowPlaying()" aria-label="Close now playing"
+        class="flex h-10 w-10 items-center justify-center rounded-full text-gray-200 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+      </button>
+      <span class="min-w-0 flex-1"></span>
+      @if (!hideUi()) {
+        @if (badge()) {
+          <span class="flex-shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+            [class]="badge() === 'Preview' ? 'border-amber-400 text-amber-300' : 'border-white/40 text-gray-200'">{{ badge() }}</span>
+        }
+        <button type="button" (click)="cd.set(!cd())" aria-label="CD mode" [attr.aria-pressed]="cd()" title="CD mode: a round cover that spins while playing"
+          class="flex h-10 w-10 items-center justify-center rounded-full hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+          [class.text-indigo-300]="cd()" [class.text-gray-200]="!cd()">
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="2.5" /></svg>
+        </button>
+        <button type="button" (click)="visualizer.set(!visualizer())" aria-label="Visualizer" [attr.aria-pressed]="visualizer()" title="Visualizer"
+          class="flex h-10 w-10 items-center justify-center rounded-full hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+          [class.text-indigo-300]="visualizer()" [class.text-gray-200]="!visualizer()">
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M5 10v4M9 6v12M13 9v6M17 4v16M21 11v2" /></svg>
+        </button>
+      }
+    </header>
+
+    @if (player.track(); as t) {
+      <div class="relative z-10 flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overscroll-contain px-6 pb-6 pt-2 lg:grid lg:gap-12 lg:overflow-hidden lg:px-12 lg:pb-10"
+        [class]="hideUi() ? 'lg:grid-cols-1' : 'lg:grid-cols-2'">
+
+        <!-- Cover, meta and transport -->
+        <div class="flex shrink-0 flex-col items-center gap-5 lg:min-h-0 lg:shrink lg:overflow-y-auto">
+          <div class="my-auto flex w-full flex-col items-center gap-5">
+          <div class="w-full transition-transform duration-150 motion-reduce:transition-none"
+            [class]="hideUi() ? 'max-w-[min(90vw,40rem)]' : 'max-w-[min(80vw,26rem,42vh)] lg:max-w-[min(34vw,32rem,38vh)]'"
+            (pointermove)="tiltMove($event)" (pointerleave)="tiltLeave($event)" data-cover-wrap>
+            <button #cover type="button" (click)="toggleHideUi()" [attr.aria-pressed]="hideUi()"
+              [attr.aria-label]="hideUi() ? 'Show controls' : 'Hide controls'" data-cover
+              class="relative block aspect-square w-full overflow-hidden bg-gray-800 shadow-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+              [class]="cd() ? 'rounded-full' : settings.coverRound() ? 'rounded-2xl' : 'rounded-none'">
+              <!-- The disc is what spins. The button stays still as the circular clip: spinning the
+                   button itself made its bounding box (and so the scroller's scrollable area) swell
+                   by up to ~40% mid-turn, which scrolled the page sideways on phones. -->
+              <span #disc data-cover-disc class="absolute inset-0 block">
+                @if (coverLarge()) {
+                  <img [src]="coverLarge()" alt="" class="h-full w-full object-cover" />
+                }
+                @if (cd()) {
+                  <span class="absolute left-1/2 top-1/2 h-[18%] w-[18%] -translate-x-1/2 -translate-y-1/2 rounded-full border-4 border-white/20 bg-[#121212]" aria-hidden="true"></span>
+                }
+              </span>
+            </button>
+          </div>
+
+          @if (!hideUi()) {
+            <div class="w-full max-w-md text-center lg:max-w-lg">
+              <h2 class="truncate text-xl font-semibold lg:text-2xl" [title]="t.title">
+                <a [routerLink]="['/music/track', t.id]" class="hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{{ t.title }}</a>
+              </h2>
+              <p class="mt-1 truncate text-sm text-gray-200" [title]="t.artist">
+                @for (a of artists(); track $index; let last = $last) {
+                  @if (a.id) {
+                    <a [routerLink]="['/music/artist', a.id]" class="hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{{ a.name }}</a>
+                  } @else {
+                    <span>{{ a.name }}</span>
+                  }
+                  @if (!last) { <span aria-hidden="true">, </span> }
+                }
+              </p>
+              @if (t.album) {
+                <p class="mt-0.5 truncate text-xs text-gray-300" [title]="t.album">
+                  @if (t.albumId) {
+                    <a [routerLink]="['/music/album', t.albumId]" class="hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{{ t.album }}</a>
+                  } @else {
+                    {{ t.album }}
+                  }
+                </p>
+              }
+            </div>
+
+            <div class="flex w-full max-w-md items-center gap-2 lg:max-w-lg">
+              <span class="w-10 text-right text-xs tabular-nums text-gray-300">{{ time(player.position()) }}</span>
+              <input type="range" min="0" [max]="player.duration()" step="1" [value]="player.position()" (input)="onSeek($event)" aria-label="Seek"
+                class="h-1 flex-1 cursor-pointer accent-indigo-500" />
+              <span class="w-10 text-xs tabular-nums text-gray-300">{{ time(player.duration()) }}</span>
+            </div>
+
+            <div class="flex items-center justify-center gap-1 sm:gap-3">
+              <button type="button" (click)="player.toggleShuffle()" aria-label="Shuffle" [attr.aria-pressed]="player.shuffle()"
+                class="flex h-10 w-10 items-center justify-center rounded-full hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+                [class.text-indigo-300]="player.shuffle()" [class.text-gray-200]="!player.shuffle()">
+                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 4h4v4M4 20 20 4M20 16v4h-4M15 15l5 5M4 4l5 5" /></svg>
+              </button>
+              <button type="button" (click)="player.prev()" [disabled]="!player.canPrev()" aria-label="Previous track"
+                class="flex h-11 w-11 items-center justify-center rounded-full text-gray-100 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-30">
+                <svg class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 5h2v14H6zM20 5.5v13a.5.5 0 0 1-.8.4L10 12.4a.5.5 0 0 1 0-.8l9.2-6.5a.5.5 0 0 1 .8.4z" /></svg>
+              </button>
+              <button type="button" (click)="player.toggle()" [attr.aria-label]="player.playing() ? 'Pause' : 'Play'"
+                class="flex h-14 w-14 items-center justify-center rounded-full bg-white text-black transition-transform active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 motion-reduce:transition-none">
+                @if (player.loading() && !player.error()) {
+                  <svg class="h-6 w-6 animate-spin motion-reduce:animate-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9" stroke-linecap="round" /></svg>
+                } @else if (player.playing()) {
+                  <svg class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1" /><rect x="14" y="5" width="4" height="14" rx="1" /></svg>
+                } @else {
+                  <svg class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" /></svg>
+                }
+              </button>
+              <button type="button" (click)="player.next()" [disabled]="!player.hasNext()" aria-label="Next track"
+                class="flex h-11 w-11 items-center justify-center rounded-full text-gray-100 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-30">
+                <svg class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16 5h2v14h-2zM4 5.5v13a.5.5 0 0 0 .8.4L14 12.4a.5.5 0 0 0 0-.8L4.8 5.1a.5.5 0 0 0-.8.4z" /></svg>
+              </button>
+              <button type="button" (click)="player.cycleRepeat()" [attr.aria-label]="'Repeat: ' + player.repeat()" [attr.aria-pressed]="player.repeat() !== 'off'"
+                class="relative flex h-10 w-10 items-center justify-center rounded-full hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+                [class.text-indigo-300]="player.repeat() !== 'off'" [class.text-gray-200]="player.repeat() === 'off'">
+                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3" /></svg>
+                @if (player.repeat() === 'one') {
+                  <span class="absolute right-1 top-1 text-[9px] font-bold leading-none" aria-hidden="true">1</span>
+                }
+              </button>
+            </div>
+
+            <div class="flex items-center justify-center gap-1">
+              <app-music-like-button [item]="{ kind: 'track', data: t }" />
+              <button type="button" (click)="addToPlaylist(t)" aria-label="Add to playlist" title="Add to playlist"
+                class="flex h-11 w-11 items-center justify-center rounded-full text-gray-300 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M4 7h11M4 12h11M4 17h6M18 14v6M15 17h6" /></svg>
+              </button>
+            </div>
+
+            @if (next(); as n) {
+              <button type="button" (click)="player.next()" title="Play next: {{ n.title }}" data-next-preview
+                class="flex w-full max-w-md items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-left hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 lg:max-w-lg">
+                @if (n.cover) {
+                  <img [src]="n.cover" alt="" width="40" height="40" class="h-10 w-10 flex-shrink-0 rounded bg-gray-800 object-cover" />
+                }
+                <span class="min-w-0 flex-1">
+                  <span class="block text-[10px] font-semibold uppercase tracking-wide text-gray-300">Up next</span>
+                  <span class="block truncate text-sm">{{ n.title }}</span>
+                  <span class="block truncate text-xs text-gray-300">{{ n.artist }}</span>
+                </span>
+              </button>
+            }
+          }
+          </div>
+        </div>
+
+        <!-- Lyrics / up next -->
+        @if (!hideUi()) {
+          <div class="flex min-h-[18rem] shrink-0 flex-col rounded-2xl border border-white/10 bg-black/20 lg:min-h-0 lg:shrink lg:overflow-hidden">
+            <div class="flex gap-2 p-3" role="group" aria-label="Side pane">
+              <button type="button" (click)="tab.set('lyrics')" [attr.aria-pressed]="tab() === 'lyrics'"
+                class="rounded-full px-4 py-1.5 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+                [class]="tab() === 'lyrics' ? 'bg-white text-black' : 'bg-white/5 text-gray-300'">Lyrics</button>
+              <button type="button" (click)="tab.set('upnext')" [attr.aria-pressed]="tab() === 'upnext'"
+                class="rounded-full px-4 py-1.5 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+                [class]="tab() === 'upnext' ? 'bg-white text-black' : 'bg-white/5 text-gray-300'">Up next</button>
+            </div>
+            <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-4">
+              @if (tab() === 'lyrics') {
+                <app-music-lyrics-view mode="fullscreen" [accent]="accentForLyrics()" />
+              } @else {
+                <ol class="space-y-1" aria-label="Up next">
+                  @for (n of upcoming(); track $index; let i = $index) {
+                    <li>
+                      <button type="button" (click)="player.playAt(player.index() + 1 + i)" [title]="'Play ' + n.title"
+                        class="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+                        @if (n.cover) {
+                          <img [src]="n.cover" alt="" width="40" height="40" loading="lazy" class="h-10 w-10 flex-shrink-0 rounded bg-gray-800 object-cover" />
+                        }
+                        <span class="min-w-0 flex-1">
+                          <span class="block truncate text-sm">{{ n.title }}</span>
+                          <span class="block truncate text-xs text-gray-300">{{ n.artist }}</span>
+                        </span>
+                        <span class="text-xs tabular-nums text-gray-300">{{ time(n.duration) }}</span>
+                      </button>
+                    </li>
+                  } @empty {
+                    <li class="px-2 py-4 text-sm text-gray-300">Nothing after this track.</li>
+                  }
+                </ol>
+              }
+            </div>
+          </div>
+        }
+      </div>
+    } @else {
+      <p class="relative z-10 m-auto text-sm text-gray-300">Nothing is playing.</p>
+    }
+  </section>
+}

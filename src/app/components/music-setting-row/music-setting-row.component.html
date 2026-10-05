@@ -1,0 +1,25 @@
+<div [attr.id]="rowId()" data-setting-row
+  class="flex flex-col gap-2 rounded-lg px-3 py-3 transition-shadow motion-reduce:transition-none sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+  <div class="min-w-0 flex-1">
+    <div [attr.id]="labelId()" class="text-sm font-medium text-white">{{ label() }}</div>
+    @if (description()) {
+      <p [attr.id]="descId()" class="mt-0.5 text-xs text-gray-400">{{ description() }}</p>
+    }
+    @if (note()) {
+      <p class="mt-1 text-xs text-amber-400">{{ note() }}</p>
+    }
+  </div>
+  <div class="flex flex-shrink-0 items-center">
+    @if (kind() === 'switch') {
+      <button type="button" role="switch" [attr.aria-checked]="checked()" [attr.aria-labelledby]="labelId()"
+        [attr.aria-describedby]="description() ? descId() : null" [disabled]="disabled()" (click)="toggle()"
+        class="relative inline-flex h-10 w-14 flex-shrink-0 items-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-40">
+        <span class="h-6 w-11 rounded-full transition-colors motion-reduce:transition-none" [class]="checked() ? 'bg-indigo-600' : 'bg-white/15'"></span>
+        <span class="absolute left-2 h-5 w-5 rounded-full bg-white transition-transform motion-reduce:transition-none"
+          [class]="checked() ? 'translate-x-5' : 'translate-x-0'"></span>
+      </button>
+    } @else {
+      <ng-content />
+    }
+  </div>
+</div>

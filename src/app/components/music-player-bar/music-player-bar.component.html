@@ -1,0 +1,110 @@
+@if (player.track(); as t) {
+  <section aria-label="Music player"
+    class="fixed inset-x-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom,0px))] z-30 border-t border-white/10 bg-[#121212]/95 sm:bottom-0"
+    [class.backdrop-blur-md]="!settings.reduceBlur()">
+    <div class="mx-auto flex max-w-screen-2xl items-center gap-3 px-3 py-2 md:px-12 lg:px-16">
+      <!-- Left: cover, title, like -->
+      <div class="flex min-w-0 flex-1 items-center gap-1 sm:flex-none sm:basis-60 lg:basis-72">
+        <a [href]="albumLink(t)" (click)="onCoverClick($event, t)"
+          class="flex min-w-0 flex-1 items-center gap-3 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+          [attr.aria-label]="settings.coverClickAction() === 'nowPlaying' ? 'Open now playing: ' + t.title : null">
+          @if (t.cover) {
+            <img [src]="t.cover" alt="" width="44" height="44" class="h-11 w-11 flex-shrink-0 rounded bg-gray-800 object-cover" />
+          }
+          <span class="min-w-0">
+            <span class="block truncate text-sm font-medium text-white" [title]="t.title">{{ t.title }}</span>
+            <span class="block truncate text-xs" [class.text-gray-400]="!message()" [class.text-amber-400]="message()" [title]="message() ?? t.artist">
+              {{ message() ?? t.artist }}
+            </span>
+          </span>
+        </a>
+        <app-music-like-button [item]="{ kind: 'track', data: t }" size="sm" />
+      </div>
+
+      <!-- Centre: transport (+ seek on sm and up) -->
+      <div class="flex flex-col items-center sm:min-w-0 sm:flex-1">
+        <div class="flex items-center gap-1">
+          <button type="button" (click)="tap(player.toggleShuffle.bind(player))" aria-label="Shuffle" [attr.aria-pressed]="player.shuffle()"
+            class="hidden h-10 w-10 items-center justify-center rounded-full hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 sm:flex"
+            [class.text-indigo-400]="player.shuffle()" [class.text-gray-400]="!player.shuffle()">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h3.5c1.6 0 3 .8 3.900 2.100l3.200 4.800c.9 1.300 2.300 2.100 3.900 2.100H21M3 17h3.500c1.600 0 3-.8 3.900-2.100M13.600 9.100C14.500 7.800 15.900 7 17.500 7H21M18.500 4.500 21 7l-2.500 2.500M18.500 14.500 21 17l-2.500 2.500" /></svg>
+          </button>
+          <button type="button" (click)="tap(player.prev.bind(player))" aria-label="Previous track"
+            class="hidden h-10 w-10 items-center justify-center rounded-full text-gray-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 sm:flex">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 5h2v14H6zM20 5.5v13a.5.5 0 0 1-.8.4L10 12.4a.5.5 0 0 1 0-.8l9.2-6.5a.5.5 0 0 1 .8.4z" /></svg>
+          </button>
+          <button type="button" (click)="tap(player.toggle.bind(player))" [attr.aria-label]="player.playing() ? 'Pause' : 'Play'"
+            class="flex h-11 w-11 items-center justify-center rounded-full bg-white text-black transition-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 active:scale-95 motion-reduce:transition-none">
+            @if (player.loading() && !player.error()) {
+              <svg class="h-5 w-5 animate-spin motion-reduce:animate-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9" stroke-linecap="round" /></svg>
+            } @else if (player.playing()) {
+              <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1" /><rect x="14" y="5" width="4" height="14" rx="1" /></svg>
+            } @else {
+              <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" /></svg>
+            }
+          </button>
+          <button type="button" (click)="tap(player.next.bind(player))" [disabled]="!player.hasNext()" aria-label="Next track"
+            class="flex h-10 w-10 items-center justify-center rounded-full text-gray-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-30">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16 5h2v14h-2zM4 5.5v13a.5.5 0 0 0 .8.4L14 12.4a.5.5 0 0 0 0-.8L4.800 5.100a.5.5 0 0 0-.8.4z" /></svg>
+          </button>
+          <button type="button" (click)="tap(player.cycleRepeat.bind(player))" [attr.aria-label]="player.repeat() === 'one' ? 'Repeat one' : 'Repeat'"
+            [attr.aria-pressed]="player.repeat() !== 'off'"
+            class="relative hidden h-10 w-10 items-center justify-center rounded-full hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 sm:flex"
+            [class.text-indigo-400]="player.repeat() !== 'off'" [class.text-gray-400]="player.repeat() === 'off'">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3l3 3-3 3M4 11V9a3 3 0 0 1 3-3h13M7 21l-3-3 3-3M20 13v2a3 3 0 0 1-3 3H4" /></svg>
+            @if (player.repeat() === 'one') {
+              <span class="absolute right-1.5 top-1.5 text-[9px] font-bold leading-none" aria-hidden="true">1</span>
+            }
+          </button>
+        </div>
+        <div class="hidden w-full max-w-2xl sm:flex">
+          <app-music-seek-bar [position]="player.position()" [duration]="player.duration()" [trackId]="t.id" [showWaveform]="settings.waveformSeekbar()" (seekTo)="seek($event)" />
+        </div>
+      </div>
+
+      <!-- Right: quality, speed, sleep, volume, panels, expand, close -->
+      <div class="hidden flex-shrink-0 items-center gap-1 sm:flex sm:basis-auto lg:basis-auto">
+        @if (badge()) {
+          <span class="mr-1 hidden flex-shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide md:inline"
+            [class.border-indigo-400]="badge() !== 'Preview'" [class.text-indigo-300]="badge() !== 'Preview'"
+            [class.border-amber-400]="badge() === 'Preview'" [class.text-amber-300]="badge() === 'Preview'"
+            [title]="badgeTitle()">{{ badge() }}</span>
+        }
+        <app-music-speed-popover />
+        <button type="button" (click)="ui.openSleepTimer()" aria-label="Sleep timer" aria-haspopup="dialog"
+          class="relative hidden h-10 w-10 items-center justify-center rounded-full hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 md:flex"
+          [class.text-indigo-400]="sleepChip()" [class.text-gray-300]="!sleepChip()">
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.500A8 8 0 0 1 9.500 4a8 8 0 1 0 10.500 10.500z" /></svg>
+        </button>
+        @if (sleepChip(); as chip) {
+          <button type="button" (click)="ui.openSleepTimer()" [attr.aria-label]="'Sleep timer: ' + chip"
+            class="hidden h-7 items-center rounded-full border border-indigo-400 px-2 text-[11px] tabular-nums text-indigo-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 md:flex" data-sleep-chip>{{ chip }}</button>
+        }
+        <app-music-volume-control />
+        <button type="button" (click)="ui.togglePanel('queue')" aria-label="Queue" [attr.aria-pressed]="ui.panel() === 'queue'"
+          class="flex h-10 w-10 items-center justify-center rounded-full hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+          [class.text-indigo-400]="ui.panel() === 'queue'" [class.text-gray-300]="ui.panel() !== 'queue'">
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h12M4 12h12M4 18h7M18 14v6l4-3z" /></svg>
+        </button>
+        <button type="button" (click)="ui.togglePanel('lyrics')" aria-label="Lyrics" [attr.aria-pressed]="ui.panel() === 'lyrics'"
+          class="flex h-10 w-10 items-center justify-center rounded-full hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+          [class.text-indigo-400]="ui.panel() === 'lyrics'" [class.text-gray-300]="ui.panel() !== 'lyrics'">
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-5 4v-4H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zM8 9h8M8 12h5" /></svg>
+        </button>
+        <button type="button" (click)="ui.openNowPlaying()" aria-label="Open now playing"
+          class="flex h-10 w-10 items-center justify-center rounded-full text-gray-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6" /></svg>
+        </button>
+        <button type="button" (click)="player.stop()" aria-label="Close player"
+          class="flex h-10 w-10 items-center justify-center rounded-full text-gray-500 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
+        </button>
+      </div>
+    </div>
+    <!-- Thin progress line on mobile, where the seek slider is hidden. -->
+    <div class="h-0.5 w-full bg-white/10 sm:hidden" aria-hidden="true">
+      <div class="h-full bg-indigo-400" [style.width.%]="progress()"></div>
+    </div>
+  </section>
+}
+<app-music-sleep-timer />

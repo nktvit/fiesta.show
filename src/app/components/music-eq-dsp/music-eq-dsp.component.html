@@ -1,0 +1,40 @@
+<div class="space-y-4">
+  <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+    <app-music-eq-switch label="Mono audio" [checked]="dsp().mono" (checkedChange)="setMono($event)" />
+    <p class="mt-1 text-xs text-gray-400">Plays the average of left and right in both ears. Useful with one earbud or for hearing loss in one ear.</p>
+  </div>
+
+  <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+    <app-music-eq-switch label="Crossfeed" [checked]="dsp().crossfeed.enabled" (checkedChange)="setCrossfeed($event)" />
+    <p class="mt-1 text-xs text-gray-400">For headphones: lets a little of each channel reach the other ear, softened and slightly delayed, like speakers do.</p>
+    <div class="mt-3 flex flex-wrap gap-2" role="group" aria-label="Crossfeed presets">
+      @for (p of presets; track p.id) {
+        <button type="button" (click)="setPreset(p.id)" [attr.aria-pressed]="activePreset() === p.id"
+          class="h-10 rounded-full px-4 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+          [class]="activePreset() === p.id ? 'bg-white text-black' : 'bg-white/5 text-gray-300 hover:text-white'">{{ p.label }}</button>
+      }
+    </div>
+    <div class="mt-3 grid gap-3 sm:grid-cols-2">
+      <label class="block text-sm text-gray-300">
+        <span class="flex justify-between"><span>Level</span><span class="tabular-nums text-gray-400">{{ dsp().crossfeed.level }} dB</span></span>
+        <input type="range" [min]="levelMin" [max]="levelMax" step="0.5" [value]="dsp().crossfeed.level" aria-label="Crossfeed level (dB)"
+          (input)="setLevel($any($event.target).value)" class="mt-1 h-10 w-full accent-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" />
+      </label>
+      <label class="block text-sm text-gray-300">
+        <span class="flex justify-between"><span>Cutoff</span><span class="tabular-nums text-gray-400">{{ dsp().crossfeed.cutoff }} Hz</span></span>
+        <input type="range" [min]="cutoffMin" [max]="cutoffMax" step="10" [value]="dsp().crossfeed.cutoff" aria-label="Crossfeed cutoff (Hz)"
+          (input)="setCutoff($any($event.target).value)" class="mt-1 h-10 w-full accent-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" />
+      </label>
+    </div>
+  </div>
+
+  <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+    <app-music-eq-switch label="Stereo widener" [checked]="dsp().widener.enabled" (checkedChange)="setWidener($event)" />
+    <p class="mt-1 text-xs text-gray-400">Scales the difference between left and right. 0 is mono, 1 leaves the mix alone, 2 is extra wide.</p>
+    <label class="mt-3 block text-sm text-gray-300">
+      <span class="flex justify-between"><span>Stereo width</span><span class="tabular-nums text-gray-400">{{ widthLabel(dsp().widener.width) }}</span></span>
+      <input type="range" [min]="widthMin" [max]="widthMax" step="0.05" [value]="dsp().widener.width" aria-label="Stereo width"
+        (input)="setWidth($any($event.target).value)" class="mt-1 h-10 w-full accent-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" />
+    </label>
+  </div>
+</div>

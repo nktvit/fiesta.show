@@ -1,0 +1,127 @@
+<main class="flex-grow bg-[#0a0a0a] text-white">
+  <app-navbar [showSearchBox]="false" [transparent]="false"></app-navbar>
+  <app-music-subnav />
+
+  <div class="px-4 py-8 md:px-12 lg:px-16">
+    <h1 class="mb-1 text-2xl font-bold md:text-3xl">Music</h1>
+    <p class="mb-6 text-sm text-gray-400">Search millions of songs, in lossless where available.</p>
+
+    <!-- The suggestions come first in the DOM so the input can read their state; the list is positioned under the form. -->
+    <div class="relative mb-6 max-w-2xl">
+      <app-music-search-suggest #suggest [query]="text()" [enabled]="suggestOn()" (searchTerm)="run($event)" />
+      <form (submit)="submit($event)" role="search" class="flex gap-2">
+        <input type="search" name="q" [value]="text()" (input)="onInput($event)" (blur)="suggest.dismiss()"
+          (keydown)="onKeydown($event, suggest)"
+          enterkeyhint="search" placeholder="Songs, albums, artists" aria-label="Search music" autocomplete="off" spellcheck="false"
+          role="combobox" aria-autocomplete="list" [attr.aria-expanded]="suggest.expanded()"
+          [attr.aria-controls]="suggest.expanded() ? suggest.listboxId : null" [attr.aria-activedescendant]="suggest.activeId()"
+          class="min-w-0 flex-1 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-gray-500 focus:border-indigo-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" />
+        <button type="submit" class="h-11 rounded-lg bg-indigo-600 px-5 text-sm font-semibold text-white hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Search</button>
+      </form>
+    </div>
+
+    @switch (status()) {
+      @case ('idle') {
+        @if (library.searches().length) {
+          <section class="mb-8 max-w-4xl" aria-label="Recent searches">
+            <div class="mb-3 flex items-center gap-2">
+              <h2 class="flex-1 text-lg font-semibold">Recent searches</h2>
+              <button type="button" (click)="clearRecents()"
+                class="rounded-full px-3 py-2 text-sm text-gray-400 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Clear all</button>
+            </div>
+            <ul class="flex flex-wrap gap-2">
+              @for (s of library.searches(); track s) {
+                <li class="inline-flex max-w-full items-center rounded-full border border-white/10 bg-white/5">
+                  <button type="button" (click)="search(s)" [title]="s"
+                    class="min-h-10 min-w-0 max-w-[16rem] truncate rounded-l-full py-2 pl-4 pr-1 text-sm text-gray-200 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{{ s }}</button>
+                  <button type="button" (click)="removeRecent(s)" [attr.aria-label]="'Remove ' + s + ' from recent searches'"
+                    class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-gray-400 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                  </button>
+                </li>
+              }
+            </ul>
+          </section>
+        }
+        <app-music-home />
+      }
+      @case ('loading') {
+        <div class="max-w-4xl space-y-2" aria-busy="true" aria-label="Loading results">
+          @for (_ of [1,2,3,4,5,6,7,8]; track $index) {
+            <div class="h-16 animate-pulse rounded-lg bg-white/5 motion-reduce:animate-none"></div>
+          }
+        </div>
+      }
+      @case ('error') {
+        <p class="text-sm text-amber-400">Couldn't reach the music service. Try again in a moment.</p>
+      }
+      @case ('done') {
+        <div class="mb-4 flex flex-wrap gap-2" role="tablist" aria-label="Result type">
+          @for (t of tabs; track t) {
+            <button type="button" role="tab" [attr.aria-selected]="tab() === t" (click)="selectTab(t)"
+              class="min-h-10 rounded-full px-4 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 motion-reduce:transition-none"
+              [class]="tab() === t ? 'bg-white text-black' : 'bg-white/5 text-gray-300 hover:text-white'">
+              {{ tabLabel(t) }}
+            </button>
+          }
+        </div>
+
+        @switch (tab()) {
+          @case ('songs') {
+            <div class="max-w-4xl">
+              @for (t of visibleSongs(); track t.id) {
+                <app-music-track-row [track]="t" [queue]="visibleSongs()"></app-music-track-row>
+              } @empty {
+                <p class="text-sm text-gray-400">No songs found.</p>
+              }
+            </div>
+          }
+          @case ('albums') {
+            <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+              @for (a of visibleAlbums(); track a.id) {
+                <app-music-album-card [album]="a" />
+              } @empty {
+                <p class="col-span-full text-sm text-gray-400">No albums found.</p>
+              }
+            </div>
+          }
+          @case ('artists') {
+            <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+              @for (a of visibleArtists(); track a.id) {
+                <app-music-artist-card [artist]="a" />
+              } @empty {
+                <p class="col-span-full text-sm text-gray-400">No artists found.</p>
+              }
+            </div>
+          }
+          @case ('playlists') {
+            @if (current().busy && !visiblePlaylists().length) {
+              <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6" aria-busy="true" aria-label="Loading playlists">
+                @for (_ of [1,2,3,4,5,6]; track $index) {
+                  <div class="aspect-square animate-pulse rounded bg-white/5 motion-reduce:animate-none"></div>
+                }
+              </div>
+            } @else {
+              <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                @for (p of visiblePlaylists(); track p.uuid) {
+                  <app-music-playlist-card [playlist]="p" />
+                } @empty {
+                  <p class="col-span-full text-sm text-gray-400">No playlists found.</p>
+                }
+              </div>
+            }
+          }
+        }
+
+        @if (canLoadMore()) {
+          <div class="mt-6 flex justify-center">
+            <button type="button" (click)="loadMore()" [disabled]="current().busy"
+              class="h-11 rounded-full border border-white/10 bg-white/5 px-6 text-sm font-medium text-white hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-60">
+              {{ current().busy ? 'Loading...' : 'Load more' }}
+            </button>
+          </div>
+        }
+      }
+    }
+  </div>
+</main>

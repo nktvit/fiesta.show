@@ -1,0 +1,145 @@
+<ng-template #chips>
+  <section class="mb-8" aria-label="Suggestions" data-section="chips">
+    <p class="mb-3 text-sm text-gray-400">Try one of these:</p>
+    <div class="flex flex-wrap gap-2">
+      @for (s of suggestions; track s) {
+        <button type="button" (click)="search(s)"
+          class="min-h-10 rounded-full border border-white/10 px-4 py-2 text-sm text-gray-200 hover:border-indigo-400 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{{ s }}</button>
+      }
+    </div>
+  </section>
+</ng-template>
+
+<ng-template #picksTpl>
+  @if (sections().picks && (pickAlbums().length || pickPlaylists().length)) {
+    <div data-section="picks">
+      <app-music-rail title="Editors' picks">
+        @for (a of pickAlbums(); track a.id) { <app-music-album-card [album]="a" /> }
+        @for (p of pickPlaylists(); track p.uuid) { <app-music-playlist-card [playlist]="p" /> }
+      </app-music-rail>
+    </div>
+  }
+</ng-template>
+
+@if (!personal()) {
+  <ng-container *ngTemplateOutlet="chips" />
+}
+
+<app-music-pins-row />
+
+@if (personal()) {
+  @if (sections().jumpBackIn && activity().length) {
+    <div data-section="jumpBackIn">
+      <app-music-rail title="Jump back in">
+        @for (c of activity(); track c.key) {
+          @switch (c.kind) {
+            @case ('album') { <app-music-album-card [album]="c.album" /> }
+            @case ('artist') { <app-music-artist-card [artist]="c.artist" /> }
+            @case ('playlist') { <app-music-playlist-card [playlist]="c.playlist" /> }
+          }
+        }
+      </app-music-rail>
+    </div>
+  }
+
+  @if (sections().recent && recent().length) {
+    <section class="mb-8 max-w-4xl" aria-label="Recently played" data-section="recent">
+      <div class="mb-3 flex items-center gap-2">
+        <h2 class="min-w-0 flex-1 truncate text-lg font-semibold">Recently played</h2>
+        <a routerLink="/music/recent" class="flex-shrink-0 rounded-full px-3 py-2 text-sm text-gray-400 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">See all</a>
+      </div>
+      @for (t of recent(); track t.id) {
+        <app-music-track-row [track]="t" [queue]="recent()" [showAlbum]="false"></app-music-track-row>
+      }
+    </section>
+  }
+
+  @if (sections().mixes) {
+    @if (mixes().status === 'loading') {
+      <section class="mb-8" aria-busy="true" aria-label="Loading mixes">
+        <h2 class="mb-3 text-lg font-semibold">Mixes for you</h2>
+        <div class="flex gap-4 overflow-hidden">
+          @for (_ of [1,2,3,4]; track $index) {
+            <div class="aspect-square w-36 flex-shrink-0 animate-pulse rounded bg-white/5 motion-reduce:animate-none sm:w-44"></div>
+          }
+        </div>
+      </section>
+    } @else if (mixes().items.length) {
+      <div data-section="mixes">
+        <app-music-rail title="Mixes for you">
+          @for (m of mixes().items; track m.id) { <app-music-playlist-card [playlist]="m" /> }
+        </app-music-rail>
+      </div>
+    }
+  }
+
+  @if (sections().forYou) {
+    @if (songs().status === 'loading') {
+      <section class="mb-8 max-w-4xl" aria-busy="true" aria-label="Loading recommended songs">
+        <h2 class="mb-3 text-lg font-semibold">Recommended songs</h2>
+        @for (_ of [1,2,3,4]; track $index) {
+          <div class="mb-2 h-14 animate-pulse rounded-lg bg-white/5 motion-reduce:animate-none"></div>
+        }
+      </section>
+    } @else if (visibleSongs().length) {
+      <section class="mb-8 max-w-4xl" aria-label="Recommended songs" data-section="songs">
+        <div class="mb-3 flex items-center gap-2">
+          <h2 class="min-w-0 flex-1 truncate text-lg font-semibold">Recommended songs</h2>
+          <button type="button" (click)="refresh('songs')"
+            class="flex-shrink-0 rounded-full px-3 py-2 text-sm text-gray-400 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Refresh</button>
+        </div>
+        @for (t of visibleSongs(); track t.id) {
+          <app-music-track-row [track]="t" [queue]="visibleSongs()"></app-music-track-row>
+        }
+      </section>
+    }
+
+    @if (albums().status === 'loading') {
+      <section class="mb-8" aria-busy="true" aria-label="Loading recommended albums">
+        <h2 class="mb-3 text-lg font-semibold">Recommended albums</h2>
+        <div class="flex gap-4 overflow-hidden">
+          @for (_ of [1,2,3,4]; track $index) {
+            <div class="aspect-square w-36 flex-shrink-0 animate-pulse rounded bg-white/5 motion-reduce:animate-none sm:w-44"></div>
+          }
+        </div>
+      </section>
+    } @else if (visibleAlbums().length) {
+      <div data-section="albums">
+        <app-music-rail title="Recommended albums">
+          @for (a of visibleAlbums(); track a.id) { <app-music-album-card [album]="a" /> }
+        </app-music-rail>
+      </div>
+    }
+
+    @if (artists().status === 'loading') {
+      <section class="mb-8" aria-busy="true" aria-label="Loading recommended artists">
+        <h2 class="mb-3 text-lg font-semibold">Recommended artists</h2>
+        <div class="flex gap-4 overflow-hidden">
+          @for (_ of [1,2,3,4]; track $index) {
+            <div class="aspect-square w-36 flex-shrink-0 animate-pulse rounded-full bg-white/5 motion-reduce:animate-none sm:w-44"></div>
+          }
+        </div>
+      </section>
+    } @else if (visibleArtists().length) {
+      <div data-section="artists">
+        <app-music-rail title="Recommended artists">
+          @for (a of visibleArtists(); track a.id) { <app-music-artist-card [artist]="a" /> }
+        </app-music-rail>
+      </div>
+    }
+  }
+
+  @if (sections().playlists && myPlaylists().length) {
+    <div data-section="playlists">
+      <app-music-rail title="Your playlists" [link]="'/music/library'">
+        @for (p of myPlaylists(); track p.id) { <app-music-playlist-card [playlist]="p" /> }
+      </app-music-rail>
+    </div>
+  }
+}
+
+<ng-container *ngTemplateOutlet="picksTpl" />
+
+@if (personal()) {
+  <ng-container *ngTemplateOutlet="chips" />
+}

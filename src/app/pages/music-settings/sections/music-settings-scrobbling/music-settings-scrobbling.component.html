@@ -1,0 +1,170 @@
+<section id="setting-scrobbling" aria-labelledby="music-settings-scrobbling-title" class="space-y-6">
+  <h2 id="music-settings-scrobbling-title" class="text-lg font-semibold">Scrobbling</h2>
+  <p class="text-sm text-gray-400">
+    Send what you play to your own listening history. Each service uses your account; nothing is shared with Stream Fiesta.
+    Tokens and keys stay in this browser and are left out of backups.
+  </p>
+
+  <div class="divide-y divide-white/10 rounded-xl border border-white/10 bg-white/5">
+    <app-music-setting-row id="scrobblePercent" label="Scrobble after"
+      description="Part of a track you must have played (paused time does not count), at most 4 minutes. Tracks under 30 seconds never scrobble, so 30 second previews usually do not either.">
+      <div class="flex items-center gap-3">
+        <input type="range" min="25" max="100" step="5" name="scrobble-percent" aria-label="Scrobble threshold in percent of the track"
+          [value]="percent()" (input)="setPercent($event)"
+          class="h-10 w-40 accent-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" />
+        <span class="w-12 text-right text-sm tabular-nums text-gray-400">{{ percent() }} %</span>
+      </div>
+    </app-music-setting-row>
+
+    <app-music-setting-row id="scrobbleLove" label="Love tracks when I like them"
+      description="Liking a track in the library also loves it on every connected service that supports it."
+      kind="switch" [checked]="scrobbler.config().loveOnLike" (checkedChange)="scrobbler.setLoveOnLike($event)" />
+  </div>
+
+  @if (scrobbler.queue().length) {
+    <p class="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-amber-400" role="status">
+      {{ scrobbler.queue().length }} scrobble{{ scrobbler.queue().length === 1 ? '' : 's' }} waiting to be sent. They retry when a service answers again or you come back online.
+    </p>
+  }
+
+  <!-- ListenBrainz -->
+  <div class="divide-y divide-white/10 rounded-xl border border-white/10 bg-white/5" data-service="listenbrainz">
+    <div class="px-3 pt-3">
+      <h3 class="text-base font-semibold">ListenBrainz</h3>
+    </div>
+    <app-music-setting-row id="scrobble-listenbrainz" label="Send listens to ListenBrainz"
+      [description]="scrobbler.hasCreds('listenbrainz') ? 'Connected.' : 'Add your user token below to turn this on.'"
+      kind="switch" [disabled]="!scrobbler.hasCreds('listenbrainz')"
+      [checked]="scrobbler.config().enabled.listenbrainz" (checkedChange)="scrobbler.setEnabled('listenbrainz', $event)" />
+    <div class="space-y-3 px-3 py-3">
+      <label class="block text-xs text-gray-400" for="scrobble-lb-token">User token (listenbrainz.org/settings)</label>
+      <input id="scrobble-lb-token" type="password" autocomplete="off" spellcheck="false" name="lb-token"
+        [placeholder]="scrobbler.hasCreds('listenbrainz') ? 'Saved. Paste a new token to replace it' : 'Paste your token'"
+        [value]="lbToken()" (input)="lbToken.set(value($event))"
+        class="h-10 w-full max-w-md rounded-lg border border-white/10 bg-[#121212] px-3 text-sm focus:border-indigo-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" />
+      <label class="block text-xs text-gray-400" for="scrobble-lb-url">Server (optional, for self-hosted; default {{ lbDefaultUrl }})</label>
+      <input id="scrobble-lb-url" type="url" autocomplete="off" spellcheck="false" name="lb-url" [value]="lbUrl()" (input)="lbUrl.set(value($event))"
+        class="h-10 w-full max-w-md rounded-lg border border-white/10 bg-[#121212] px-3 text-sm focus:border-indigo-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" />
+      <div class="flex flex-wrap items-center gap-3">
+        <button type="button" (click)="saveListenBrainz()" [disabled]="busy().listenbrainz" data-testid="lb-save"
+          class="h-10 rounded-full bg-indigo-600 px-5 text-sm font-semibold text-white hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50">Save token</button>
+        @if (scrobbler.hasCreds('listenbrainz')) {
+          <button type="button" (click)="disconnect('listenbrainz')" data-testid="lb-disconnect"
+            class="h-10 rounded-full bg-white/5 px-5 text-sm text-gray-300 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Disconnect</button>
+        }
+      </div>
+      @if (notes().listenbrainz; as n) { <p role="status" class="text-xs" [class]="n.ok ? 'text-gray-400' : 'text-amber-400'">{{ n.text }}</p> }
+      @if (scrobbler.errors().listenbrainz; as err) { <p class="text-xs text-amber-400">Last problem: {{ err }}</p> }
+    </div>
+  </div>
+
+  <!-- Maloja -->
+  <div class="divide-y divide-white/10 rounded-xl border border-white/10 bg-white/5" data-service="maloja">
+    <div class="px-3 pt-3">
+      <h3 class="text-base font-semibold">Maloja</h3>
+    </div>
+    <app-music-setting-row id="scrobble-maloja" label="Send scrobbles to your Maloja server"
+      [description]="scrobbler.hasCreds('maloja') ? 'Connected.' : 'Add your server address and API key below to turn this on.'"
+      kind="switch" [disabled]="!scrobbler.hasCreds('maloja')"
+      [checked]="scrobbler.config().enabled.maloja" (checkedChange)="scrobbler.setEnabled('maloja', $event)" />
+    <div class="space-y-3 px-3 py-3">
+      <label class="block text-xs text-gray-400" for="scrobble-maloja-url">Server address</label>
+      <input id="scrobble-maloja-url" type="url" autocomplete="off" spellcheck="false" name="maloja-url" placeholder="https://maloja.example.com"
+        [value]="malojaUrl()" (input)="malojaUrl.set(value($event))"
+        class="h-10 w-full max-w-md rounded-lg border border-white/10 bg-[#121212] px-3 text-sm focus:border-indigo-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" />
+      @if (mixedContent()) {
+        <p class="text-xs text-amber-400">This page is on https, so the browser will block an http:// server. Use an https address.</p>
+      }
+      <label class="block text-xs text-gray-400" for="scrobble-maloja-key">API key</label>
+      <input id="scrobble-maloja-key" type="password" autocomplete="off" spellcheck="false" name="maloja-key"
+        [placeholder]="scrobbler.hasCreds('maloja') ? 'Saved. Paste a new key to replace it' : 'Paste your key'"
+        [value]="malojaKey()" (input)="malojaKey.set(value($event))"
+        class="h-10 w-full max-w-md rounded-lg border border-white/10 bg-[#121212] px-3 text-sm focus:border-indigo-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" />
+      <div class="flex flex-wrap items-center gap-3">
+        <button type="button" (click)="saveMaloja()" [disabled]="busy().maloja" data-testid="maloja-save"
+          class="h-10 rounded-full bg-indigo-600 px-5 text-sm font-semibold text-white hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50">Save</button>
+        @if (scrobbler.hasCreds('maloja')) {
+          <button type="button" (click)="disconnect('maloja')" data-testid="maloja-disconnect"
+            class="h-10 rounded-full bg-white/5 px-5 text-sm text-gray-300 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Disconnect</button>
+        }
+      </div>
+      @if (notes().maloja; as n) { <p role="status" class="text-xs" [class]="n.ok ? 'text-gray-400' : 'text-amber-400'">{{ n.text }}</p> }
+      @if (scrobbler.errors().maloja; as err) { <p class="text-xs text-amber-400">Last problem: {{ err }}</p> }
+    </div>
+  </div>
+
+  <!-- Libre.fm -->
+  <div class="divide-y divide-white/10 rounded-xl border border-white/10 bg-white/5" data-service="librefm">
+    <div class="px-3 pt-3">
+      <h3 class="text-base font-semibold">Libre.fm</h3>
+    </div>
+    <app-music-setting-row id="scrobble-librefm" label="Scrobble to Libre.fm"
+      [description]="scrobbler.hasCreds('librefm') ? 'Connected as ' + (scrobbler.creds().librefm?.name || 'your account') + '.' : 'Sign in below to turn this on.'"
+      kind="switch" [disabled]="!scrobbler.hasCreds('librefm')"
+      [checked]="scrobbler.config().enabled.librefm" (checkedChange)="scrobbler.setEnabled('librefm', $event)" />
+    <div class="space-y-3 px-3 py-3">
+      @if (!scrobbler.hasCreds('librefm')) {
+        <label class="block text-xs text-gray-400" for="scrobble-libre-user">Username</label>
+        <input id="scrobble-libre-user" type="text" autocomplete="off" spellcheck="false" name="libre-user" [value]="libreUser()" (input)="libreUser.set(value($event))"
+          class="h-10 w-full max-w-md rounded-lg border border-white/10 bg-[#121212] px-3 text-sm focus:border-indigo-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" />
+        <label class="block text-xs text-gray-400" for="scrobble-libre-pass">Password (used once to sign in, never stored)</label>
+        <input id="scrobble-libre-pass" type="password" autocomplete="off" name="libre-pass" [value]="librePass()" (input)="librePass.set(value($event))"
+          class="h-10 w-full max-w-md rounded-lg border border-white/10 bg-[#121212] px-3 text-sm focus:border-indigo-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" />
+      }
+      <div class="flex flex-wrap items-center gap-3">
+        @if (!scrobbler.hasCreds('librefm')) {
+          <button type="button" (click)="connectLibre()" [disabled]="busy().librefm" data-testid="libre-connect"
+            class="h-10 rounded-full bg-indigo-600 px-5 text-sm font-semibold text-white hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50">Sign in</button>
+        } @else {
+          <button type="button" (click)="disconnect('librefm')" data-testid="libre-disconnect"
+            class="h-10 rounded-full bg-white/5 px-5 text-sm text-gray-300 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Disconnect</button>
+        }
+      </div>
+      @if (notes().librefm; as n) { <p role="status" class="text-xs" [class]="n.ok ? 'text-gray-400' : 'text-amber-400'">{{ n.text }}</p> }
+      @if (scrobbler.errors().librefm; as err) { <p class="text-xs text-amber-400">Last problem: {{ err }}</p> }
+    </div>
+  </div>
+
+  <!-- Last.fm -->
+  <div class="divide-y divide-white/10 rounded-xl border border-white/10 bg-white/5" data-service="lastfm">
+    <div class="px-3 pt-3">
+      <h3 class="text-base font-semibold">Last.fm</h3>
+    </div>
+    @if (!lastfm().loaded) {
+      <p class="px-3 py-3 text-sm text-gray-400" aria-busy="true">Checking whether this site supports Last.fm...</p>
+    } @else if (!lastfm().configured) {
+      <p class="px-3 py-3 text-sm text-amber-400" data-testid="lastfm-unconfigured">Not configured on this site</p>
+    } @else {
+      <app-music-setting-row id="scrobble-lastfm" label="Scrobble to Last.fm"
+        [description]="scrobbler.hasCreds('lastfm') ? 'Connected as ' + (scrobbler.creds().lastfm?.name || 'your account') + '.' : 'Connect your account below to turn this on.'"
+        kind="switch" [disabled]="!scrobbler.hasCreds('lastfm')"
+        [checked]="scrobbler.config().enabled.lastfm" (checkedChange)="scrobbler.setEnabled('lastfm', $event)" />
+      <div class="space-y-3 px-3 py-3">
+        @if (!scrobbler.hasCreds('lastfm')) {
+          <div class="flex flex-wrap items-center gap-3">
+            <button type="button" (click)="beginLastWeb()" [disabled]="busy().lastfm" data-testid="lastfm-connect"
+              class="h-10 rounded-full bg-indigo-600 px-5 text-sm font-semibold text-white hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50">Connect with Last.fm</button>
+            @if (pendingWebToken()) {
+              <button type="button" (click)="finishLastWeb()" [disabled]="busy().lastfm" data-testid="lastfm-finish"
+                class="h-10 rounded-full bg-white px-5 text-sm font-semibold text-black hover:bg-gray-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50">I have approved it</button>
+            }
+          </div>
+          <p class="text-xs text-gray-400">Or sign in with your username and password (the password is sent once and never stored).</p>
+          <label class="block text-xs text-gray-400" for="scrobble-last-user">Username</label>
+          <input id="scrobble-last-user" type="text" autocomplete="off" spellcheck="false" name="last-user" [value]="lastUser()" (input)="lastUser.set(value($event))"
+            class="h-10 w-full max-w-md rounded-lg border border-white/10 bg-[#121212] px-3 text-sm focus:border-indigo-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" />
+          <label class="block text-xs text-gray-400" for="scrobble-last-pass">Password</label>
+          <input id="scrobble-last-pass" type="password" autocomplete="off" name="last-pass" [value]="lastPass()" (input)="lastPass.set(value($event))"
+            class="h-10 w-full max-w-md rounded-lg border border-white/10 bg-[#121212] px-3 text-sm focus:border-indigo-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" />
+          <button type="button" (click)="connectLastPassword()" [disabled]="busy().lastfm" data-testid="lastfm-password"
+            class="h-10 rounded-full bg-white/5 px-5 text-sm text-gray-200 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50">Sign in with password</button>
+        } @else {
+          <button type="button" (click)="disconnect('lastfm')" data-testid="lastfm-disconnect"
+            class="h-10 rounded-full bg-white/5 px-5 text-sm text-gray-300 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Disconnect</button>
+        }
+        @if (notes().lastfm; as n) { <p role="status" class="text-xs" [class]="n.ok ? 'text-gray-400' : 'text-amber-400'">{{ n.text }}</p> }
+        @if (scrobbler.errors().lastfm; as err) { <p class="text-xs text-amber-400">Last problem: {{ err }}</p> }
+      </div>
+    }
+  </div>
+</section>

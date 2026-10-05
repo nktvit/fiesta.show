@@ -1,0 +1,169 @@
+<div class="space-y-5">
+  <p class="text-sm text-gray-400">
+    Pick your headphones or earbuds and AutoEQ builds a parametric correction toward a target curve. Measurements come from the open AutoEq project.
+  </p>
+
+  <section aria-labelledby="music-autoeq-find" class="rounded-2xl border border-white/10 bg-white/5 p-4">
+    <h3 id="music-autoeq-find" class="mb-3 text-sm font-semibold">1. Find your model</h3>
+    <div class="flex flex-wrap gap-2">
+      <label class="sr-only" for="music-autoeq-search">Search headphones</label>
+      <input id="music-autoeq-search" type="search" placeholder="Search, for example Sennheiser HD 600" autocomplete="off" [value]="query()"
+        (input)="query.set($any($event.target).value)"
+        class="h-10 min-w-0 flex-1 rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-white placeholder-gray-500 focus:border-indigo-400 focus:outline-none" />
+      <label class="sr-only" for="music-autoeq-type">Type</label>
+      <select id="music-autoeq-type" [value]="typeFilter()" (change)="typeFilter.set($any($event.target).value)"
+        class="h-10 rounded-lg border border-white/10 bg-[#121212] px-3 text-sm text-white focus:border-indigo-400 focus:outline-none">
+        <option value="all">All types</option>
+        <option value="over-ear">Over-ear</option>
+        <option value="in-ear">In-ear</option>
+      </select>
+    </div>
+
+    @if (autoeq.indexLoading()) {
+      <p class="mt-2 text-xs text-gray-400" role="status">Loading the headphone list...</p>
+    } @else if (autoeq.indexSource() === 'fallback') {
+      <p class="mt-2 text-xs text-amber-400" role="status">
+        Could not reach the AutoEq headphone list, so only a short built-in list is shown.
+        <button type="button" (click)="reloadIndex()" class="underline focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Try again</button>
+      </p>
+    } @else if (!query().trim() && typeFilter() === 'all') {
+      <p class="mt-2 text-xs text-gray-400">Popular models. Search to see all {{ autoeq.entries().length }} profiles.</p>
+    }
+
+    <ul class="mt-3 max-h-64 divide-y divide-white/5 overflow-y-auto rounded-xl border border-white/10" aria-label="Headphone results">
+      @for (e of results(); track e.path) {
+        <li>
+          <button type="button" (click)="pick(e)" [attr.aria-pressed]="selectedEntry() === e"
+            class="flex min-h-[2.75rem] w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-white/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400"
+            [class]="selectedEntry() === e ? 'bg-white/10 text-indigo-400' : 'text-white'">
+            <span class="min-w-0 truncate" [title]="e.name">{{ e.name }}</span>
+            <span class="flex-shrink-0 rounded-full border border-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400">{{ e.type }}</span>
+          </button>
+        </li>
+      } @empty {
+        <li class="px-3 py-4 text-sm text-gray-400">No match. Try fewer words, or import your own measurement below.</li>
+      }
+    </ul>
+
+    <div class="mt-3 flex flex-wrap items-center gap-2">
+      <label class="inline-flex h-10 cursor-pointer items-center rounded-full bg-white/5 px-4 text-sm font-medium text-gray-300 focus-within:ring-2 focus-within:ring-indigo-400 hover:text-white">
+        Import measurement CSV
+        <input type="file" accept=".csv,.txt,text/csv,text/plain" class="sr-only" aria-label="Import measurement CSV" (change)="importFile('measurement', $event)" />
+      </label>
+      <span class="text-xs text-gray-400">Two columns: frequency and dB (header optional).</span>
+    </div>
+  </section>
+
+  <section aria-labelledby="music-autoeq-opts" class="rounded-2xl border border-white/10 bg-white/5 p-4">
+    <h3 id="music-autoeq-opts" class="mb-3 text-sm font-semibold">2. Target and limits</h3>
+    <div class="grid gap-3 sm:grid-cols-2">
+      <label class="block text-sm text-gray-300">
+        Target curve
+        <select [value]="targetId()" (change)="targetId.set($any($event.target).value)" [disabled]="!!customTarget()" aria-label="Target curve"
+          class="mt-1 h-10 w-full rounded-lg border border-white/10 bg-[#121212] px-3 text-sm text-white focus:border-indigo-400 focus:outline-none disabled:opacity-50">
+          @for (t of targets(); track t.id) { <option [value]="t.id" [selected]="t.id === targetId()">{{ t.label }}</option> }
+        </select>
+      </label>
+      <div class="text-sm text-gray-300">
+        <span class="block">Custom target</span>
+        <div class="mt-1 flex items-center gap-2">
+          <label class="inline-flex h-10 cursor-pointer items-center rounded-full bg-white/5 px-4 text-sm font-medium text-gray-300 focus-within:ring-2 focus-within:ring-indigo-400 hover:text-white">
+            Import target CSV
+            <input type="file" accept=".csv,.txt,text/csv,text/plain" class="sr-only" aria-label="Import target CSV" (change)="importFile('target', $event)" />
+          </label>
+          @if (customTarget(); as ct) {
+            <span class="min-w-0 truncate text-xs text-gray-400" [title]="ct.name">{{ ct.name }}</span>
+            <button type="button" (click)="useBuiltInTarget()" class="h-10 rounded-full px-3 text-xs text-gray-300 underline focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Use built-in</button>
+          }
+        </div>
+      </div>
+      <label class="block text-sm text-gray-300">
+        Bands
+        <input type="number" min="3" max="32" step="1" [value]="bandCount()" aria-label="AutoEQ band count"
+          (change)="setNumber(bandCount, $any($event.target).value, 3, 32)"
+          class="mt-1 h-10 w-full rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-white focus:border-indigo-400 focus:outline-none" />
+      </label>
+      <label class="block text-sm text-gray-300">
+        Max Q
+        <input type="number" min="0.6" max="10" step="0.1" [value]="maxQ()" aria-label="AutoEQ maximum Q"
+          (change)="setNumber(maxQ, $any($event.target).value, 0.6, 10)"
+          class="mt-1 h-10 w-full rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-white focus:border-indigo-400 focus:outline-none" />
+      </label>
+      <label class="block text-sm text-gray-300">
+        Lowest frequency (Hz)
+        <input type="number" min="20" max="2000" step="10" [value]="minFreq()" aria-label="AutoEQ lowest frequency"
+          (change)="setNumber(minFreq, $any($event.target).value, 20, 2000)"
+          class="mt-1 h-10 w-full rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-white focus:border-indigo-400 focus:outline-none" />
+      </label>
+      <label class="block text-sm text-gray-300">
+        Highest frequency (Hz)
+        <input type="number" min="1000" max="20000" step="100" [value]="maxFreq()" aria-label="AutoEQ highest frequency"
+          (change)="setNumber(maxFreq, $any($event.target).value, 1000, 20000)"
+          class="mt-1 h-10 w-full rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-white focus:border-indigo-400 focus:outline-none" />
+      </label>
+    </div>
+  </section>
+
+  @if (message()) {
+    <p class="text-sm text-amber-400" role="alert">{{ message() }}</p>
+  }
+
+  <section aria-labelledby="music-autoeq-result" class="space-y-3" [attr.aria-busy]="loading()">
+    <h3 id="music-autoeq-result" class="text-sm font-semibold">
+      @if (preview()) { 3. Preview: {{ measurementName() }} } @else { Applied correction@if (state().autoeqLabel) { : {{ state().autoeqLabel }} } }
+    </h3>
+    @if (loading()) {
+      <div class="h-56 animate-pulse rounded-2xl bg-white/5 motion-reduce:animate-none sm:h-64"></div>
+    } @else {
+      <app-music-eq-parametric-graph [bands]="graphBands()" [(selected)]="selectedBand" [editable]="!preview()" [allowRemove]="!preview()"
+        [overlays]="overlays()" (bandChange)="onGraphChange($event)" (bandRemove)="onRemove($event)" />
+      @if (preview(); as p) {
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-gray-400">
+          <span>Dashed: measurement against the target. Solid white: after EQ. Indigo: the EQ curve.</span>
+          <span>{{ p.length }} bands, preamp {{ previewPreamp().toFixed(1) }} dB</span>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button type="button" (click)="apply()"
+            class="h-11 rounded-full bg-indigo-600 px-5 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Apply to equalizer</button>
+          <button type="button" (click)="clearPreview()"
+            class="h-11 rounded-full bg-white/5 px-5 text-sm font-medium text-gray-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Discard</button>
+        </div>
+      } @else if (applied().length > 0) {
+        <app-music-eq-band-controls [bands]="applied()" [(selected)]="selectedBand" (bandChange)="onGraphChange($event)"
+          (bandRemove)="onRemove($event)" (bandAdd)="onAdd()" />
+      } @else {
+        <p class="text-sm text-gray-400">Nothing applied yet. Pick a model above.</p>
+      }
+    }
+  </section>
+
+  <section aria-labelledby="music-autoeq-profiles" class="rounded-2xl border border-white/10 bg-white/5 p-4">
+    <h3 id="music-autoeq-profiles" class="mb-3 text-sm font-semibold">Saved profiles</h3>
+    <form class="flex flex-wrap gap-2" (submit)="$event.preventDefault(); saveProfile()">
+      <label class="sr-only" for="music-autoeq-profile-name">Profile name</label>
+      <input id="music-autoeq-profile-name" type="text" maxlength="80" placeholder="Profile name" [value]="profileName()"
+        (input)="profileName.set($any($event.target).value)"
+        class="h-10 min-w-0 flex-1 rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-white placeholder-gray-500 focus:border-indigo-400 focus:outline-none sm:max-w-xs" />
+      <button type="submit"
+        class="h-10 rounded-full bg-indigo-600 px-4 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Save profile</button>
+    </form>
+    <ul class="mt-3 space-y-2" aria-label="Saved AutoEQ profiles">
+      @for (p of autoeq.profiles(); track p.id) {
+        <li class="flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-sm">
+          <div class="min-w-0 flex-1">
+            <p class="truncate font-medium" [title]="p.name">{{ p.name }}</p>
+            <p class="truncate text-xs text-gray-400" [title]="p.target">{{ p.bands.length }} bands, preamp {{ p.preamp.toFixed(1) }} dB@if (p.target) { , {{ p.target }} }</p>
+          </div>
+          <button type="button" (click)="applyProfile(p)" [attr.aria-label]="'Apply profile ' + p.name"
+            class="h-10 rounded-full bg-white/5 px-4 text-sm font-medium text-gray-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Apply</button>
+          <button type="button" (click)="deleteProfile(p)" [attr.aria-label]="'Delete profile ' + p.name"
+            class="flex h-10 w-10 items-center justify-center rounded-full text-gray-400 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+            <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+          </button>
+        </li>
+      } @empty {
+        <li class="text-sm text-gray-400">No saved profiles yet.</li>
+      }
+    </ul>
+  </section>
+</div>

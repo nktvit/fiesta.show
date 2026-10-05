@@ -20,8 +20,19 @@ if (fs.existsSync(envFile)) {
   console.log('loaded .env.local; STREAM_RELAY_URL', process.env.STREAM_RELAY_URL ? 'set' : 'unset');
 }
 
+// Repo-root env (TIDAL_*), same gitignored files `vercel dev` would read.
+for (const name of ['.env.local', '.env']) {
+  const f = path.join(ROOT, name);
+  if (!fs.existsSync(f)) continue;
+  for (const line of fs.readFileSync(f, 'utf8').split('\n')) {
+    const m = line.match(/^\s*(TIDAL_[A-Z0-9_]+)\s*=\s*(.*)\s*$/);
+    if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+  }
+}
+
 const stream = require(path.join(ROOT, 'api/stream.js'));
 const subs = require(path.join(ROOT, 'api/subs.js'));
+const music = require(path.join(ROOT, 'api/music.js'));
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
@@ -35,6 +46,7 @@ const server = http.createServer(async (req, res) => {
   try {
     if (url.pathname === '/api/stream') return await stream(req, res);
     if (url.pathname === '/api/subs') return await subs(req, res);
+    if (url.pathname === '/api/music') return await music(req, res);
     res.statusCode = 404; res.end('not found');
   } catch (e) {
     res.statusCode = 500; res.end('handler threw: ' + (e && e.stack || e));

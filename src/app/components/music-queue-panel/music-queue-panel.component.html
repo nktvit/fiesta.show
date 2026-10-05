@@ -1,0 +1,113 @@
+<app-music-side-panel title="Queue" [open]="ui.panel() === 'queue'" (openChange)="onOpenChange($event)">
+  <ng-container panelActions>
+    <button type="button" (click)="saveAsPlaylist()" [disabled]="!player.queue().length" aria-label="Save as playlist" title="Save as playlist"
+      class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-30">
+      <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M4 7h11M4 12h11M4 17h6M18 14v6M15 17h6" /></svg>
+    </button>
+    <button type="button" (click)="clear($event)" [attr.aria-disabled]="!upcoming().length || null" aria-label="Clear queue" title="Clear queue (keeps the current track)"
+      class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 aria-disabled:opacity-30">
+      <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-12M9 7V4h6v3" /></svg>
+    </button>
+  </ng-container>
+
+  <p class="px-2 pb-3 text-xs text-gray-400" [title]="contextLabel()">
+    Playing from <span class="font-medium text-gray-300">{{ contextLabel() }}</span>
+  </p>
+
+  @if (!current()) {
+    <p class="px-2 py-4 text-sm text-gray-400">The queue is empty.</p>
+  } @else {
+    <h3 class="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Now playing</h3>
+    <ol class="mb-4">
+      @if (current(); as row) {
+        <li class="flex items-center gap-3 rounded-lg bg-white/5 px-2 py-2" aria-current="true">
+          @if (row.track.cover) {
+            <img [src]="row.track.cover" alt="" width="40" height="40" class="h-10 w-10 flex-shrink-0 rounded bg-gray-800 object-cover" />
+          } @else {
+            <span class="h-10 w-10 flex-shrink-0 rounded bg-gray-800" aria-hidden="true"></span>
+          }
+          <span class="min-w-0 flex-1">
+            <span class="block truncate text-sm font-medium text-indigo-400" [title]="row.track.title">{{ row.track.title }}</span>
+            <span class="block truncate text-xs text-gray-400" [title]="row.track.artist">{{ row.track.artist }}</span>
+          </span>
+          <span class="hidden text-xs tabular-nums text-gray-400 sm:block">{{ time(row.track.duration) }}</span>
+          <button type="button" (click)="more($event, row.track)" aria-label="More actions" aria-haspopup="menu"
+            class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="19" cy="12" r="1.6" /></svg>
+          </button>
+        </li>
+      }
+    </ol>
+
+    <h3 class="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Next up</h3>
+    @if (!upcoming().length) {
+      <p class="px-2 pb-4 text-sm text-gray-400">Nothing after this track.</p>
+    } @else {
+      <ol cdkDropList cdkDropListLockAxis="y" (cdkDropListDropped)="drop($event)" aria-label="Next up" class="mb-2 space-y-1">
+        @for (row of upcoming(); track $index) {
+          <li cdkDrag data-row (keydown)="onRowKey($event, row)"
+            class="flex items-center gap-2 rounded-lg bg-[#121212] px-1 py-2 hover:bg-white/5">
+            <button type="button" cdkDragHandle data-handle aria-label="Reorder (drag, or Alt+Arrow keys)" title="Drag to reorder, or press Alt+Arrow Up/Down"
+              class="flex h-10 w-8 flex-shrink-0 cursor-grab touch-none items-center justify-center rounded text-gray-500 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 active:cursor-grabbing">
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6" /><circle cx="15" cy="6" r="1.6" /><circle cx="9" cy="12" r="1.6" /><circle cx="15" cy="12" r="1.6" /><circle cx="9" cy="18" r="1.6" /><circle cx="15" cy="18" r="1.6" /></svg>
+            </button>
+            @if (row.track.cover) {
+              <img [src]="row.track.cover" alt="" width="40" height="40" loading="lazy" class="h-10 w-10 flex-shrink-0 rounded bg-gray-800 object-cover" />
+            } @else {
+              <span class="h-10 w-10 flex-shrink-0 rounded bg-gray-800" aria-hidden="true"></span>
+            }
+            <span class="min-w-0 flex-1">
+              <span class="block truncate text-sm" [title]="row.track.title">{{ row.track.title }}</span>
+              <span class="block truncate text-xs text-gray-400" [title]="row.track.artist">{{ row.track.artist }}</span>
+            </span>
+            <span class="hidden text-xs tabular-nums text-gray-400 sm:block">{{ time(row.track.duration) }}</span>
+            <button type="button" (click)="playRow(row, $event)" aria-label="Play" [title]="'Play ' + row.track.title"
+              class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-gray-300 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" /></svg>
+            </button>
+            <button type="button" (click)="more($event, row.track)" aria-label="More actions" aria-haspopup="menu"
+              class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+              <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="19" cy="12" r="1.6" /></svg>
+            </button>
+            <button type="button" (click)="remove(row, $event)" aria-label="Remove from queue" [title]="'Remove ' + row.track.title"
+              class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
+            </button>
+          </li>
+        }
+      </ol>
+      @if (hiddenCount() > 0) {
+        <button type="button" (click)="limit.set(limit() + 100)"
+          class="mx-2 mb-4 rounded-full bg-white/5 px-4 py-2 text-xs text-gray-300 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+          Show {{ hiddenCount() > 100 ? 100 : hiddenCount() }} more ({{ hiddenCount() }} not shown)
+        </button>
+      }
+    }
+
+    @if (history().length) {
+      <details class="mt-2 px-2">
+        <summary class="cursor-pointer rounded py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+          Recently played ({{ history().length }})
+        </summary>
+        <ol class="space-y-1">
+          @for (row of history(); track row.index) {
+            <li class="flex items-center gap-3 rounded-lg px-1 py-2 hover:bg-white/5">
+              <span class="min-w-0 flex-1">
+                <span class="block truncate text-sm text-gray-300" [title]="row.track.title">{{ row.track.title }}</span>
+                <span class="block truncate text-xs text-gray-400" [title]="row.track.artist">{{ row.track.artist }}</span>
+              </span>
+              <button type="button" (click)="playRow(row, $event)" aria-label="Play" [title]="'Play ' + row.track.title"
+                class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-gray-300 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" /></svg>
+              </button>
+              <button type="button" (click)="remove(row, $event)" aria-label="Remove from queue" [title]="'Remove ' + row.track.title"
+                class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
+              </button>
+            </li>
+          }
+        </ol>
+      </details>
+    }
+  }
+</app-music-side-panel>

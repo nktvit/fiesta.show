@@ -1,0 +1,158 @@
+@switch (state()) {
+  @case ('idle') {
+    <p class="px-2 py-10 text-center text-sm text-gray-400">Play a song to see its lyrics.</p>
+  }
+  @case ('loading') {
+    <div aria-busy="true" role="status" aria-label="Loading lyrics" class="space-y-5 px-3 py-8">
+      @for (w of ['w-3/4', 'w-1/2', 'w-5/6', 'w-2/3', 'w-3/5', 'w-4/5']; track $index) {
+        <div class="h-6 animate-pulse rounded bg-white/5 motion-reduce:animate-none" [class]="w"></div>
+      }
+    </div>
+  }
+  @case ('error') {
+    <div class="px-4 py-10 text-center">
+      <p class="text-sm text-amber-400">Couldn't load lyrics. Check your connection and try again.</p>
+      <button type="button" (click)="retry()"
+        class="mt-4 inline-flex h-10 items-center rounded-full bg-indigo-600 px-5 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+        Retry
+      </button>
+    </div>
+  }
+  @case ('none') {
+    <div class="px-4 py-10 text-center">
+      <p class="text-base font-medium text-white">No lyrics found</p>
+      @if (tried().length) {
+        <p class="mt-2 text-xs text-gray-400">Tried: {{ tried().join(', ') }}</p>
+      }
+      <button type="button" (click)="retry()"
+        class="mt-4 inline-flex h-10 items-center rounded-full bg-white/5 px-5 text-sm text-gray-300 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+        Try again
+      </button>
+    </div>
+  }
+  @case ('ready') {
+    @if (!synced()) {
+      <p class="px-3 pt-2 text-xs text-gray-400">These lyrics are not time-synced.</p>
+    }
+    <ol class="px-1 md:px-2" [class]="synced() ? 'pb-[40vh] pt-[14vh]' : 'pb-6 pt-4'">
+      @for (row of rows(); track row.i) {
+        @if (row.gapBefore; as gap) {
+          <li aria-hidden="true" [attr.data-gap]="gap.beforeIndex" class="flex items-center gap-2 px-4 py-4">
+            @for (d of gapDots; track d) {
+              <span [class]="dotClass(gapActive() === gap)" [style.animation-delay.ms]="d * 250"></span>
+            }
+          </li>
+        }
+        <li [attr.data-row]="row.i" class="flex" [class.justify-end]="row.line.align === 'end'" [attr.aria-hidden]="hidden(row) ? 'true' : null">
+          @if (synced()) {
+            <button type="button" (click)="seekTo(row)" [class]="lineClass(row)" [style.filter]="blur(row)"
+              [attr.dir]="row.line.dir ?? null"
+              [attr.aria-current]="isActive(row) && !row.line.background ? 'true' : null"
+              [attr.tabindex]="hidden(row) ? -1 : null">
+              @if (useKaraoke(row)) {
+                @for (s of row.line.syllables; track $index) {
+                  <span class="whitespace-pre-wrap bg-clip-text text-transparent" [style.--p]="pct(s)"
+                    [style.background-image]="karaokeBackground()">{{ s.text }}</span>
+                }
+              } @else {
+                <span class="whitespace-pre-wrap" [style.color]="isActive(row) ? (accent() ?? '#ffffff') : null">{{ row.line.text }}</span>
+              }
+              @if (row.romanized) {
+                <span class="mt-1 block text-sm font-normal text-gray-400" data-extra="romanized">{{ row.romanized }}</span>
+              }
+              @if (row.translation) {
+                <span class="mt-1 block text-sm font-normal text-gray-400" data-extra="translation">{{ row.translation }}</span>
+              }
+            </button>
+          } @else {
+            <p [class]="lineClass(row)" [attr.dir]="row.line.dir ?? null">
+              <span class="whitespace-pre-wrap">{{ row.line.text }}</span>
+              @if (row.romanized) {
+                <span class="mt-1 block text-sm font-normal text-gray-400" data-extra="romanized">{{ row.romanized }}</span>
+              }
+              @if (row.translation) {
+                <span class="mt-1 block text-sm font-normal text-gray-400" data-extra="translation">{{ row.translation }}</span>
+              }
+            </p>
+          }
+        </li>
+      }
+    </ol>
+
+    <div class="sticky bottom-0 z-10 mt-2 border-t border-white/10 bg-[#121212]/95 px-3 pb-3 pt-3 text-white"
+      [class.backdrop-blur-md]="!settings.reduceBlur()">
+      @if (userScrolling()) {
+        <button type="button" (click)="resumeAutoScroll()"
+          class="absolute bottom-full left-1/2 mb-3 inline-flex h-10 -translate-x-1/2 items-center rounded-full bg-indigo-600 px-4 text-sm font-medium text-white shadow-lg hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+          Back to current line
+        </button>
+      }
+
+      <p class="truncate text-xs text-gray-400" data-source
+        [title]="'Source: ' + lyrics()!.source + (lyrics()!.songwriters.length ? '. Written by ' + lyrics()!.songwriters.join(', ') : '')">
+        Source: <span class="text-gray-200">{{ lyrics()!.source }}</span>
+        @if (lyrics()!.songwriters.length) {
+          <span> &middot; Written by {{ lyrics()!.songwriters.join(', ') }}</span>
+        }
+      </p>
+
+      <div class="mt-2 flex flex-wrap items-center gap-2">
+        @if (synced()) {
+          <div class="flex items-center gap-1" role="group" aria-label="Lyrics timing">
+            <button type="button" (click)="nudge(-step)" title="Show lyrics 0.5 seconds earlier"
+              class="inline-flex h-10 min-w-10 items-center justify-center rounded-full bg-white/5 px-3 text-sm text-gray-300 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">-0.5s</button>
+            <span class="min-w-[3.25rem] text-center text-xs tabular-nums text-gray-400" aria-live="polite" data-offset title="Timing offset for this song">{{ offsetLabel() }}</span>
+            <button type="button" (click)="nudge(step)" title="Show lyrics 0.5 seconds later"
+              class="inline-flex h-10 min-w-10 items-center justify-center rounded-full bg-white/5 px-3 text-sm text-gray-300 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">+0.5s</button>
+            @if (offset() !== 0) {
+              <button type="button" (click)="resetOffset()" aria-label="Reset lyrics timing" title="Reset timing"
+                class="inline-flex h-10 items-center justify-center rounded-full px-3 text-xs text-gray-400 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Reset</button>
+            }
+          </div>
+        }
+
+        <button type="button" (click)="toggleRomanize()" [attr.aria-pressed]="romanizeOn()"
+          [class]="'inline-flex h-10 items-center rounded-full px-4 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 ' + (romanizeOn() ? 'bg-white text-black' : 'bg-white/5 text-gray-300 hover:bg-white/10')">
+          {{ romanizing() ? 'Romanizing...' : 'Romanize' }}
+        </button>
+
+        <button type="button" (click)="toggleTranslate()" [attr.aria-pressed]="translateOn()"
+          [class]="'inline-flex h-10 items-center rounded-full px-4 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 ' + (translateOn() ? 'bg-white text-black' : 'bg-white/5 text-gray-300 hover:bg-white/10')">
+          {{ translating() ? 'Translating...' : 'Translate' }}
+        </button>
+        <select aria-label="Translate to" [value]="targetLang()" (change)="setLanguage($any($event.target).value)"
+          class="h-10 max-w-[10rem] rounded-full border border-white/10 bg-white/5 px-3 text-sm text-gray-200 focus:border-indigo-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+          @for (l of languages; track l.code) {
+            <option [value]="l.code" [selected]="l.code === targetLang()" class="bg-[#121212]">{{ l.name }}</option>
+          }
+        </select>
+
+        @if (canSwitch()) {
+          <button type="button" (click)="switchSource()" [disabled]="switching()"
+            class="inline-flex h-10 items-center rounded-full bg-white/5 px-4 text-sm text-gray-300 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50">
+            {{ switching() ? 'Switching...' : 'Switch source' }}
+          </button>
+        }
+
+        <div class="relative" data-download (keydown.escape)="onMenuEscape($event)">
+          <button type="button" (click)="toggleMenu()" aria-haspopup="menu" [attr.aria-expanded]="menuOpen()" data-download-button
+            class="inline-flex h-10 items-center gap-1.5 rounded-full bg-white/5 px-4 text-sm text-gray-300 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0 4-4m-4 4-4-4M5 19h14" /></svg>
+            Download
+          </button>
+          @if (menuOpen()) {
+            <div role="menu" aria-label="Download lyrics"
+              class="absolute bottom-full right-0 z-[60] mb-2 w-44 overflow-hidden rounded-xl border border-white/10 bg-[#121212] py-1 shadow-2xl">
+              @for (f of formats; track f.id) {
+                <button type="button" role="menuitem" (click)="download(f.id)"
+                  class="flex h-10 w-full items-center px-4 text-left text-sm text-gray-200 hover:bg-white/10 focus:bg-white/10 focus:outline-none">
+                  {{ f.label }}
+                </button>
+              }
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+  }
+}

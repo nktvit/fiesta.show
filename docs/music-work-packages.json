@@ -1,0 +1,1166 @@
+{
+  "version": 1,
+  "generated": "2026-10-05",
+  "feature_list": "docs/music-features.md",
+  "worktree": "/Users/nick-mbp/Developer/live/fiesta.show/.claude/worktrees/music-tab (branch feature/music-tab)",
+  "monochrome_root": "/Users/nick-mbp/.claude/jobs/2e93f784/tmp/monochrome (Apache-2.0; read-only reference)",
+  "am_lyrics_root": "/tmp/amly/package/src (AmLyrics.ts, GoogleService.ts; MPL-2.0). If missing: mkdir -p /tmp/amly && cd /tmp/amly && npm pack @uimaxbai/am-lyrics && tar xzf uimaxbai-am-lyrics-*.tgz",
+  "schedule": "F0 runs alone first. Then P1..P12 run concurrently (P13 is optional and late: start it only when the owner has answered about Last.fm keys, or run it without the Last.fm parts). Z runs alone last.",
+  "conventions": "FIESTA MUSIC CONVENTIONS - every implementer must follow these exactly.\n\n1. OWNERSHIP (hard rule, agents run concurrently in ONE worktree). Create/edit ONLY files matching your package's owned_files, plus the exact line-level hooks listed in may_edit_shared. Never edit F0 files (music-player.service.ts, music-deck.ts, music-settings.service.ts, music-library.service.ts, music-ui.service.ts, music-toast.service.ts, music-storage.ts, music-startup.service.ts, music.service.ts, app.routes.ts, app.component.*, styles.css, api/music.js, lib/tidal.js, cache.interceptor.ts, vercel.json, package.json, package-lock.json, angular.json, tailwind.config.js, navbar, bottom-nav, tools/e2e/music.mjs). If you need something from a file you don't own, do NOT edit it: work around it in your own files, add a `// TODO(Z): <exact change needed>` comment in your own file, and list it under 'Needs from Z' in your final report. Do not install npm packages (F0 installed every dependency; if one is truly missing, report it). Do not change any F0 public signature. Never run git commit/stash/checkout/reset/clean/rebase or any command that rewrites other agents' files (no repo-wide prettier/eslint --fix). The orchestrator commits.\n\n2. ANGULAR. Angular 20.3, zone-based (zone.js; do not go zoneless). Standalone components only, no NgModules. inject() for DI, never constructor parameters. State = signal()/computed()/effect(); inputs via input()/input.required(), outputs via output(), two-way via model(). New control flow only: @if / @for (always with track) / @switch / @defer. Every component has templateUrl pointing to a separate .html file; NO component CSS (no styleUrl/styles) - Tailwind utility classes inline in templates. Services are @Injectable({ providedIn: 'root' }). RxJS only for HttpClient calls and route params (switchMap + takeUntilDestroyed(inject(DestroyRef))); convert to signals for templates. Lazy pages via loadComponent (routes are already registered by F0). Heavy optional libraries (butterchurn, kuroshiro, client-zip, papaparse, @kawarp/core) are loaded with dynamic import() only when the feature is used. Strict TS (noPropertyAccessFromIndexSignature, noImplicitReturns) - no `any` leaks in public APIs.\n\n3. FILE LAYOUT AND NAMES. Components: src/app/components/music-<name>/music-<name>.component.{ts,html}, selector app-music-<name>. Pages: src/app/pages/music-<name>/music-<name>.component.{ts,html}. Settings sections: src/app/pages/music-settings/sections/music-settings-<tab>/music-settings-<tab>.component.{ts,html}. Services: src/app/services/music-<name>.service.ts. Pure logic (parsers, math, shuffle, matchers, generators): src/app/utils/music-<name>.ts WITH a sibling .spec.ts. Backend: lib/music/<area>.js (CommonJS, required by api/music.js). Static data: src/assets/music/<area>/. E2E: tools/e2e/music-<package id lowercased>.mjs.\n\n4. VISUAL STYLE (dark; Tailwind literals, no CSS variables). Page shell: <main class=\"flex-grow bg-[#0a0a0a] text-white\"> then <app-navbar [showSearchBox]=\"false\" [transparent]=\"false\"> then <app-music-subnav> (F0 component) then content in <div class=\"px-4 py-8 md:px-12 lg:px-16\">. Surfaces bg-white/5 with border-white/10; bars/panels bg-[#121212]/95 backdrop-blur-md (drop the blur when settings.reduceBlur()). Primary accent indigo: buttons bg-indigo-600 hover:bg-indigo-500 text-white; active text-indigo-400; range inputs accent-indigo-500; focus focus:border-indigo-400 focus:outline-none plus visible focus-visible:ring-2 focus-visible:ring-indigo-400 on icon buttons. Secondary text text-gray-400. Warnings AND errors text-amber-400 (never red). Pills rounded-full; tabs: selected bg-white text-black, unselected bg-white/5 text-gray-300. Card grids grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4, square covers rounded bg-gray-800 object-cover, hover:scale-[1.02] transition motion-reduce:transition-none; artists rounded-full. Use F0's app-music-album-card / app-music-artist-card / app-music-playlist-card instead of new card markup. Track lists max-w-4xl using app-music-track-row. Loading = animate-pulse bg-white/5 skeleton blocks inside a container with aria-busy=\"true\". Badges text-[10px] font-semibold uppercase tracking-wide rounded-full border px-2 py-0.5. Icons: inline SVG viewBox=\"0 0 24 24\", fill/stroke currentColor, stroke-width 1.7 for outline icons, fill for transport, always aria-hidden=\"true\". Truncated text gets a title attribute.\n\n5. ACCESSIBILITY. Every icon-only button has aria-label (toggle buttons also aria-pressed; menus aria-haspopup/aria-expanded). Touch targets >= 40px (h-10 w-10; primary h-11). Every transition/animation has a motion-reduce: variant (motion-reduce:transition-none / motion-reduce:animate-none); canvas/WebGL animation pauses under prefers-reduced-motion unless the user explicitly enables it. Dialogs/sheets/panels: use F0's app-music-side-panel or app-music-dialog shells (role=dialog, aria-modal, focus trap, Escape closes, focus returns to opener, body scroll lock via musicScrollLock, safe-area padding). Lists that reorder must also be operable by keyboard (Move up/down buttons or Alt+Arrow). Live updates (toasts, track change) go through F0's aria-live toast host. Inputs >= 16px font on mobile is global already.\n\n6. LAYERS. Mini player bar z-30, bottom nav z-40, side panels/sheets z-[45], Now Playing z-[50], dialogs/menus/command palette z-[60], toasts z-[70]. Fixed bottom UI must sit above the bottom nav on mobile: bottom-[calc(3.5rem+env(safe-area-inset-bottom,0px))] sm:bottom-0, and above the player bar when a track is loaded.\n\n7. TITLES/SEO. Each page sets Title '<Thing> | Stream Fiesta' and a Meta description via Title/Meta services.\n\n8. STORAGE. Never touch localStorage/IndexedDB directly for music state except through F0's helpers: musicStorage.read/write (src/app/utils/music-storage.ts) or MusicSettingsService.scoped(name, default). All keys live under 'fiesta:music:'; credentials/tokens under 'fiesta:music:secret:' (excluded from backups). Every access is SSR-guarded and wrapped in try/catch (private mode: the choice lasts for this page only). IndexedDB databases are named 'fiesta-music-<area>' and must be listed in your report so P11's System section and P7's reset can clear them (P11/P7 clear every DB whose name starts with 'fiesta-music-' via indexedDB.databases() with a fallback list).\n\n9. PLAYER/LIBRARY CONTRACTS. Read player state only through MusicPlayerService signals; act only through its methods; observe events via player.on(...). Library state only via MusicLibraryService. Overlay open/close only via MusicUiService. Toasts only via MusicToastService. Respect blocked content: lists you render filter with library.isBlocked(item).\n\n10. BROWSER SUPPORT. The non-music site keeps its iOS/Safari 15 floor - do not add global CSS that breaks it (no :has() in styles). Music features may use modern APIs (Web Audio, CompressionStream, File System Access, Web Share, WebGL2, AbortSignal.timeout) ONLY behind feature detection with a graceful fallback or a hidden control.\n\n11. BACKEND. CommonJS. Implement only the handler functions in your lib/music/<area>.js; reuse appToken/tidalGet/countryFor/mapTrack/mapAlbum/mapArtist/mapPlaylist/mapMix/httpError from lib/tidal.js. Validate every id (numeric or uuid regex) and clamp limits; never fetch caller-supplied URLs except allow-listed hosts. Respond JSON; errors as {error: code} via thrown httpError(status, code). Always set Cache-Control (catalog data 's-maxage=86400, stale-while-revalidate=3600'; search/suggest 's-maxage=3600'; personal or token-dependent 'no-store'). openapi.tidal.com v2 (JSON:API) and api.tidal.com/v1 both accept the app token; verify each endpoint live and degrade (empty array + 200) rather than 500 when TIDAL denies it.\n\n12. PORTED CODE. Files ported from Monochrome start with `// Ported from Monochrome (Apache-2.0), js/<file> - adapted for Fiesta.` Files ported from @uimaxbai/am-lyrics keep the MPL-2.0 header: `// This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0 ... Derived from @uimaxbai/am-lyrics src/AmLyrics.ts.` Never copy Monochrome's or am-lyrics' hardcoded API keys, tokens, client ids/secrets or worker upload keys. Fix the upstream bugs listed in your brief instead of copying them.\n\n13. LOCAL RUN (concurrency-safe). Each package uses its own ports: API harness `PORT=<api_port> node tools/fiesta-proxy/local-test-server.mjs` (restart it after backend edits - require cache) and `npx ng serve --port <ng_port> --proxy-config /tmp/fiesta-proxy-<id>.json` where that temp file is a copy of src/proxy.conf.json with every localhost:3999 target changed to your api_port. Build check: `npx ng build --configuration development --output-path /tmp/fiesta-build-<id>` (never the default dist/ path; if you hit a .angular cache lock, wait and retry). Debug handle: open any page with ?musicdebug=1 to get window.__music = {player, library, settings, ui} for e2e scripting.\n\n14. TESTS (definition of done). (a) `npx ng build --configuration development --output-path /tmp/fiesta-build-<id>` passes with no new errors/warnings from your files. (b) Unit specs for every pure util and service you add; run `npx ng test --watch=false --browsers=ChromeHeadless --include='src/app/**/music-*.spec.ts'` (the 5 pre-existing MovieService apikey failures are known; nothing else may fail). (c) An e2e script tools/e2e/music-<id>.mjs in the style of tools/e2e/music.mjs (playwright-core, chrome channel, --autoplay-policy=no-user-gesture-required, args [baseUrl] [--shots=dir] [--token-file=path], check(name, ok) PASS/FAIL lines, exit code 1 on any FAIL) covering every acceptance criterion; run it against your own ng serve and paste the PASS lines into your report. (d) Existing tools/e2e/music.mjs must still pass 14/14 - keep these selectors stable: input[name=q], app-music-track-row, app-music-player-bar section, input[aria-label=\"Seek\"], button[aria-label=\"Next track\"], button[aria-label=\"Pause\"] / button[aria-label=\"Play\"], nav[aria-label=\"Primary\"], the badge span.uppercase in the bar, and 'app-music-player-bar a span.truncate' as the track title. Playback without a token yields 30 s PREVIEWs - tests must pass in that mode.\n\n15. REPORT. Finish with: files created/edited, acceptance PASS list, unit test result, 'Needs from Z' (exact TODO(Z) items), IndexedDB names and localStorage keys you introduced, and anything that degraded (e.g. a TIDAL endpoint that the app token cannot read).",
+  "hot_spots": [
+    {
+      "file": "src/app/services/music-player.service.ts (+ src/app/services/music-deck.ts)",
+      "owner": "F0, then frozen; only Z may edit after F0"
+    },
+    {
+      "file": "src/app/services/music-settings.service.ts, music-library.service.ts, music-ui.service.ts, music-toast.service.ts, music-startup.service.ts, src/app/utils/music-storage.ts",
+      "owner": "F0, then frozen; only Z"
+    },
+    {
+      "file": "src/app/services/music.service.ts, api/music.js, lib/tidal.js",
+      "owner": "F0, then frozen; only Z. Packages add backend logic in their own lib/music/<area>.js handlers that F0 already dispatches to."
+    },
+    {
+      "file": "src/app/components/music-player-bar/*",
+      "owner": "P1 (exclusive)"
+    },
+    {
+      "file": "src/app/components/music-track-row/*",
+      "owner": "P10 (exclusive)"
+    },
+    {
+      "file": "src/app/pages/music-settings/music-settings.component.*",
+      "owner": "P11 (exclusive); each section sub-folder belongs to the package named in its stub"
+    },
+    {
+      "file": "src/app/pages/music/music.component.*, music-album/*, music-artist/*",
+      "owner": "P8 (exclusive)"
+    },
+    {
+      "file": "src/app/app.routes.ts",
+      "owner": "F0 registers every route; then only Z"
+    },
+    {
+      "file": "src/app/app.component.html/.ts",
+      "owner": "F0 mounts every overlay/host (with @defer); then only Z"
+    },
+    {
+      "file": "src/styles.css, tailwind.config.js",
+      "owner": "F0; then only Z"
+    },
+    {
+      "file": "src/app/interceptors/cache.interceptor.ts, vercel.json, package.json, angular.json",
+      "owner": "F0; then only Z"
+    },
+    {
+      "file": "middleware.js",
+      "owner": "P8 (single hook: music OG branch); otherwise Z"
+    },
+    {
+      "file": "src/app/components/navbar/*, src/app/components/bottom-nav/*",
+      "owner": "nobody (no new top-level tabs; Music link already matches /music*); Z only if a regression appears"
+    },
+    {
+      "file": "tools/e2e/music.mjs",
+      "owner": "F0 then Z; packages write their own tools/e2e/music-<id>.mjs"
+    },
+    {
+      "file": "docs/handoff.md, docs/music-features.md, docs/music-work-packages.json",
+      "owner": "Z"
+    }
+  ],
+  "ports": {
+    "F0": [
+      4200,
+      3999
+    ],
+    "P1": [
+      4201,
+      3901
+    ],
+    "P2": [
+      4202,
+      3902
+    ],
+    "P3": [
+      4203,
+      3903
+    ],
+    "P4": [
+      4204,
+      3904
+    ],
+    "P5": [
+      4205,
+      3905
+    ],
+    "P6": [
+      4206,
+      3906
+    ],
+    "P7": [
+      4207,
+      3907
+    ],
+    "P8": [
+      4208,
+      3908
+    ],
+    "P9": [
+      4209,
+      3909
+    ],
+    "P10": [
+      4210,
+      3910
+    ],
+    "P11": [
+      4211,
+      3911
+    ],
+    "P12": [
+      4212,
+      3912
+    ],
+    "P13": [
+      4213,
+      3913
+    ],
+    "Z": [
+      4200,
+      3999
+    ]
+  },
+  "packages": [
+    {
+      "id": "F0",
+      "title": "Foundation: engine surface, stores, shells, routes, stubs (runs FIRST, alone)",
+      "features": [
+        "PB01",
+        "PB02",
+        "PB03",
+        "PB04",
+        "PB05",
+        "PB06",
+        "PB07",
+        "PB08",
+        "PB09",
+        "PB10",
+        "PB11",
+        "PB12",
+        "PB13",
+        "PB14",
+        "PB15",
+        "PB16",
+        "PB17",
+        "PB20",
+        "PB21",
+        "PB22",
+        "PB23",
+        "PB24",
+        "PB25",
+        "UI15",
+        "UI16",
+        "UI17",
+        "LB01",
+        "LB02",
+        "LB05",
+        "LB06",
+        "LB07",
+        "LB11",
+        "LB12",
+        "LB13",
+        "CT12",
+        "SH01"
+      ],
+      "owned_files": [
+        "package.json",
+        "package-lock.json",
+        "src/app/services/music-player.service.ts",
+        "src/app/services/music-player.service.spec.ts",
+        "src/app/services/music-deck.ts",
+        "src/app/services/music.service.ts",
+        "src/app/services/music.service.spec.ts",
+        "src/app/services/music-settings.service.ts",
+        "src/app/services/music-settings.service.spec.ts",
+        "src/app/services/music-library.service.ts",
+        "src/app/services/music-library.service.spec.ts",
+        "src/app/services/music-ui.service.ts",
+        "src/app/services/music-toast.service.ts",
+        "src/app/services/music-startup.service.ts",
+        "src/app/utils/music-storage.ts",
+        "src/app/utils/music-storage.spec.ts",
+        "src/app/utils/music-queue.ts",
+        "src/app/utils/music-queue.spec.ts",
+        "src/app/utils/music-replay-gain.ts",
+        "src/app/utils/music-replay-gain.spec.ts",
+        "src/app/utils/music-format.ts",
+        "src/app/utils/music-format.spec.ts",
+        "src/app/utils/music-scroll-lock.ts",
+        "src/app/components/music-toast-host/**",
+        "src/app/components/music-side-panel/**",
+        "src/app/components/music-dialog/**",
+        "src/app/components/music-subnav/**",
+        "src/app/components/music-rail/**",
+        "src/app/components/music-album-card/**",
+        "src/app/components/music-artist-card/**",
+        "src/app/components/music-playlist-card/**",
+        "src/app/app.routes.ts",
+        "src/app/app.component.html",
+        "src/app/app.component.ts",
+        "src/styles.css",
+        "src/app/interceptors/cache.interceptor.ts",
+        "vercel.json",
+        "api/music.js",
+        "lib/tidal.js",
+        "tools/e2e/music.mjs",
+        "tools/e2e/music-f0.mjs",
+        "ALL STUB FILES listed in this package's 'stubs' field (created by F0, then handed to the named package)"
+      ],
+      "may_edit_shared": [
+        {
+          "file": "src/app/pages/music/music.component.html",
+          "hook": "Insert <app-music-subnav /> directly under <app-navbar> and replace the @case ('idle') body (suggestion chips) with <app-music-home /> (keep a <noscript>-free fallback: nothing else). Add MusicSubnavComponent and MusicHomeComponent to imports in music.component.ts. Ownership then passes to P8."
+        },
+        {
+          "file": "src/app/pages/music-album/music-album.component.html + .ts",
+          "hook": "Insert <app-music-subnav /> under <app-navbar> and add the import. Ownership then passes to P8."
+        },
+        {
+          "file": "src/app/pages/music-artist/music-artist.component.html + .ts",
+          "hook": "Same subnav insertion. Ownership then passes to P8."
+        }
+      ],
+      "stubs": [
+        {
+          "file": "src/app/components/music-queue-panel/music-queue-panel.component.{ts,html}",
+          "to": "P2",
+          "contract": "selector app-music-queue-panel; no inputs; visible when ui.panel()==='queue'."
+        },
+        {
+          "file": "src/app/components/music-now-playing/music-now-playing.component.{ts,html}",
+          "to": "P2",
+          "contract": "selector app-music-now-playing; no inputs; visible when ui.nowPlayingOpen()."
+        },
+        {
+          "file": "src/app/components/music-lyrics-panel/music-lyrics-panel.component.{ts,html}",
+          "to": "P3",
+          "contract": "selector app-music-lyrics-panel; visible when ui.panel()==='lyrics'."
+        },
+        {
+          "file": "src/app/components/music-lyrics-view/music-lyrics-view.component.{ts,html}",
+          "to": "P3",
+          "contract": "selector app-music-lyrics-view; input mode: 'panel'|'fullscreen' (default 'panel'); input accent: string|null (CSS colour from Now Playing, default null). Renders lyrics for player.track()."
+        },
+        {
+          "file": "src/app/services/music-lyrics.service.ts",
+          "to": "P3",
+          "contract": "export interface MusicLyrics { trackId: number; source: string; synced: boolean; wordSynced: boolean; lines: MusicLyricLine[]; songwriters: string[]; } export interface MusicLyricLine { start: number; end: number; text: string; agent?: string; background?: boolean; syllables?: { start: number; end: number; text: string }[]; translation?: string; romanized?: string } (seconds). Methods: fetch(track: MusicTrack, opts?: { signal?: AbortSignal; sourceIndex?: number }): Promise<MusicLyrics | null>; toLRC(l: MusicLyrics): string; toTTML(l: MusicLyrics): string; toPlain(l: MusicLyrics): string. Stub returns null / ''."
+        },
+        {
+          "file": "src/app/services/music-audio-graph.service.ts",
+          "to": "P4",
+          "contract": "start(): void (restore settings; build nothing until needed); ensure(): AudioContext | null (call from a user gesture; builds the graph for every element in player.elements()); readonly active: Signal<boolean>; analyser(): AnalyserNode | null; context(): AudioContext | null. Stub: no-ops returning null, active=signal(false)."
+        },
+        {
+          "file": "src/app/services/music-crossfade.ts",
+          "to": "P5",
+          "contract": "export function crossfade(out: HTMLAudioElement, incoming: HTMLAudioElement, seconds: number, gain: (el: HTMLAudioElement, g: number) => void, signal: AbortSignal): Promise<void>; export function supportsElementVolume(): boolean. Stub: gain(incoming,1); gain(out,0); resolve immediately; supportsElementVolume detects iOS read-only volume (set volume 0.5 on a probe Audio and read it back)."
+        },
+        {
+          "file": "src/app/services/music-waveform.service.ts",
+          "to": "P5",
+          "contract": "peaks(trackId: number): Signal<Float32Array | null>; request(track: MusicTrack): void (no-op unless settings.waveformSeekbar() or settings.removeSilence()); bounds(trackId: number): { start: number; end: number } | null (seconds of non-silent audio, from cache only, synchronous). Stub: signal(null), no-op, null."
+        },
+        {
+          "file": "src/app/components/music-visualizer/music-visualizer.component.{ts,html}",
+          "to": "P5",
+          "contract": "selector app-music-visualizer; input active: boolean (required); input coverUrl: string. Fills its parent (absolute inset-0)."
+        },
+        {
+          "file": "src/app/components/music-waveform/music-waveform.component.{ts,html}",
+          "to": "P5",
+          "contract": "selector app-music-waveform; input trackId: number|null; input progress: number (0..1). Renders an SVG peak strip filling its parent, pointer-events-none; renders nothing when no peaks."
+        },
+        {
+          "file": "src/app/components/music-like-button/music-like-button.component.{ts,html}",
+          "to": "P6",
+          "contract": "selector app-music-like-button; input item: MusicLibraryItem (required); input size: 'sm'|'md' (default 'md'). Stub renders a heart toggle wired to library.toggleFavorite (working, unstyled-ish) so others can see it."
+        },
+        {
+          "file": "src/app/components/music-add-to-playlist-dialog/music-add-to-playlist-dialog.component.{ts,html}",
+          "to": "P6",
+          "contract": "selector app-music-add-to-playlist-dialog; visible when ui.addToPlaylist() !== null (MusicTrack[])."
+        },
+        {
+          "file": "src/app/pages/music-library/music-library.component.{ts,html}",
+          "to": "P6",
+          "contract": "route /music/library (?tab=tracks|albums|artists|playlists|mixes)."
+        },
+        {
+          "file": "src/app/pages/music-user-playlist/music-user-playlist.component.{ts,html}",
+          "to": "P6",
+          "contract": "route /music/library/playlist/:id."
+        },
+        {
+          "file": "src/app/pages/music-recent/music-recent.component.{ts,html}",
+          "to": "P6",
+          "contract": "route /music/recent."
+        },
+        {
+          "file": "src/app/components/music-pins-row/music-pins-row.component.{ts,html}",
+          "to": "P6",
+          "contract": "selector app-music-pins-row; no inputs; renders library.pins() as F0 cards in one row, nothing when empty. Stub renders nothing."
+        },
+        {
+          "file": "src/app/components/music-import-dialog/music-import-dialog.component.{ts,html}",
+          "to": "P7",
+          "contract": "selector app-music-import-dialog; visible when ui.importOpen()."
+        },
+        {
+          "file": "src/app/pages/music-shared-playlist/music-shared-playlist.component.{ts,html}",
+          "to": "P7",
+          "contract": "route /music/shared?d=<payload>."
+        },
+        {
+          "file": "src/app/utils/music-playlist-files.ts",
+          "to": "P7",
+          "contract": "export interface PlaylistFileMeta { title: string; description?: string; creator?: string; cover?: string } ; generateCSV(meta, tracks): string; generateFullCSV(meta, tracks): string; generateJSON(meta, tracks): string; generateXSPF(meta, tracks): string; generateXML(meta, tracks): string; generateM3U(meta, tracks, paths?: string[]): string; generateM3U8(meta, tracks, paths?: string[]): string; generateCUE(album: MusicAlbum, tracks, audioFile: string): string; generateNFO(meta, tracks): string. Stub returns ''."
+        },
+        {
+          "file": "src/app/utils/music-share.ts",
+          "to": "P7",
+          "contract": "export function buildShareUrl(p: { name: string; description?: string; tracks: MusicTrack[] }): Promise<string> (absolute URL to /music/shared?d=...); export function parseSharePayload(d: string): Promise<{ name: string; description?: string; ids: number[] } | null>. Stub implements v0: base64url(JSON {n,d,t:[ids]}) prefixed '0.'; P7 adds v1 '1.' = deflate-raw via CompressionStream and must keep parsing v0."
+        },
+        {
+          "file": "src/app/pages/music-settings/sections/music-settings-data/music-settings-data.component.{ts,html}",
+          "to": "P7",
+          "contract": "selector app-music-settings-data."
+        },
+        {
+          "file": "src/app/services/music-catalog.service.ts",
+          "to": "P8",
+          "contract": "F0 writes the real thin HttpClient wrappers + interfaces (see F0 brief, actions list); P8 may extend."
+        },
+        {
+          "file": "lib/music/catalog.js",
+          "to": "P8",
+          "contract": "exports track, tracks, albumExtras, artistBio, similarArtists, similarAlbums, artistAlbums, artistTopTracks, artistLinks, aoty - each async (q, req, res). Stub: res.status(501).json({error:'not_implemented'})."
+        },
+        {
+          "file": "lib/music/search.js",
+          "to": "P8",
+          "contract": "exports suggest, searchType - async (q, req, res). Stub 501."
+        },
+        {
+          "file": "src/app/pages/music-track/music-track.component.{ts,html}",
+          "to": "P8",
+          "contract": "route /music/track/:id."
+        },
+        {
+          "file": "src/app/components/music-home/music-home.component.{ts,html}",
+          "to": "P9",
+          "contract": "selector app-music-home; rendered by the /music page when there is no ?q=. Stub shows the old suggestion chips (navigate to /music?q=...)."
+        },
+        {
+          "file": "src/app/services/music-recommender.service.ts",
+          "to": "P9",
+          "contract": "export interface RadioSeed { kind: 'track'|'album'|'artist'|'playlist'|'mix'; id: string|number; label: string; tracks?: MusicTrack[] } ; radioTracks(seed: RadioSeed): Promise<MusicTrack[]>; refill(seeds: MusicTrack[], opts: { mode: 'radio'|'autoplay'; exclude: Set<number>; limit: number }): Promise<MusicTrack[]>; forPlaylist(tracks: MusicTrack[], limit: number): Promise<MusicTrack[]>. Must NOT inject MusicPlayerService (the player calls it through Injector.get at call time). Stub returns []."
+        },
+        {
+          "file": "src/app/services/music-listening-tracker.service.ts",
+          "to": "P9",
+          "contract": "start(): void (subscribe to player.on events); readonly stats: Signal<{ tracks: number; artists: number }>. Stub: no-op."
+        },
+        {
+          "file": "src/app/services/music-discovery.service.ts",
+          "to": "P9",
+          "contract": "F0 writes the real thin HttpClient wrappers + interfaces for mix, trackMix, artistMix, playlist, explore, page; P9 may extend."
+        },
+        {
+          "file": "lib/music/discovery.js",
+          "to": "P9",
+          "contract": "exports mix, trackMix, artistMix, playlist, explore, page - async (q, req, res). Stub 501."
+        },
+        {
+          "file": "src/app/pages/music-mix/music-mix.component.{ts,html}",
+          "to": "P9",
+          "contract": "route /music/mix/:id."
+        },
+        {
+          "file": "src/app/pages/music-playlist/music-playlist.component.{ts,html}",
+          "to": "P9",
+          "contract": "route /music/playlist/:id (TIDAL uuid)."
+        },
+        {
+          "file": "src/app/pages/music-explore/music-explore.component.{ts,html}",
+          "to": "P9",
+          "contract": "route /music/explore (?page=<whitelisted TIDAL page path>)."
+        },
+        {
+          "file": "src/app/services/music-shortcuts.service.ts",
+          "to": "P10",
+          "contract": "start(): void (attach the global keydown listener). Stub: no-op."
+        },
+        {
+          "file": "src/app/components/music-command-palette/music-command-palette.component.{ts,html}",
+          "to": "P10",
+          "contract": "selector app-music-command-palette; visible when ui.paletteOpen()."
+        },
+        {
+          "file": "src/app/components/music-shortcuts-help/music-shortcuts-help.component.{ts,html}",
+          "to": "P10",
+          "contract": "selector app-music-shortcuts-help; visible when ui.shortcutsHelpOpen()."
+        },
+        {
+          "file": "src/app/components/music-track-info/music-track-info.component.{ts,html}",
+          "to": "P10",
+          "contract": "selector app-music-track-info; visible when ui.trackInfo() !== null."
+        },
+        {
+          "file": "src/app/components/music-context-menu/music-context-menu.component.{ts,html}",
+          "to": "P10",
+          "contract": "selector app-music-context-menu; global host rendering ui.contextMenu() (track or card menus)."
+        },
+        {
+          "file": "src/app/components/music-card-menu-button/music-card-menu-button.component.{ts,html}",
+          "to": "P10",
+          "contract": "selector app-music-card-menu-button; input item: MusicLibraryItem (required). A kebab button that calls ui.openContextMenu(...). Used by F0's card components. Stub: renders nothing."
+        },
+        {
+          "file": "src/app/components/music-selection-bar/music-selection-bar.component.{ts,html}",
+          "to": "P10",
+          "contract": "selector app-music-selection-bar; global host."
+        },
+        {
+          "file": "src/app/pages/music-settings/sections/music-settings-shortcuts/music-settings-shortcuts.component.{ts,html}",
+          "to": "P10",
+          "contract": "selector app-music-settings-shortcuts."
+        },
+        {
+          "file": "src/app/pages/music-settings/music-settings.component.{ts,html}",
+          "to": "P11",
+          "contract": "route /music/settings (?tab=playback|audio|lyrics|interface|shortcuts|downloads|scrobbling|data|system). Stub: tab strip + @switch rendering the 9 section components."
+        },
+        {
+          "file": "src/app/pages/music-settings/sections/music-settings-playback/**, music-settings-interface/**, music-settings-system/**",
+          "to": "P11",
+          "contract": "selectors app-music-settings-playback / -interface / -system."
+        },
+        {
+          "file": "src/app/services/music-settings-registry.ts",
+          "to": "P11",
+          "contract": "export interface MusicSettingEntry { id: string; label: string; tab: 'playback'|'audio'|'lyrics'|'interface'|'shortcuts'|'downloads'|'scrobbling'|'data'|'system'; keywords: string[]; description?: string } ; export const MUSIC_SETTINGS_REGISTRY: MusicSettingEntry[]. Stub: []."
+        },
+        {
+          "file": "src/app/pages/music-settings/sections/music-settings-audio/**",
+          "to": "P4",
+          "contract": "selector app-music-settings-audio."
+        },
+        {
+          "file": "src/app/pages/music-settings/sections/music-settings-lyrics/**",
+          "to": "P3",
+          "contract": "selector app-music-settings-lyrics."
+        },
+        {
+          "file": "src/app/services/music-download.service.ts",
+          "to": "P12",
+          "contract": "export const MUSIC_DOWNLOADS_ENABLED = true; readonly enabled: Signal<boolean> (MUSIC_DOWNLOADS_ENABLED && downloads supported - every download entry point hides when false); downloadTracks(tracks: MusicTrack[], opts?: { name?: string; album?: MusicAlbum; kind?: 'album'|'playlist'|'liked'|'queue'|'selection'|'discography' }): Promise<void>; downloadAlbum(album: MusicAlbum, tracks: MusicTrack[]): Promise<void>; downloadArtist(artistId: number): Promise<void>; readonly tasks: Signal<MusicDownloadTask[]>; cancel(id: string): void. Stub: toast 'Downloads are coming soon'."
+        },
+        {
+          "file": "src/app/components/music-downloads-tray/music-downloads-tray.component.{ts,html}",
+          "to": "P12",
+          "contract": "selector app-music-downloads-tray; global host, renders when tasks().length."
+        },
+        {
+          "file": "src/app/pages/music-settings/sections/music-settings-downloads/**",
+          "to": "P12",
+          "contract": "selector app-music-settings-downloads."
+        },
+        {
+          "file": "src/app/services/music-scrobbler.service.ts",
+          "to": "P13",
+          "contract": "start(): void. Stub: no-op."
+        },
+        {
+          "file": "lib/music/scrobble.js",
+          "to": "P13",
+          "contract": "export lastfm - async (q, req, res). Stub 501."
+        },
+        {
+          "file": "src/app/pages/music-settings/sections/music-settings-scrobbling/**",
+          "to": "P13",
+          "contract": "selector app-music-settings-scrobbling."
+        }
+      ],
+      "depends_on": [],
+      "acceptance": [
+        "`npx ng build --configuration development --output-path /tmp/fiesta-build-f0` and the production `npx ng build --output-path /tmp/fiesta-build-f0-prod` both pass; initial bundle stays under the 2 MB warning (all overlays are @defer'd).",
+        "Existing tools/e2e/music.mjs passes 14/14 unchanged.",
+        "Every new route renders its stub page (subnav visible, title set): /music/explore, /music/library, /music/library/playlist/x, /music/recent, /music/settings, /music/shared, /music/track/1, /music/mix/x, /music/playlist/x; unknown /music/foo still redirects to /.",
+        "With ?musicdebug=1: __music.player.toggleShuffle() reorders upcoming tracks with the current one first and toggling again restores the original order; cycleRepeat() goes off->all->one->off; repeat one replays the same track on ended; repeat all wraps from last to first.",
+        "addToQueue/playNext/removeAt/move/clearUpcoming update queue() and index() correctly (unit spec on music-queue.ts covers index shifting incl. shuffle on).",
+        "setVolume(0.3) sets the element volume (0.3, or 0.027 with exponential volume); toggleMute(); both persist across reload (localStorage fiesta:music:settings).",
+        "setPlaybackRate(1.5) applies to the active element and persists; preservesPitch toggles.",
+        "Reload restores queue, index and position paused: the bar shows the same track title and Play (not Pause).",
+        "Within 45 s of the end the standby deck has preloaded (debug: __music.player.debugState().standbyTrackId === next id); with gapless on, the next track starts < 300 ms after ended (measured via events).",
+        "setSleepTimer(1) pauses playback after ~60 s (test with a fake 0.05 min); 'end-of-track' pauses on ended instead of advancing.",
+        "A forced manifest failure (route /api/music?action=manifest to 404 for one id) shows the amber toast and auto-advances; a queue of all-failing tracks stops after one pass.",
+        "navigator.mediaSession has handlers for seekforward/seekbackward/seekto/stop and setPositionState is called on track start (spy in page).",
+        "library.toggleFavorite(trackItem) persists under fiesta:music:library and isFavorite() is reactive; history gains the track after 10 s of play.",
+        "GET /api/music?action=manifest returns trackReplayGain/trackPeakAmplitude when TIDAL provides them; quality=HI_RES_LOSSLESS is accepted; GET /api/music?action=img&u=<b64 of a resources.tidal.com url> returns image/jpeg with Access-Control-Allow-Origin *; a non-TIDAL host returns 400.",
+        "Every lib/music/* stub action returns 501 {error:'not_implemented'} via /api/music?action=<name>.",
+        "Unit specs pass: music-queue, music-replay-gain, music-storage, music-format, music-settings.service, music-library.service, music-player.service (with a fake Audio)."
+      ],
+      "external_needs": "None. Installs npm deps (see brief).",
+      "brief": "You build the contract that 12 agents will code against in parallel, so completeness and stable signatures matter more than polish. Read docs/music-features.md first. Read the current code: src/app/services/music-player.service.ts (MSE engine, generation counter), music.service.ts, api/music.js, lib/tidal.js, music-player-bar, music-track-row, app.routes.ts, app.component.*, styles.css (nav-sheet-open lock + has-music-bar), src/app/services/scroll-lock.ts, likes-comments.service.ts (clientId try/catch pattern), interceptors/cache.interceptor.ts, tools/e2e/music.mjs.\n\nSTEP 1 deps: `npm install @angular/cdk@~20.2 client-zip butterchurn butterchurn-presets @kawarp/core kuroshiro kuroshiro-analyzer-kuromoji papaparse && npm install -D @types/papaparse` (match the installed @angular/core minor for cdk; if a package fails to install, report it and continue). Do not import them anywhere in F0 code.\n\nSTEP 2 backend (api/music.js, lib/tidal.js). mapTrack adds: isrc, artists [{id,name}], copyright, popularity, bpm (if present), releaseDate (t.streamStartDate||album.releaseDate), version, replayGain (t.replayGain), peak (t.peak). mapAlbum adds: artistId, artists, type ('ALBUM'|'EP'|'SINGLE'|'COMPILATION'), releaseDate, explicit, copyright, popularity. mapArtist adds: popularity, roles (artistRoles categories). Add mapPlaylist(p) -> {uuid,title,description,cover (squareImage||image 640 via resources.tidal.com/images path),creator,tracks:numberOfTracks,duration,lastUpdated} and mapMix(m) -> {id,title,subTitle,cover (images.MEDIUM.url||SMALL),type}. Export them. manifest: accept HI_RES_LOSSLESS in QUALITIES; include trackReplayGain, trackPeakAmplitude, albumReplayGain, albumPeakAmplitude from playbackinfo in the JSON (Monochrome js/HiFi.ts getTrack ~L1460 reads the same fields). New action img: ?u=<base64url url>; allow only https://resources.tidal.com/ (and image.tidal.com); stream bytes with content-type, Cache-Control 'public, max-age=604800, immutable', ACAO *. Blocklist (CT12): lib/tidal.js exports isBlockedId(kind,id) reading env MUSIC_BLOCKED_IDS ('track:1,album:2,artist:3'); search/album/artist filter blocked items; manifest of a blocked track -> 451 {error:'blocked'}. Dispatch new actions to the stub modules: suggest, search-type -> lib/music/search.js; track, tracks, album-extras, artist-bio, similar-artists, similar-albums, artist-albums, artist-toptracks, artist-links, aoty -> lib/music/catalog.js; mix, track-mix, artist-mix, playlist, explore, page -> lib/music/discovery.js; lastfm -> lib/music/scrobble.js. Map kebab action names to the camelCase exports. Allow POST in CORS (GET,POST,OPTIONS) for lastfm only. Add api/music.js to vercel.json functions {memory:1024,maxDuration:30}. Update the header comment list of actions. (tools/fiesta-proxy/local-test-server.mjs already mounts api/music.js - leave it.)\n\nSTEP 3 client data. music.service.ts: extend MusicTrack/MusicAlbum/MusicArtist with the new optional fields; add MusicPlaylist, MusicMix, MusicLibraryItem = {kind:'track',data:MusicTrack}|{kind:'album',data:MusicAlbum}|{kind:'artist',data:MusicArtist}|{kind:'playlist',data:MusicPlaylist}|{kind:'mix',data:MusicMix}|{kind:'userPlaylist',data:UserPlaylist}; MusicManifest gains the 4 replay-gain fields; MusicQuality = 'LOW'|'HIGH'|'LOSSLESS'|'HI_RES_LOSSLESS'. Write music-catalog.service.ts (P8 takes over) with typed wrappers: suggest(q), searchType(q,type,offset,limit), track(id) -> {track, albumTracks}, tracks(ids[]) -> MusicTrack[], albumExtras(id) -> {moreByArtist, epsSingles, similarAlbums, similarArtists, copyright, releaseDate}, artistBio(id) -> {text, source}, similarArtists(id), similarAlbums(id), artistAlbums(id, filter:'ALBUMS'|'EPSANDSINGLES'|'COMPILATIONS'|'APPEARS_ON', offset, limit) -> {items,total}, artistTopTracks(id, offset, limit) -> {items,total}, artistLinks(id) -> {type,url}[], aoty(title, artist) -> {critic?,user?,mustHear?,url?}|null. Write music-discovery.service.ts (P9 takes over): mix(id) -> {mix, tracks}, trackMix(id) -> {mixId, tracks}, artistMix(id) -> {mixId, tracks}, playlist(uuid, offset) -> {playlist, tracks, total}, explore() -> {sections:[{title, kind, items}]}, page(path) -> same shape. cache.interceptor: getCacheDuration takes the request; for /api/music read req.params.get('action'): manifest/seg/img/lastfm 0; search/suggest/search-type 300000; everything else 1800000.\n\nSTEP 4 storage + settings. utils/music-storage.ts: PREFIX='fiesta:music:'; read<T>(key, fallback), write(key, value), remove(key), keys() - SSR guard (typeof window), try/catch, JSON; comment 'private mode: the choice lasts for this page only'. MusicSettingsService: one signal per typed key, persisted together under fiesta:music:settings (debounced write), each exposed as a WritableSignal-like with set(); plus scoped<T>(name, default): WritableSignal<T> persisted at fiesta:music:<name>; plus reset(). Typed keys and defaults (every package relies on these exact names): volume 1, muted false, playbackRate 1, preservesPitch true, shuffle false, repeat 'off', quality 'auto' ('auto'|'LOW'|'HIGH'|'LOSSLESS'|'HI_RES_LOSSLESS'), gapless true, crossfadeSeconds 0, autoplay false, skipUnavailable true, replayGainMode 'off' ('off'|'track'|'album'), replayGainPreamp 0, exponentialVolume false, removeSilence false, waveformSeekbar false, sleepFadeOut true, coverClickAction 'nowPlaying' ('nowPlaying'|'album'), closeOverlaysOnNavigate true, backClosesOverlays true, reduceBlur false, dynamicColor true, albumBackground true, compactGrids false, haptics true, coverTilt false, coverRound true, nowPlayingLyrics true, homeSections {jumpBackIn:true, recent:true, mixes:true, forYou:true, playlists:true, picks:true}, visualizerEnabled false, visualizerPreset 'particles', scrobblePercent 50, lastSettingsTab 'playback', panelWidth 380.\n\nSTEP 5 MusicLibraryService (signals + fiesta:music:library, history in fiesta:music:history, search in fiesta:music:search-history, activity in fiesta:music:activity, blocked in fiesta:music:blocked). Store minified copies (only MusicTrack/MusicAlbum fields, no blobs). API: favorites: Signal<{tracks, albums, artists, playlists, mixes}> each newest-first with addedAt; isFavorite(item): boolean (reactive via a computed id-set); toggleFavorite(item); addFavorites(items) (bulk, add-only); onFavoriteChange(cb: (item, liked) => void): () => void. Playlists: playlists: Signal<UserPlaylist[]> where UserPlaylist = {id (crypto.randomUUID with fallback), name, description, cover?: string, tracks: (MusicTrack & {addedAt:number})[], createdAt, updatedAt, folderId?: string|null}; createPlaylist(name, tracks?, description?) -> UserPlaylist; updatePlaylist(id, patch); deletePlaylist(id); addToPlaylist(id, tracks) (skips duplicates, returns added count); removeFromPlaylist(id, index); movePlaylistTrack(id, from, to); folders: Signal<{id,name,createdAt}[]>; createFolder(name); renameFolder; deleteFolder (playlists move to root); movePlaylistToFolder(playlistId, folderId|null). Pins: pins: Signal<MusicLibraryItem[]> (max 3, togglePin(item), isPinned(item)). History: history: Signal<{track, playedAt}[]> (cap 200, playedAt = max(now, last+1)); addHistory(track); clearHistory(). Activity: activity: Signal<MusicLibraryItem[]> (cap 12, dedupe, newest first); recordActivity(item). Search history: searches: Signal<string[]> (cap 10); addSearch(q); removeSearch(q); clearSearches(). Blocking: blocked: Signal<{tracks:{id,title,artist}[], albums:..., artists:...}>; block(item); unblock(kind, id); isBlocked(itemOrTrack) (a track is blocked if its id, albumId or artistId is blocked). Snapshot for backup: snapshot(): MusicLibrarySnapshot; restore(snap, mode: 'merge'|'replace'). Cross-tab: listen to the storage event and reload signals.\n\nSTEP 6 engine (the hard part; keep the existing MSE logic, generation guards and comments). Extract the per-element MSE pipeline into src/app/services/music-deck.ts: class MusicDeck { readonly el: HTMLAudioElement; load(manifest, gen-check fn, {startAt?, autoplay?}): Promise<void> (current playSegments + file path; on seek outside buffer remap cursor exactly as today); prepare(manifest): appends init + segments until 10 s buffered without playing; dispose() (abort loop, revoke object URL, removeAttribute src, load()) }. MusicPlayerService keeps two decks (active, standby) and exposes: signals queue, index, track, playing, loading, error, position, duration, presentation, quality, qualityFallback (string|null), volume, muted, playbackRate, preservesPitch, shuffle, repeat, canNext, canPrev, hasNext/hasPrev (aliases kept for the bar), upNext (computed next 50), context (Signal<{type:'album'|'artist'|'playlist'|'userPlaylist'|'mix'|'search'|'library'|'radio'|'queue'; id?: string|number; label: string} | null>), radio (Signal<RadioSeed|null>), autoplayBlocked, sleep (Signal<{endsAt:number|null; endOfTrack:boolean}>), sleepRemaining (seconds, ticks 1/s only while armed), activeElement (Signal<HTMLAudioElement|null>). Methods: play(track, queue?, opts?{context?, shuffle?:boolean}), playAt(i), toggle(), pause(), resume(), next(), prev(), seek(s), seekBy(delta), stop(), setVolume(v), toggleMute(), setPlaybackRate(r), setPreservesPitch(b), toggleShuffle(), setShuffle(b), cycleRepeat(), setRepeat(m), addToQueue(tracks), playNext(tracks), removeAt(i), move(from,to), clearUpcoming(), setQueue(tracks, start, context?), setSleepTimer(minutes|'end-of-track'|null), startRadio(seed: RadioSeed) (gets recommender via Injector.get(MusicRecommenderService) at call time; sets context radio; refills when <= 3 upcoming), stopRadio(), elements(): HTMLAudioElement[] (both decks), on(type, cb): () => void with events trackstart {track}, trackend {track, playedSeconds, completed}, skip {track, at}, seek {from,to}, play, pause, queuechange, error {track, error}, debugState(). Pure queue math lives in utils/music-queue.ts (shuffleWithPinned(list, currentIdx, rng) - port js/player.js toggleShuffle L2560; add/insert/remove/move keeping original+shuffled arrays consistent - port L2681-2860; nextIndex(state, repeat) - port playNext L2054 and getNextTrack). Volume pipeline in utils/music-replay-gain.ts: port js/replay-gain.js getReplayGainScale verbatim (+ spec); effective = (muted?0:volume^(exp?3:1)) * rgScale * fadeGain, clamped 0..1, applied to the active element (crossfade gain callback multiplies). 'ended': repeat one -> seek(0)+play; else next index (repeat all wraps; radio/autoplay refill via recommender when at the end and settings.autoplay() or radio()); else stop playing. Preload: when position >= duration-45 and a next index exists, fetch the next manifest and standby.prepare(); gapless (settings.gapless): on ended swap decks and play standby immediately; crossfade (settings.crossfadeSeconds>0 && supportsElementVolume()): at duration - crossfadeSeconds (or waveform bounds end if removeSilence) call crossfade() from music-crossfade.ts with an AbortController, then swap. Discard standby on any queue change that alters the next track. Silence: on trackstart if settings.removeSilence() and waveform.bounds(id) exists, seek to bounds.start (via Injector.get(MusicWaveformService)). ReplayGain uses the manifest fields of the deck's current track. Quality: settings.quality(); 'auto' = LOSSLESS if MSE supports flac else HIGH (today's behaviour); explicit choice is honoured with a ladder HI_RES_LOSSLESS->LOSSLESS->HIGH->LOW when MSE rejects the codec (set qualityFallback). Errors: unavailable -> toast + auto-advance if skipUnavailable (loop guard: stop after queue.length consecutive failures); autoplay NotAllowedError -> autoplayBlocked=true, resume on next pointerdown/keydown or visibilitychange (port js/player.js safePlay L3161). History: after 10 s of accumulated play time, library.addHistory(track) once per trackstart. Media Session: port js/player.js setupMediaSession L534 + updateMediaSessionPositionState L3144: play, pause, previoustrack, nexttrack, seekto, seekforward/seekbackward (10 s), stop; setPositionState on start/seek/rate change; playbackState on play/pause; artwork 160/320/640 by rewriting the TIDAL size segment. Sleep timer: port setSleepTimer L3209 + end-of-track + 10 s fade (fadeGain) when settings.sleepFadeOut(). Persistence: save {queue (minified), original, index, position, shuffle, repeat, context} to fiesta:music:player on queuechange, pause, every 10 s while playing and on pagehide; restore in the constructor (no autoplay; load manifest only on first play with startAt=position). Keep the existing comments' tone. Expose window.__music when location.search has musicdebug=1.\n\nSTEP 7 UI infrastructure. MusicUiService: signals nowPlayingOpen, panel ('queue'|'lyrics'|null), paletteOpen, shortcutsHelpOpen, sleepTimerOpen, importOpen, addToPlaylist (MusicTrack[]|null), trackInfo (MusicTrack|null), contextMenu ({item: MusicLibraryItem; tracks?: MusicTrack[]; x: number; y: number; source?: string}|null); methods open/close helpers, openContextMenu(item, event, tracks?), closeAll(); closes everything on NavigationEnd when settings.closeOverlaysOnNavigate(); when settings.backClosesOverlays() push a history state on open and close on popstate. MusicToastService: show({message, action?: {label, run}, tone?: 'info'|'warn', duration?}) ; components/music-toast-host renders an aria-live=polite stack (z-[70], above the bar); also shows offline/online toasts (UI17). utils/music-scroll-lock.ts: ref-counted lock using a new body class 'music-overlay-open' (add the CSS to styles.css copying the nav-sheet-open rules incl. BMC hiding; keep scroll offset). components/music-side-panel: inputs title, open (model), side 'right'; desktop right drawer (resizable via a drag handle, width persisted in settings.panelWidth, min 320 max 640), mobile bottom sheet (max-h-[85vh], drag handle, sheet-safe padding); focus trap; Escape; content projection. components/music-dialog: centered modal shell with the same a11y. components/music-subnav: links Home (/music), Explore, Library, Recent, Settings with routerLinkActive (exact for Home), horizontal scroll pills on mobile, aria-label 'Music sections'. components/music-rail: input title, optional input link (\"See all\"), horizontally scrolling snap row with prev/next buttons on desktop, content projection (used by P8 and P9). Cards: music-album-card (input album, optional subtitle), music-artist-card (input artist), music-playlist-card (input playlist: MusicPlaylist|UserPlaylist|MusicMix with a link input) - copy the existing album/artist grid markup from music.component.html / music-artist.component.html, add a hover Play button (calls player via MusicService.album for albums) and <app-music-card-menu-button [item]>. utils/music-format.ts: time(s), longDuration(s), tidalImage(url, size), proxiedImage(url) (-> /api/music?action=img&u=), relativeDate(ms) + spec.\n\nSTEP 8 routes + mounting. app.routes.ts: add (before '**') music/explore, music/library, music/library/playlist/:id, music/recent, music/settings, music/shared, music/track/:id, music/mix/:id, music/playlist/:id - all loadComponent. app.component.html: keep the existing order; after <app-music-player-bar> add <app-music-toast-host>, and @defer (when ui.panel()==='queue') {<app-music-queue-panel/>}, @defer (when ui.panel()==='lyrics') {<app-music-lyrics-panel/>}, @defer (when ui.nowPlayingOpen()) {<app-music-now-playing/>}, @defer (when ui.paletteOpen()) {<app-music-command-palette/>}, @defer (when ui.shortcutsHelpOpen()) {<app-music-shortcuts-help/>}, @defer (when ui.trackInfo()) {<app-music-track-info/>}, @defer (when ui.contextMenu()) {<app-music-context-menu/>}, @defer (when ui.addToPlaylist()) {<app-music-add-to-playlist-dialog/>}, @defer (when ui.importOpen()) {<app-music-import-dialog/>}, @defer (on idle) {<app-music-selection-bar/>}, @defer (on idle) {<app-music-downloads-tray/>}. A @defer block stays mounted once loaded, so every overlay component shows/hides itself from its own MusicUiService signal (the stubs must do this too). app.component.ts: inject MusicStartupService and call start() in ngOnInit; MusicStartupService.start() calls (each in try/catch) MusicShortcutsService.start(), MusicListeningTrackerService.start(), MusicScrobblerService.start(), MusicAudioGraphService.start(). Create every stub listed in 'stubs' with the exact selector/inputs/signatures, a one-line doc comment naming the owning package, and a minimal working placeholder (stub pages: shell + subnav + h1 + 'Coming soon' text + title).\n\nSTEP 9 tests: specs listed in acceptance; tools/e2e/music-f0.mjs. Do NOT build any of the later packages' UI. Report the final public API of MusicPlayerService, MusicSettingsService, MusicLibraryService and MusicUiService verbatim (signatures only) in your final message - the orchestrator pastes it into every later agent's prompt."
+    },
+    {
+      "id": "P1",
+      "title": "Player bar: transport, seek, volume, speed, sleep timer, badges",
+      "features": [
+        "UI01",
+        "UI02",
+        "UI03",
+        "UI04",
+        "UI05",
+        "UI06",
+        "UI07",
+        "PB08",
+        "PB11",
+        "PB20",
+        "PB30"
+      ],
+      "owned_files": [
+        "src/app/components/music-player-bar/**",
+        "src/app/components/music-volume-control/**",
+        "src/app/components/music-speed-popover/**",
+        "src/app/components/music-sleep-timer/**",
+        "src/app/components/music-seek-bar/**",
+        "src/app/utils/music-haptics.ts",
+        "src/app/utils/music-haptics.spec.ts",
+        "tools/e2e/music-p1.mjs"
+      ],
+      "may_edit_shared": [],
+      "depends_on": [
+        "F0"
+      ],
+      "acceptance": [
+        "tools/e2e/music.mjs still 14/14 (all listed selectors intact; the seek control is still a native input[aria-label=Seek]).",
+        "Desktop (1280px): bar shows buttons with aria-labels 'Shuffle' (aria-pressed), 'Previous track', 'Play'/'Pause', 'Next track', 'Repeat' (aria-pressed; label 'Repeat one' in mode one, with a visible '1'), 'Mute'/'Unmute', a range aria-label 'Volume', 'Playback speed', 'Sleep timer', 'Queue', 'Lyrics', a like button, 'Open now playing'. Clicking each changes the corresponding player signal (verify via __music).",
+        "Mouse wheel over the volume control changes volume by 5 %; ArrowUp/Down on the focused slider works.",
+        "Speed popover: choosing 1.5x sets player.playbackRate() to 1.5 and the button shows '1.5x'; 'Keep pitch' toggle flips preservesPitch.",
+        "Sleep timer dialog: choosing 15 min shows a countdown chip in the bar ('14:59'); 'End of track' shows 'End of track'; Cancel clears it.",
+        "Hovering the seek bar shows a time tooltip that follows the pointer; dragging does not seek until pointerup (position unchanged mid-drag).",
+        "Mobile (390px): bar height unchanged (one row), shows cover/title (tap opens Now Playing when settings.coverClickAction is 'nowPlaying', else album), like, play/pause, next; no horizontal overflow; thin progress line kept.",
+        "While playing, document.title starts with '▶ ' + track title; on pause it returns to the page title.",
+        "Badge shows Preview/AAC/Lossless/Hi-Res; when player.qualityFallback() is set, its title explains the fallback."
+      ],
+      "external_needs": "None.",
+      "brief": "You own the persistent mini player (src/app/components/music-player-bar). Rework it into the full Monochrome footer while keeping Fiesta's look and every e2e selector (see conventions §14). Read the current template first; it is the style reference. Layout desktop (sm+): left = cover + title/artist (+ like via <app-music-like-button [item]=\"{kind:'track', data: t}\" size=\"sm\">), centre = row of shuffle/prev/play/next/repeat above a seek row (time, input range Seek with <app-music-waveform> layered behind when settings.waveformSeekbar(), time), right = quality badge, speed, sleep, volume (mute button + slider; slider hidden below md, popover on md), queue (ui.panel toggle 'queue'), lyrics (toggle 'lyrics'), expand (ui.nowPlayingOpen.set(true)), close (player.stop()). Mobile: one compact row (cover/title tap -> Now Playing; like; play; next) + the existing thin progress line. Split into small components you own: music-seek-bar (native range, hover tooltip, pointerdown->dragging signal, commit on change/pointerup, keyboard step 5 s), music-volume-control (wheel, mute, exponential display), music-speed-popover (presets 0.5/0.75/1/1.25/1.5/2 + 'Keep pitch'), music-sleep-timer (dialog via app-music-dialog: 5,10,15,30,45,60,90,120, custom minutes, End of track, Cancel; reads player.sleep()/sleepRemaining()). Haptics util: vibrate(10) when settings.haptics() and navigator.vibrate exists. UI07: an effect that prefixes document.title with '▶ Title · Artist' while playing and restores the saved title on pause/stop (store the original; re-read it after NavigationEnd). Monochrome references (behaviour only, do not copy DOM code): index.html footer player markup ~L6800-6900 (button order, sleep-timer-btn L6865), sleep modal index.html L1189-1216, js/events.js initializeSmoothSliders ~L969-1250 (seek/volume drag + hover tooltip), js/events.js volume wheel handlers and updateVolumeUI, js/player.js setPlaybackSpeed L423, setSleepTimer L3209, js/haptics.js. Icons: inline SVG (shuffle, repeat, repeat-one, volume levels, speed gauge, moon for sleep, list for queue, mic/quote for lyrics, chevron-up for expand). Do not touch player logic; if a player method you need is missing, TODO(Z)."
+    },
+    {
+      "id": "P2",
+      "title": "Queue panel + fullscreen Now Playing (dynamic colour, swipe, cover modes)",
+      "features": [
+        "UI08",
+        "UI10",
+        "UI11",
+        "UI12",
+        "UI13",
+        "UI14",
+        "VZ08"
+      ],
+      "owned_files": [
+        "src/app/components/music-queue-panel/**",
+        "src/app/components/music-now-playing/**",
+        "src/app/utils/music-color.ts",
+        "src/app/utils/music-color.spec.ts",
+        "tools/e2e/music-p2.mjs"
+      ],
+      "may_edit_shared": [],
+      "depends_on": [
+        "F0"
+      ],
+      "acceptance": [
+        "Opening the queue (ui.panel.set('queue') or the bar button) shows a dialog titled 'Queue' with 'Now playing', 'Next up' (the upcoming tracks in play order, honouring shuffle) and a 'Playing from <context label>' line.",
+        "Dragging a Next-up row (CDK drag-drop, mouse and touch) reorders player.queue(); keyboard: focusing a row and pressing Alt+ArrowDown moves it down.",
+        "Each row has buttons 'Remove from queue', 'Play'; header has 'Clear queue' (keeps current track) and 'Save as playlist' (opens ui.addToPlaylist with the queue).",
+        "Escape closes the panel and focus returns to the bar's Queue button; body has class music-overlay-open while open.",
+        "Now Playing (ui.nowPlayingOpen) is a full-screen dialog with large cover, title (link to track page), artist and album links, full transport (same aria-labels as the bar plus 'Close now playing'), seek, next-up preview, lyrics pane (<app-music-lyrics-view mode='fullscreen'>) side-by-side at lg and behind a 'Lyrics' toggle on mobile, and a 'Visualizer' toggle that mounts <app-music-visualizer [active]='true'>.",
+        "With settings.dynamicColor() on, the background gradient uses a colour extracted from the cover (via proxiedImage); computed colour differs between two different covers; off -> neutral #121212.",
+        "Mobile: dragging the handle down > 120px dismisses; reduced motion disables the slide animation.",
+        "Tapping the cover toggles hide-UI (controls hidden, cover only); settings.coverRound/coverTilt change cover shape/tilt; CD mode spins the cover only while playing and never under reduced motion."
+      ],
+      "external_needs": "None (cover pixels read through F0's /api/music?action=img proxy).",
+      "brief": "Build two overlays mounted (deferred) by F0 in app.component: the queue panel and the fullscreen Now Playing. Queue panel: use <app-music-side-panel title='Queue'> (drawer on desktop, sheet on mobile). Sections: Now playing (current row), Next up (player.upNext() mapped back to queue indices), Recently played in this session (indices before current, collapsed). Rows reuse <app-music-track-row> only if it fits (it is owned by P10 and may change) - safer: render your own compact row (cover 40px, title, artist, duration, remove, drag handle). Reorder with @angular/cdk/drag-drop (cdkDropList/cdkDrag, cdkDragHandle, cdkDragLockAxis='y'); call player.move(from, to) with real queue indices. Monochrome refs: js/ui-interactions.js L190-540 (queue render, drag, remove, clear), js/side-panel.js, index.html queue panel markup. Now Playing: full-screen dialog z-[50], focus trap, scroll lock (musicScrollLock), Escape/Back closes (ui handles back). Layout: lg: two columns (cover+controls | lyrics or next-up); mobile: cover, meta, seek, transport, then tabs 'Up next' / 'Lyrics'. Background: dynamic colour gradient + blurred cover (respect settings.reduceBlur, settings.dynamicColor). utils/music-color.ts: load the cover via proxiedImage(url) into an offscreen canvas 64x64, compute a vibrant dominant colour (port js/ui.js dynamic colour + js/utils.js getVibrantColor/extractColors helpers - grep 'vibrant' / 'dominant' in js/ui.js ~L1533-1700 and js/utils.js), ensure WCAG contrast with white text by darkening; cache per URL in memory; spec tests the math on a synthetic ImageData. Swipe-down: pointer events on the handle with translateY, threshold 120px or velocity. Cover options: rounded vs square, vanilla-tilt-like pointer tilt (max 8deg) when settings.coverTilt and not reduced motion, CD spin (animate-[spin_8s_linear_infinite] is not in Tailwind config: use the Web Animations API on the element instead). Refs: js/ui.js showFullscreenCover/updateFullscreenMetadata ~L1392-1433, L1848-2010, L2190-2310; index.html fs-* markup ~L274-410; js/settings.js fullscreen cover options L5909-5948. Keep every control labelled; title link -> /music/track/:id; artist -> /music/artist/:id; album -> /music/album/:id (these close the overlay via navigation)."
+    },
+    {
+      "id": "P3",
+      "title": "Lyrics engine (native port of am-lyrics) + panel + fullscreen view",
+      "features": [
+        "LY01",
+        "LY02",
+        "LY03",
+        "LY04",
+        "LY05",
+        "LY06",
+        "LY07",
+        "LY08",
+        "LY09",
+        "LY10",
+        "LY11",
+        "LY12",
+        "LY13",
+        "LY14",
+        "LY15",
+        "LY16",
+        "LY17",
+        "LY18",
+        "LY19",
+        "LY20",
+        "LY22",
+        "LY25",
+        "LY26",
+        "LY28",
+        "ST05"
+      ],
+      "owned_files": [
+        "src/app/services/music-lyrics.service.ts",
+        "src/app/services/music-lyrics.service.spec.ts",
+        "src/app/services/music-lyrics-i18n.service.ts",
+        "src/app/utils/music-lyrics-*.ts",
+        "src/app/components/music-lyrics-panel/**",
+        "src/app/components/music-lyrics-view/**",
+        "src/app/pages/music-settings/sections/music-settings-lyrics/**",
+        "src/assets/music/lyrics/**",
+        "tools/e2e/music-p3.mjs"
+      ],
+      "may_edit_shared": [],
+      "depends_on": [
+        "F0"
+      ],
+      "acceptance": [
+        "Unit: music-lyrics-ttml spec parses a fixture TTML with two agents, a background vocal, a word-synced line and an embedded translation into the MusicLyricLine model (start/end seconds, syllables, agent, background, translation); music-lyrics-lrc spec parses LRC incl. multiple timestamps per line, [offset:], and A2 enhanced <mm:ss.xx> word tags; generators round-trip (toLRC(parseLRC(x)) stable).",
+        "Unit: provider cascade with mocked fetch: owner file wins; then lrc.red; falls through on timeout (8 s AbortSignal) and on 404 to the next provider; LRCLIB result used when all richer sources fail.",
+        "E2E (route lrclib.net/lrc.red/etc. with page.route fixtures, no live dependency): playing a track and pressing the bar's Lyrics button opens a panel titled 'Lyrics'; the active line gets aria-current='true' and changes as __music.player.seek() moves; clicking a line seeks the player to that line's start.",
+        "Offset buttons '+0.5s' / '-0.5s' shift highlighting and persist per track across reload.",
+        "Plain (unsynced) lyrics render without highlighting; no-lyrics state shows 'No lyrics found' with the tried sources; network failure shows amber text and a Retry button.",
+        "Source footer shows the provider name; 'Switch source' cycles to another available source.",
+        "Romanize and Translate toggles call translate.googleapis.com (mocked in e2e) and render the extra line under each lyric; failures leave lyrics intact with a toast.",
+        "Instrumental gaps > 5 s show three dots that are static under prefers-reduced-motion; RTL lyrics render dir='rtl'.",
+        "Settings > Lyrics section toggles providers, default romanize/translate, target language, blur, hide played lines, karaoke; values persist.",
+        "Download menu offers LRC / TTML / Plain and downloads a file whose content matches the generators."
+      ],
+      "external_needs": "None (keyless public endpoints called from the browser: lrc.red, lyrics-api.binimum.org, unison.boidu.dev, LyricsPlus mirrors, lrclib.net, fetch-genius.samidy.workers.dev, translate.googleapis.com gtx, jsDelivr for the kuromoji dictionary).",
+      "brief": "Port the lyrics ENGINE of @uimaxbai/am-lyrics natively (no web component, no Lit). Source: /tmp/amly/package/src/AmLyrics.ts and GoogleService.ts (if missing, fetch with npm pack, see am_lyrics_root). Files you write that derive from it keep the MPL-2.0 header (conventions §12). Split: utils/music-lyrics-ttml.ts (port parseTTML L3762, parseTTMLTime L3721, calculateLineAlignments L3655, convertKPoeLyrics L4124, toMilliseconds L4272), utils/music-lyrics-lrc.ts (LRC + enhanced LRC parser; generators port generateLRC L7373, generatePlain L7398, generateTTML L7425, formatTimestamp L7484-7503), utils/music-lyrics-providers.ts (port fetchLyrics L2432 cascade order and each provider: fetchLyricsFromLrcRed L3079, fetchLyricsFromBiniLyrics L3146, fetchLyricsFromYouLyPlus L3220 (LyricsPlus mirrors: try 3 random of lyricsplus.binimum.org, lyricsplus-seven.vercel.app, lyricsplus.prjktla.workers.dev, lyrics-plus-backend.vercel.app then force binimum; sources apple,lyricsplus,musixmatch,spotify,qq,deezer,musixmatch-word), fetchLyricsFromUnison L3576, fetchLyricsFromLrclib L3451; metadata: resolveSongMetadata L2899, parseQueryMetadata L3000; title cleaning: js/lyrics.js cleanTrackerSearch L78), utils/music-lyrics-sync.ts (binary search active line, instrumental gaps: findAllInstrumentalGaps L5834 + constants L7-23, syllable progress math from updateSyllablesForLine L7264). Owner override first: GET /assets/music/lyrics/{trackId}.ttml then .lrc (404 = continue). Cache results in IndexedDB 'fiesta-music-lyrics' for 7 days (key track id + source). MusicLyricsService implements the F0 contract (fetch/toLRC/toTTML/toPlain) - P12 depends on it for sidecars. music-lyrics-i18n.service.ts: Google gtx translate/romanize (port GoogleService.ts; batch lines, 6 s timeout, in-memory cache) and Kuroshiro Romaji (dynamic import('kuroshiro') + analyzer with dictPath 'https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict/'; only for Japanese text; js/lyrics.js L47-76, L280-453 for behaviour). View component (app-music-lyrics-view): signals-driven; a rAF clock interpolating player.position() (js/lyrics.js setupSync L1316-1412) paused when document hidden or component destroyed; auto-scroll the active line into the upper third with smooth scroll (instant under reduced motion), pause auto-scroll for 4 s after user scroll and show a 'Back to current line' pill (handleUserScroll ~L5690, scrollToActiveLineYouLy L6280); click line -> player.seek(line.start) + resume (handleLineClick L5868); karaoke word wipe via a CSS linear-gradient background-clip:text with a --p custom property set inline per syllable (port updateSyllableAnimation L6764 / applyWordPreWipe L6543 idea, simplified); duet alignment right for agent 2; background vocals smaller/dimmer; blur on non-active lines unless settings.reduceBlur(); hide played lines option; accent input colours the active line (else text-white with inactive text-white/40); RTL via isRightToLeftLanguage L3754. Footer: source name, Switch source (switchSource L2773), songwriters, offset -/+, romanize, translate (+ language select), download menu. Lyrics panel component: <app-music-lyrics-panel> in <app-music-side-panel title='Lyrics'> wrapping the view; refetch on track change with AbortController; @defer-friendly (no heavy imports at top level). Settings section via settings.scoped('lyrics', {...}). Do NOT implement Genius annotations (needs a key). Monochrome-only references: js/lyrics.js L15-45, L247-278 (offset storage), L945-1004."
+    },
+    {
+      "id": "P4",
+      "title": "Audio graph, equalizers (graphic/parametric/M-S), AutoEQ, mono/crossfeed/widener",
+      "features": [
+        "FX01",
+        "FX02",
+        "FX03",
+        "FX04",
+        "FX05",
+        "FX06",
+        "FX07",
+        "FX08",
+        "FX09",
+        "FX10",
+        "FX11",
+        "FX12",
+        "FX13",
+        "FX14",
+        "FX15",
+        "FX16",
+        "FX17",
+        "FX18",
+        "FX19",
+        "FX20",
+        "FX21",
+        "ST04"
+      ],
+      "owned_files": [
+        "src/app/services/music-audio-graph.service.ts",
+        "src/app/services/music-audio-graph.service.spec.ts",
+        "src/app/services/music-autoeq.service.ts",
+        "src/app/utils/music-eq-*.ts",
+        "src/app/utils/music-autoeq-*.ts",
+        "src/app/utils/music-dsp-*.ts",
+        "src/app/components/music-eq-*/**",
+        "src/app/pages/music-settings/sections/music-settings-audio/**",
+        "src/assets/music/autoeq/**",
+        "tools/e2e/music-p4.mjs"
+      ],
+      "may_edit_shared": [],
+      "depends_on": [
+        "F0"
+      ],
+      "acceptance": [
+        "No AudioContext is created until the user enables an effect (EQ, mono, crossfeed, widener) or P5 calls ensure(); after enabling, playback continues audibly (e2e: element not paused, currentTime advancing) and graph.active() is true.",
+        "Both deck elements (player.elements()) get exactly one MediaElementSource each; toggling EQ repeatedly never throws InvalidStateError.",
+        "/music/settings?tab=audio shows: master 'Equalizer' switch, mode tabs Graphic / Parametric / AutoEQ, preamp slider (-20..+20 dB), preset select with the 16 presets, band count select (3..32 for parametric; 10 default for graphic).",
+        "Graphic mode: 10 vertical sliders labelled by frequency; changing one updates the corresponding BiquadFilter gain (verify via __music debug hook exposed by the graph service in musicdebug mode).",
+        "Parametric mode: canvas graph draws the summed response; dragging a node changes freq/gain; wheel changes Q; long-press opens the band menu on touch; numeric inputs mirror it; M/S toggle per band works.",
+        "Export produces EqualizerAPO text ('Preamp: x dB' + 'Filter n: ON PK Fc ... Hz Gain ... dB Q ...'); importing that text restores the same bands (unit spec round-trip).",
+        "AutoEQ: searching the headphone index (fetched from GitHub/jsDelivr, cached in IndexedDB fiesta-music-autoeq) and picking a model computes a parametric correction (unit spec on autoeq engine with a fixture curve); custom measurement CSV import works; profiles can be saved, applied, deleted.",
+        "Mono, Crossfeed (level/cutoff) and Stereo width (0-2) controls work and persist; all settings survive reload and are re-applied after the next user gesture.",
+        "AudioContext resumes after visibilitychange/statechange 'interrupted' (unit with a fake context)."
+      ],
+      "external_needs": "None (AutoEQ data from raw.githubusercontent.com / cdn.jsdelivr.net, keyless).",
+      "brief": "Port Monochrome's Web Audio graph and every EQ/DSP feature except speaker/room EQ and multichannel HRTF. Primary source: js/audio-context.js (1635 lines: init, changeSource, _connectGraph, _createMSNodes, _createMSFilters, _createGraphicEQ, setGraphicEq*, toggleMonoAudio, exportEQToText/importEQFromText, resume logic, the 16-band preset table). Also js/equalizer.js (presets table, interpolation to N bands), js/binaural-dsp.js (_createCrossfeedNodes, setCrossfeed*, _createWidenerNodes, _calcMidGain/_calcSideGain - stereo path only), js/autoeq-engine.js (copy almost verbatim into utils/music-autoeq-engine.ts with a spec), js/autoeq-data.js (target curves -> src/assets/music/autoeq/targets.json, lazy fetched), js/autoeq-importer.js (index fetch, cache, fallback), js/settings.js L1282-1392 (mono/binaural UI), L1475-1976 (graphic EQ UI + custom presets), L2085-3254 (parametric canvas graph + band controls), L3356-4075 (AutoEQ UI, profiles, custom import), L4168-4341 (mode switcher + how-to), L4372-4528 (M/S presets). Graph order (copy): element sources -> [mono downmix] -> [crossfeed -> widener] -> [EQ: preamp -> filter chain, or parallel M/S chains] -> AnalyserNode (fftSize 1024, smoothing 0.7, exposed via analyser() for P5) -> destination. Volume stays on the element (F0 owns volume); do not add a volume GainNode. MusicAudioGraphService implements F0's contract: start() only restores settings (no context); ensure() creates the context lazily (call from the click that enables an effect; also call it from a one-time pointerdown listener when any effect is enabled at load), creates one MediaElementSource per element from player.elements() (keep a WeakMap; F0 decks reuse their elements so it is created once per element), connects both into the shared chain. Resume on visibilitychange/statechange (suspended/interrupted, iOS). Settings in settings.scoped('eq', ...) and scoped('dsp', ...); AutoEQ profiles scoped('autoeq-profiles', []). UI: the Audio settings section composed of your own components (music-eq-graphic, music-eq-parametric-graph (canvas, devicePixelRatio aware, pointer events for touch), music-eq-band-controls, music-eq-autoeq-browser, music-eq-dsp). Canvas colours: grid white/10, curve indigo-400, nodes white. Fix upstream quirks: never call createMediaElementSource twice; do not reload the page on preset change. Keep CPU low: rebuild filters only on structural change, otherwise setTargetAtTime on params."
+    },
+    {
+      "id": "P5",
+      "title": "Visualizer presets, waveform seek + silence detection, crossfade engine",
+      "features": [
+        "VZ01",
+        "VZ02",
+        "VZ03",
+        "VZ04",
+        "VZ05",
+        "VZ06",
+        "VZ07",
+        "VZ09",
+        "VZ10",
+        "PB18",
+        "PB19"
+      ],
+      "owned_files": [
+        "src/app/components/music-visualizer/**",
+        "src/app/components/music-waveform/**",
+        "src/app/services/music-waveform.service.ts",
+        "src/app/services/music-waveform.service.spec.ts",
+        "src/app/services/music-crossfade.ts",
+        "src/app/services/music-crossfade.spec.ts",
+        "src/app/utils/music-visualizer-*.ts",
+        "src/app/utils/music-waveform-*.ts",
+        "tools/e2e/music-p5.mjs"
+      ],
+      "may_edit_shared": [],
+      "depends_on": [
+        "F0"
+      ],
+      "acceptance": [
+        "<app-music-visualizer [active]='true'> (mounted in Now Playing by P2; test it also on a scratch harness by toggling via __music.ui.nowPlayingOpen.set(true) and the Visualizer button) draws on a canvas whose pixels change over time while playing; it stops its rAF loop when the document is hidden, when active=false and under prefers-reduced-motion (unless 'Animate anyway' is on).",
+        "Preset picker lists Particles, LCD, Unknown Pleasures, Butterchurn, Kawarp; switching recreates the canvas without a page reload; Butterchurn's chunk is requested only when Butterchurn is chosen (network log).",
+        "Keys ']' '[' '\\' are handled by P10 calling exported functions nextPreset()/prevPreset()/toggleCycle() from music-visualizer-presets.ts (exported here; unit-tested).",
+        "Waveform: with settings.waveformSeekbar() on, the bar shows an SVG peak strip behind the seek input within ~5 s of track start (peaks computed from the LOW quality rendition, cached in IndexedDB fiesta-music-waveform); off -> no extra network requests.",
+        "bounds(trackId) returns leading/trailing silence boundaries (unit spec on getSilenceBoundaries port with synthetic peaks).",
+        "Crossfade: with settings.crossfadeSeconds()=5 the outgoing element volume ramps down and the incoming ramps up along an equal-power curve (unit spec with fake elements + fake clock: at t=50 % both gains ~0.707); aborting the signal snaps to the incoming track; supportsElementVolume() false on a read-only probe."
+      ],
+      "external_needs": "None.",
+      "brief": "Three independent pieces that plug into F0 hooks. (1) Visualizer: port js/visualizer.js (Visualizer class: analyser pipeline, beat detection, blended mode over cover with mix-blend-mode screen/opacity .85, preset switching, pause on visibilitychange) and js/visualizers/particles.js, lcd.js, unknown_pleasures_webgl.js (keep a canvas-2D fallback when WebGL is unavailable), butterchurn.js (dynamic import('butterchurn') + import('butterchurn-presets'); butterchurn connects to the AudioContext source - use graph.context() and graph.analyser(); presets list + random), kawarp.js (dynamic import('@kawarp/core'); feed the cover through proxiedImage(url) instead of a DOM observer). Obtain the analyser from MusicAudioGraphService (P4): on activation call graph.ensure() (you are inside the Visualizer button click) then graph.analyser(); if null show 'Visualizer unavailable in this browser'. Settings: settings.visualizerEnabled/visualizerPreset + scoped('visualizer', {cycle:false, cycleSeconds:30, sensitivity:1, animateAnyway:false}). Refs: js/settings.js L6001-6265 (visualizer settings), js/ui.js L1848-2010 (fullscreen integration). Export nextPreset/prevPreset/toggleCycle helpers for P10's shortcuts. (2) Waveform: Monochrome uses SoundCloud images we don't have; compute instead: MusicWaveformService.request(track) - only when settings.waveformSeekbar() or settings.removeSilence() - fetches MusicService.manifest(track.id,'LOW'); if kind 'file' fetch it (AbortController, skip if > 15 MB), decodeAudioData on an OfflineAudioContext/AudioContext, downsample to 1000 peaks (max abs per bucket), store Float32 -> IndexedDB 'fiesta-music-waveform' keyed by track id (LRU 300). Segmented LOW manifests: concatenate init+segments then decode; if decode fails, give up silently. Port js/waveform.js getSilenceBoundaries (threshold + min duration) for bounds(). Component music-waveform renders an SVG path (peaks mirrored, played part fill-indigo-400/60, rest fill-white/15) given progress. Refs: js/waveform.js (whole), js/events.js L808-945 (updateWaveform), js/player.js L1776-1910 (silence + crossfade boundaries). (3) Crossfade: implement crossfade() in music-crossfade.ts: equal-power curve (cos/sin quarter wave) driven by requestAnimationFrame with a setTimeout fallback when hidden; calls gain(el, g); resolves when done or aborted; port the curve and timing from js/player.js crossfadeToNext L1828-2050 (ignore Shaka parts). supportsElementVolume(): probe Audio volume write/read. No changes to the player - F0 already calls these."
+    },
+    {
+      "id": "P6",
+      "title": "Library UI: like button, Library page, user playlists, add-to-playlist, folders, pins, Recent",
+      "features": [
+        "LB01",
+        "LB02",
+        "LB03",
+        "LB04",
+        "LB07",
+        "LB08",
+        "LB09",
+        "LB10",
+        "LB11",
+        "LB12"
+      ],
+      "owned_files": [
+        "src/app/components/music-like-button/**",
+        "src/app/components/music-add-to-playlist-dialog/**",
+        "src/app/components/music-playlist-editor/**",
+        "src/app/components/music-pins-row/**",
+        "src/app/pages/music-library/**",
+        "src/app/pages/music-user-playlist/**",
+        "src/app/pages/music-recent/**",
+        "src/app/utils/music-library-sort.ts",
+        "src/app/utils/music-library-sort.spec.ts",
+        "src/app/utils/music-collage.ts",
+        "tools/e2e/music-p6.mjs"
+      ],
+      "may_edit_shared": [],
+      "depends_on": [
+        "F0"
+      ],
+      "acceptance": [
+        "Like button (aria-label 'Like'/'Unlike', aria-pressed) toggles a track/album/artist/playlist/mix favourite, state is shared everywhere instantly and persists across reload; a toast 'Added to Liked' with Undo appears.",
+        "/music/library has tabs Tracks, Albums, Artists, Playlists, Mixes (?tab= in URL), each with an empty state linking to search; Tracks tab: filter input, sort select (Recently added, Title, Artist, Album, Duration), 'Play' and 'Shuffle' buttons that queue all liked tracks with context 'Liked tracks'; grid/list toggle for albums/artists persists.",
+        "Playlists tab: 'New playlist' creates one (name required) and navigates to /music/library/playlist/:id; folders section with 'New folder', 'Move to folder' menu on a playlist card, rename/delete folder.",
+        "Playlist page: header with collage cover (2x2 of first 4 distinct covers) or custom cover URL, name, description, count/duration, Play, Shuffle, Edit (dialog: name, description, cover URL or upload image -> downscaled data URL <= 100 KB), Delete (confirm), Share (copies/shares buildShareUrl(playlist) from src/app/utils/music-share.ts, an F0 stub that P7 implements); sort select; CDK drag reorder (custom sort only) + keyboard move; remove track; 'Recommended songs' section from recommender.forPlaylist(tracks, 10) with Add buttons.",
+        "Add-to-playlist dialog (opened via ui.addToPlaylist.set([tracks])) lists playlists with track counts, filter, 'New playlist' inline; adding reports 'Added 3 tracks' / 'Already in playlist'.",
+        "Pins: 'Pin' action on playlist/album/artist cards (via your page menus) - max 3 with a toast when full; pinned row shown at the top of Library.",
+        "/music/recent lists history grouped Today / Yesterday / Earlier with play-from-here (queues the rest of the list) and 'Clear history' (confirm)."
+      ],
+      "external_needs": "None.",
+      "brief": "All library state already exists in F0's MusicLibraryService - you only build UI. Like button: heart outline/filled (text-indigo-400 when liked), sizes sm/md, small pop animation with motion-reduce:transition-none, calls library.toggleFavorite(item) + toast with Undo. Library page (Monochrome js/ui.js renderLibraryPage + setupLibraryLikedTracksSearch, js/app.js shuffle-liked-tracks-btn, library view-mode handlers; sort helper js/ui.js sortTracks ~L240 -> utils/music-library-sort.ts with spec). Playlist page (js/ui.js renderPlaylistPage ~L5944, updatePlaylistHeaderActions, drag logic ~L7540-7600; js/app.js remove-from-playlist, edit modal ~L826 cover handlers; collage = utils/music-collage.ts canvas 2x2 from proxiedImage covers -> data URL cached on the playlist only when the user saves). Add-to-playlist modal: js/events.js showAddToPlaylistModal ~L1250, showMultiSelectPlaylistModal. Folders: js/db.js createFolder/getFolders/addPlaylistToFolder + js/ui.js renderFolderPage ~L6266 - implement as a folder chip filter on the Playlists tab plus a 'Move to folder' menu (no drag needed); include 'Remove from folder' (missing upstream). Pins: js/db.js togglePinned + js/ui.js renderPinnedItems ~L426 -> component music-pins-row (also used by P9's home if they import it - export it as standalone). Recent page: js/ui.js renderRecentPage. Use F0 cards (app-music-album-card etc.) and app-music-track-row for track lists. Page titles: 'Your Library | Stream Fiesta', '<Playlist> | Stream Fiesta', 'Recently played | Stream Fiesta'. For playlist sharing import buildShareUrl from src/app/utils/music-share.ts (F0 stub, P7 implements; the stub already returns a working v0 link). Export nothing else for other packages except MusicPinsRowComponent (F0 stubbed it, you implement it; P9 renders it on the home page)."
+    },
+    {
+      "id": "P7",
+      "title": "Library data: import wizard, exports, backup/restore, share link, blocked items, reset",
+      "features": [
+        "DT01",
+        "DT02",
+        "DT03",
+        "DT04",
+        "DT05",
+        "DT06",
+        "DT07",
+        "DT08",
+        "DT09",
+        "DT10",
+        "LB13",
+        "ST09"
+      ],
+      "owned_files": [
+        "src/app/components/music-import-dialog/**",
+        "src/app/components/music-export-menu/**",
+        "src/app/pages/music-shared-playlist/**",
+        "src/app/pages/music-settings/sections/music-settings-data/**",
+        "src/app/services/music-backup.service.ts",
+        "src/app/services/music-backup.service.spec.ts",
+        "src/app/services/music-import.service.ts",
+        "src/app/utils/music-playlist-files.ts",
+        "src/app/utils/music-playlist-files.spec.ts",
+        "src/app/utils/music-import-*.ts",
+        "src/app/utils/music-share.ts",
+        "src/app/utils/music-share.spec.ts",
+        "tools/e2e/music-p7.mjs"
+      ],
+      "may_edit_shared": [],
+      "depends_on": [
+        "F0"
+      ],
+      "acceptance": [
+        "Unit: music-playlist-files generators produce valid CSV (quoted fields with commas/newlines), XSPF/XML (escaped), M3U/M3U8 (#EXTINF with duration; empty list does not emit -Infinity), CUE, NFO, JSON - snapshot specs.",
+        "Unit: import parsers handle Spotify/Exportify CSV headers (papaparse, quoted newlines), JSPF, XSPF, generic XML, M3U/M3U8 (#EXTINF artist - title); matcher scores ISRC exact = 1, fuzzy title/artist >= 0.6 threshold (port tests from monochrome js/tests if present).",
+        "Import dialog (ui.importOpen): pick file -> detected format shown -> progress bar 'Matching 12/40' with Cancel -> result: playlist created + 'Missing tracks (n)' list with a CSV download of misses. E2E uses a fixture CSV and routed /api/music search responses.",
+        "Library CSV import mode bulk-adds favourites (add-only).",
+        "Export menu (component music-export-menu, input playlist) offers CSV, JSON, XSPF, M3U, M3U8 and downloads the right file name.",
+        "Settings > Data: 'Back up library' downloads fiesta-music-backup-YYYY-MM-DD.json containing every fiesta:music:* key except fiesta:music:secret:*; 'Restore' with Merge keeps existing playlists and adds new ones, Replace overwrites (confirm); settings-only export/import; 'Reset music data' (confirm) clears keys + every IndexedDB named fiesta-music-* and reloads.",
+        "Blocked items list (tracks/albums/artists) with Unblock; blocking a track (via library.block) makes the player skip it.",
+        "/music/shared?d=<payload>: v1 = deflate-raw (CompressionStream) base64url of {n,d,t:[ids]}, v0 = plain base64url JSON (accepted for P6); page resolves ids via MusicCatalogService.tracks (fallback: shows 'n tracks' with retry if the catalog action is not ready), lists them, 'Play' and 'Save a copy' (creates a user playlist).",
+        "buildShareUrl(playlist) exported from music-share.ts and unit-tested (round-trip)."
+      ],
+      "external_needs": "None.",
+      "brief": "Everything about getting data in and out. Ports: js/playlist-generator.js (all generators; fix generateM3U8 Math.max(...[]) -> 0), js/playlist-importer.js (normalizeIsrc, isIsrcMatch, normalizeForMatch, tokenize, stringSimilarity, splitArtists, scoreTrack L59, findBestMatch L80, HEADER_MAPPINGS L213, mapHeaders, detectCSVFormat L247, parseJSPF, parseXSPF, parseXML, parseM3U, importToLibrary; replace split('\\n') CSV parsing with papaparse via dynamic import; fix: JSPF name/description/cover auto-fill actually returned), js/app.js playlist-modal import tabs L1279-1836 + showMissingTracksNotification ~L3026 + exportUserPlaylist ~L2928, js/db.js exportData/importData, js/settings.js L6738-6830 (backup/settings export) and L6929-6998 (reset) and L7318-7445 (blocked content manager). Matching target is TIDAL via /api/music?action=search (MusicService.search; concurrency 4, 150 ms spacing, AbortController for Cancel); prefer ISRC equality when the source row has one (F0 added isrc to MusicTrack). MusicBackupService: snapshot = { app:'fiesta-music', version:1, exportedAt, keys: { [key]: json } } from musicStorage.keys(); restore merge = MusicLibraryService.restore(snap,'merge') for library keys and shallow-merge for settings; replace = write all. Shared playlist page: decode, cap 500 ids, resolve via MusicCatalogService.tracks(ids) in chunks of 100. Data settings section uses app-music-dialog for confirmations. Do not add accounts/cloud anything."
+    },
+    {
+      "id": "P8",
+      "title": "Catalog pages + search: search UX, album/artist extensions, track page, OG previews",
+      "features": [
+        "CT01",
+        "CT02",
+        "CT03",
+        "CT04",
+        "CT05",
+        "CT06",
+        "CT07",
+        "CT08",
+        "CT09",
+        "CT10",
+        "CT11",
+        "LB06"
+      ],
+      "owned_files": [
+        "src/app/pages/music/**",
+        "src/app/pages/music-album/**",
+        "src/app/pages/music-artist/**",
+        "src/app/pages/music-track/**",
+        "src/app/components/music-search-suggest/**",
+        "src/app/components/music-artist-bio/**",
+        "src/app/services/music-catalog.service.ts",
+        "src/app/services/music-catalog.service.spec.ts",
+        "src/app/utils/music-links.ts",
+        "src/app/utils/music-links.spec.ts",
+        "lib/music/catalog.js",
+        "lib/music/search.js",
+        "tools/e2e/music-p8.mjs"
+      ],
+      "may_edit_shared": [
+        {
+          "file": "middleware.js",
+          "hook": "One branch only (middleware.js is ESM on the Edge runtime): for bot user agents on /music/(album|artist|track|playlist|mix)/:id, fetch this deployment's /api/music?action=album|artist|track|playlist|mix, build {title, description, image} and reuse the existing renderPageMeta/injectMeta helpers. Do not alter the existing movie/person/TV branches or the matcher."
+        }
+      ],
+      "depends_on": [
+        "F0"
+      ],
+      "acceptance": [
+        "Search: typing 2+ chars shows a suggestions listbox (role=listbox, ArrowDown/Enter navigates, Escape closes) from action=suggest within 250 ms debounce; stale requests are cancelled.",
+        "Empty search shows recent searches (from library.searches) with remove buttons and 'Clear all', above <app-music-home> (P9's component; render it unchanged).",
+        "Tabs Songs / Albums / Artists / Playlists with ?type= in URL; 'Load more' appends the next 20 via action=search-type; playlist results link to /music/playlist/:uuid.",
+        "Pasting https://tidal.com/browse/album/123 (also /track/, /artist/, /playlist/<uuid>, /mix/<id>, listen.tidal.com and monochrome.tf variants) into the search box and submitting navigates to the Fiesta route (unit-tested parser in music-links.ts).",
+        "Album page: Shuffle, Like, Add to playlist, Share, Download buttons (download calls MusicDownloadService.downloadAlbum), release date + copyright, cover-tinted header (settings.albumBackground), rails 'More by <artist>', 'EPs & Singles', 'Similar albums', 'Similar artists' (rails hide when empty), AOTY critic/user score chips when available; records library.recordActivity.",
+        "Artist page: bio excerpt with 'Read more' dialog, external links (MusicBrainz), filter pills Albums / EPs & Singles / Compilations / Appears on with paging, 'Show all' top tracks (paged), 'Shuffle' (whole discography: up to 10 albums' tracks), 'Radio' (player.startRadio({kind:'artist',...})), Like, 'In your library' row of liked tracks by this artist, Similar artists rail.",
+        "/music/track/:id shows the track header (play, like, radio, add to playlist, share), its album's track list and 'Similar tracks'.",
+        "Every backend action returns 200 JSON with Cache-Control set; invalid ids -> 400; TIDAL denials degrade to empty arrays (not 500). Verified with curl against the harness.",
+        "OG: a node script imports middleware.js's default export, calls it with new Request('http://localhost/music/album/<id>', {headers:{'user-agent':'Twitterbot'}}) (stub fetch for index.html + /api/music) and gets HTML whose og:title/og:image match the album; non-bot requests are untouched."
+      ],
+      "external_needs": "None (TIDAL app token; musicbrainz.org needs a User-Agent 'StreamFiesta/1.0 (+https://streamfiesta...)' and <= 1 req/s, cache 7 days; aoty.edideaur.works public).",
+      "brief": "You own the existing music pages (search/home host, album, artist) and the new track page plus their backend actions. Backend (lib/music/catalog.js, lib/music/search.js; F0 already dispatches): suggest = /v1/search limit 5 types TRACKS,ARTISTS,ALBUMS (s-maxage 3600); searchType = /v1/search/{tracks|albums|artists|playlists}?query&limit&offset -> {items,total}; track = /v1/tracks/:id + album items; tracks = batch (ids <= 100) via parallel /v1/tracks/:id with concurrency 8 (or openapi v2 /tracks?filter[id]=... if it works with the app token - prefer it); albumExtras = artist albums + EPSANDSINGLES filter + openapi v2 /albums/:id/relationships/similarAlbums + similar artists of the album's main artist (Monochrome js/HiFi.ts getSimilarAlbums L1636, getSimilarArtists L1569 - openapi.tidal.com/v2 JSON:API with include=..., countryCode); artistBio = openapi v2 /artists/:id?include=biography (HiFi.ts getArtistBiography L1986) with [wimpLink] markup stripped to text + links mapped to Fiesta routes; artistAlbums = /v1/artists/:id/albums?filter=EPSANDSINGLES|COMPILATIONS (ALBUMS = no filter; APPEARS_ON via openapi if available, else hide pill) (HiFi.ts getArtist L1720-1800); artistTopTracks = /v1/artists/:id/toptracks offset/limit; artistLinks = musicbrainz.org/ws/2/url?resource=https://tidal.com/artist/<id> or artist lookup by name with inc=url-rels (js/api.js getArtistSocials) mapped to {type,url}; aoty = aoty.edideaur.works search (js/ui.js fetchAOTY) server-side cached. Frontend: refs js/ui.js renderSearchPage/_renderSearch*, renderAlbumPage (incl. lower half rails), renderArtistPage, renderTrackPage; js/app.js search handlers, handleExternalLink, shuffle-artist-btn/shuffle-album-btn; js/ui.js renderSearchHistory/addToSearchHistory ~L5385-5410. Use F0 cards inside F0's app-music-rail (horizontal scroll row with heading). Keep the page shells/styles; keep input[name=q] and the existing tab buttons' structure (e2e). Record searches via library.addSearch on submit; record activity on album/artist/track visits. Filter blocked items (library.isBlocked) in all lists. Titles: '<Album> by <Artist> | Stream Fiesta', '<Artist> | Stream Fiesta', '<Track> | Stream Fiesta'. middleware.js: read it fully first; add the single music bot branch only."
+    },
+    {
+      "id": "P9",
+      "title": "Discovery: music home, mixes, radio/autoplay recommender, listening tracker, TIDAL playlists, Explore",
+      "features": [
+        "PB26",
+        "PB27",
+        "PB28",
+        "PB29",
+        "DS01",
+        "DS02",
+        "DS03",
+        "DS04",
+        "DS05",
+        "DS06",
+        "LB10"
+      ],
+      "owned_files": [
+        "src/app/components/music-home/**",
+        "src/app/pages/music-mix/**",
+        "src/app/pages/music-playlist/**",
+        "src/app/pages/music-explore/**",
+        "src/app/services/music-recommender.service.ts",
+        "src/app/services/music-recommender.service.spec.ts",
+        "src/app/services/music-listening-tracker.service.ts",
+        "src/app/services/music-listening-tracker.service.spec.ts",
+        "src/app/services/music-discovery.service.ts",
+        "src/app/utils/music-recs-*.ts",
+        "src/assets/music/editors-picks.json",
+        "lib/music/discovery.js",
+        "tools/e2e/music-p9.mjs"
+      ],
+      "may_edit_shared": [],
+      "depends_on": [
+        "F0"
+      ],
+      "acceptance": [
+        "/music (no ?q) renders the home: with empty history it shows Editors' picks (from src/assets/music/editors-picks.json, ship 6 real TIDAL album ids) and the suggestion chips; after playing 3 tracks it also shows Jump back in (library.activity), Recently played, 'Mixes for you' (track mixes of top played tracks), 'Recommended songs/albums/artists'; each section hides via settings.homeSections.",
+        "/music/mix/:id shows mix title, cover, tracks, Play, Shuffle, Like (mix favourite).",
+        "/music/playlist/:uuid shows a TIDAL playlist with paging (100 per page), Play, Shuffle, Like, 'Save a copy' (library.createPlaylist), 'Recommended songs'.",
+        "player.startRadio({kind:'track',id}) fills the queue with >= 10 tracks from action=track-mix (fallback: similar artists' top tracks) excluding the seed and the last 100 played; when <= 3 remain it refills automatically; context label 'Radio: <title>'.",
+        "With settings.autoplay() on, reaching the end of the queue appends recommendations and keeps playing; off -> stops.",
+        "Listening tracker: after a track ends with >= 30 % played it records a completion; a skip under 5 s records a skip; artist affinity ranks favour completed artists (unit specs on music-recs-scoring.ts port).",
+        "/music/explore shows TIDAL explore shelves (genres/moods) with drill-down into whitelisted pages; if the app token cannot read pages it shows a friendly 'Explore isn't available right now' state (and the report says so, so Z can hide the subnav link).",
+        "All discovery actions: 200 JSON with Cache-Control; bad ids 400; TIDAL denial -> empty result."
+      ],
+      "external_needs": "None (TIDAL app token; tidal.com/v1 host may be blocked from some networks - verify from the harness AND note whether Vercel preview reaches it; fall back to openapi/api.tidal.com equivalents).",
+      "brief": "Backend (lib/music/discovery.js): mix = api.tidal.com/v1/pages/mix?mixId&countryCode&deviceType=BROWSER, parse MIX_HEADER + TRACK_LIST modules (HiFi.ts getMix L2356); trackMix = tidal.com/v1/tracks/:id/mix -> mixes/:mixId/items (HiFi.ts getRecommendations L1520; try api.tidal.com/v1 host first, then tidal.com); artistMix = /v1/artists/:id/mix -> items; playlist = /v1/playlists/:uuid + /items?limit=100&offset (HiFi.ts getPlaylist L2389; uuid regex); explore = /v1/pages/explore?deviceType=BROWSER (map rows/modules to {title, kind:'albums'|'playlists'|'mixes'|'artists'|'pages', items}); page = /v1/pages/<whitelisted path matching ^pages/[a-z0-9_-]+$ or genre_ prefix>. Use mapTrack/mapAlbum/mapArtist/mapPlaylist/mapMix from lib/tidal.js. Frontend: MusicRecommenderService implements F0's contract (must not inject the player): radioTracks(seed) by kind (track -> trackMix; artist -> artistMix; album/playlist/mix -> trackMix of 2 random seed tracks), refill(seeds, opts) (port js/player.js enableRadio L2157, fetchRadioRecommendations L2193, pickRadioSeeds; enableAutoplay L2325 + fetchAutoplayRecommendations; js/smart-recommendations.js getAdaptiveQueueSeeds; dedupe by id and exclude set, filter library.isBlocked), forPlaylist(tracks, limit) (js/ui.js loadRecommendedSongsForPlaylist ~L5841). MusicListeningTrackerService: port js/listening-tracker.js (STORAGE -> musicStorage 'listening', MAX_TRACKS 2000, MAX_ARTISTS 500, SKIP_THRESHOLD_S 5, COMPLETION_RATIO 0.3) driven by player.on('trackend'|'skip'); expose topArtists()/topTracks() computed; pure scoring in utils/music-recs-scoring.ts (port js/smart-recommendations.js L4-171). Home component: js/ui.js renderHomePage, getSeeds, renderHomeSongs/Albums/Artists, renderHomeRecent, renderHomeEditorsPicks (+ public/editors-picks.json format); use F0 cards inside F0's app-music-rail; render pins with <app-music-pins-row> (F0 stub, implemented by P6). Mix/playlist pages use app-music-track-row lists and F0 shells; record library.recordActivity. Titles: '<Mix> | Stream Fiesta' etc."
+    },
+    {
+      "id": "P10",
+      "title": "Command palette, keyboard shortcuts, context menus, multi-select, track row, track info, share",
+      "features": [
+        "SH02",
+        "SH03",
+        "SH04",
+        "SH05",
+        "SH06",
+        "SH07",
+        "SH08",
+        "SH09",
+        "SH10",
+        "SH11",
+        "SH12",
+        "ST06"
+      ],
+      "owned_files": [
+        "src/app/components/music-track-row/**",
+        "src/app/components/music-command-palette/**",
+        "src/app/components/music-shortcuts-help/**",
+        "src/app/components/music-track-info/**",
+        "src/app/components/music-context-menu/**",
+        "src/app/components/music-card-menu-button/**",
+        "src/app/components/music-selection-bar/**",
+        "src/app/pages/music-settings/sections/music-settings-shortcuts/**",
+        "src/app/services/music-shortcuts.service.ts",
+        "src/app/services/music-shortcuts.service.spec.ts",
+        "src/app/services/music-selection.service.ts",
+        "src/app/services/music-commands.service.ts",
+        "src/app/utils/music-fuzzy.ts",
+        "src/app/utils/music-fuzzy.spec.ts",
+        "src/app/utils/music-share-target.ts",
+        "tools/e2e/music-p10.mjs"
+      ],
+      "may_edit_shared": [],
+      "depends_on": [
+        "F0"
+      ],
+      "acceptance": [
+        "tools/e2e/music.mjs still passes (track row's play button and app-music-track-row structure unchanged for it).",
+        "Track row shows: playing indicator (3 animated bars, static under reduced motion) when current, like button (<app-music-like-button size='sm'>), kebab 'More options for <title>'; right-click and long-press (500 ms) open the same menu.",
+        "Track menu items: Play next, Add to queue, Like/Unlike, Add to playlist…, Start radio, Go to artist, Go to album, Track info, Share, Download, Hide track; each performs its action (verify queue changes, ui.trackInfo set, navigation, library.block).",
+        "Card menus (albums/artists/playlists/mixes) via <app-music-card-menu-button>: Play, Shuffle, Add to queue, Like, Add to playlist, Radio, Share, Download, Pin, Hide.",
+        "Shortcuts on /music: Space toggles, ArrowRight/Left ±10 s, Shift+Arrow next/prev, ArrowUp/Down volume ±5 %, M mute, S shuffle, R repeat, Q queue, L lyrics, '/' focuses search, Escape closes overlays, '[' ']' '\\' visualizer, '?' help, Ctrl/Cmd+K palette. Not triggered while typing in inputs, and NOT active on /movie/* and /tv routes.",
+        "Settings > Shortcuts lists every action with its key; 'Change' captures a new key, conflicts are reported, 'Reset to defaults' works; persisted in settings.scoped('shortcuts').",
+        "Command palette: Ctrl/Cmd+K opens a combobox dialog; typing filters commands fuzzily (Go to Library, Toggle shuffle, Sleep timer 30 min, Open lyrics…); typing a query also shows live music search results (tracks/albums/artists) that play/navigate on Enter; '>' prefix searches MUSIC_SETTINGS_REGISTRY and navigates to /music/settings?tab=…; arrow keys + Enter; Escape closes.",
+        "Multi-select: checkbox appears on row hover/focus and when selection is non-empty; Ctrl/Cmd-click toggles, Shift-click selects a range within the list; long-press enters select mode on touch; a selection bar shows 'n selected' with Play, Play next, Add to queue, Like, Add to playlist, Download, Clear.",
+        "Share: uses navigator.share when available, else copies the absolute Fiesta URL and shows 'Link copied'."
+      ],
+      "external_needs": "None.",
+      "brief": "You own app-music-track-row (used by search, album, artist, library, playlist, mix pages - keep inputs track/queue/showCover/showAlbum/number and the cover play button exactly; add an optional input context for player context and an optional input selectable (default true)). Refs: js/app.js initializeKeyboardShortcuts L170-270, keyActionMap L171, showKeyboardShortcuts, showCustomizeShortcutsModal L3192-3365; js/storage.js keyboardShortcuts DEFAULT_SHORTCUTS L3633 (use these defaults exactly, drop multiSelect entries - handled by click modifiers); js/commandPalette.js (whole file, 1307 lines: command registry, groups, scoring, search modes; replace fuse.js with utils/music-fuzzy.ts scorer + spec; drop account/tracker/Tauri/download-folder commands); js/events.js context menu handling + handleTrackAction (~L1405-2215) + trackSelection/updateSelectionBar/handleSelectionAction (~L100-500); index.html context-menu markup; js/events.js track info modal. MusicCommandsService = registry of commands {id, label, group, keywords, run, shortcutId?} used by both palette and shortcuts. MusicShortcutsService.start(): one keydown listener on document; ignore when target is input/textarea/select/contenteditable or when a non-music dialog is open; active when router.url starts with /music, or when player.track() is set and the url does not start with /movie or /tv. Visualizer keys call exported helpers from src/app/utils/music-visualizer-presets.ts (P5) - if not present yet at build time, TODO(Z) and skip. Context menu host (app-music-context-menu): positioned at ui.contextMenu() x/y, clamped to viewport, as a bottom action sheet on mobile; role=menu with arrow-key navigation; closes on Escape/outside click/scroll. Download actions call MusicDownloadService (P12 stub). Radio calls player.startRadio. Settings registry comes from MUSIC_SETTINGS_REGISTRY (P11 stub) - read it at runtime so the stub works. Share URL helper builds https://<location.host>/music/... via utils/music-share-target.ts."
+    },
+    {
+      "id": "P11",
+      "title": "Settings page: shell, Playback, Interface, System sections, settings registry/search",
+      "features": [
+        "ST01",
+        "ST02",
+        "ST03",
+        "ST10",
+        "ST11",
+        "PB22"
+      ],
+      "owned_files": [
+        "src/app/pages/music-settings/music-settings.component.ts",
+        "src/app/pages/music-settings/music-settings.component.html",
+        "src/app/pages/music-settings/sections/music-settings-playback/**",
+        "src/app/pages/music-settings/sections/music-settings-interface/**",
+        "src/app/pages/music-settings/sections/music-settings-system/**",
+        "src/app/components/music-setting-row/**",
+        "src/app/services/music-settings-registry.ts",
+        "src/app/services/music-settings-registry.spec.ts",
+        "tools/e2e/music-p11.mjs"
+      ],
+      "may_edit_shared": [],
+      "depends_on": [
+        "F0"
+      ],
+      "acceptance": [
+        "/music/settings shows tabs Playback, Audio, Lyrics, Interface, Shortcuts, Downloads, Scrobbling, Data, System (role=tablist; ?tab= deep link; last tab remembered in settings.lastSettingsTab); each tab renders its section component (other packages' sections may still be stubs).",
+        "Playback section controls (each a labelled switch/select/slider via music-setting-row): Streaming quality (Auto, Low, High, Lossless, Hi-Res with a note that Hi-Res needs a full session), Gapless, Crossfade (0-12 s; disabled with explanation when supportsElementVolume() is false), Autoplay similar music, Skip unavailable tracks, ReplayGain (Off/Track/Album) + Pre-amp (-15..+15 dB), Exponential volume, Default speed + Keep pitch, Fade out with sleep timer, Remove silence (notes it downloads a small extra stream). Changing each updates the MusicSettingsService signal and persists.",
+        "Interface section: cover click action, close overlays on navigation, Back closes overlays, reduce blur, dynamic colour, album background, compact grids, haptics, cover tilt, rounded cover, show lyrics in Now Playing, waveform seek bar, home sections (6 toggles).",
+        "System section: storage usage per area (localStorage bytes for fiesta:music:* keys grouped; IndexedDB fiesta-music-* sizes via navigator.storage.estimate when available), 'Clear caches' (deletes the fiesta-music-* IndexedDB caches - lyrics, waveform, autoeq - and reports the bytes freed; the in-memory HTTP cache clears on reload), API status ping to /api/music?action=search&q=test with latency, app version.",
+        "In-page search box filters MUSIC_SETTINGS_REGISTRY and jumps to the right tab + scrolls/highlights the row (each row has id='setting-<id>').",
+        "MUSIC_SETTINGS_REGISTRY contains an entry for every typed F0 setting plus the scoped areas (eq, dsp, lyrics, visualizer, shortcuts, downloads, scrobbling, data) - unit spec asserts unique ids and valid tabs."
+      ],
+      "external_needs": "None.",
+      "brief": "Build the settings shell and the generic setting rows; other packages fill their own section components (already stubbed by F0 with fixed selectors - just render them). Monochrome refs: js/settings.js L75-84 (tab memory), L7215-7316 (settings search), L864-1091 (quality selector - only the qualities we have), L1254-1475 (gapless/crossfade/replaygain/mono/exponential/speed rows), L5787-5850 (navigation behaviour + compact layout toggles), L5877-6000 (appearance toggles), L6266-6342 (home section toggles), L6699-6723 (cache info + clear); index.html #settings-tab-audio ~L4222-4450 and settings markup ~L1251-1385 for labels/help texts; js/storage.js setting stores (defaults). music-setting-row: label, description, control slot via content projection, id anchor, highlight state. Layout: max-w-3xl, sections as bg-white/5 rounded-xl border-white/10 groups; mobile tabs as a horizontally scrolling pill row. Title 'Music settings | Stream Fiesta'. Do not implement EQ/lyrics/shortcuts/downloads/scrobbling/data controls - those sections belong to P4/P3/P10/P12/P13/P7."
+    },
+    {
+      "id": "P12",
+      "title": "Downloads: FLAC remux, tagging, ZIP bulk downloads with sidecars, downloads tray",
+      "features": [
+        "DL01",
+        "DL02",
+        "DL03",
+        "DL04",
+        "DL05",
+        "LY23",
+        "LY24",
+        "ST07"
+      ],
+      "owned_files": [
+        "src/app/services/music-download.service.ts",
+        "src/app/services/music-download.service.spec.ts",
+        "src/app/components/music-downloads-tray/**",
+        "src/app/pages/music-settings/sections/music-settings-downloads/**",
+        "src/app/utils/music-flac-*.ts",
+        "src/app/utils/music-mp4-*.ts",
+        "src/app/utils/music-download-*.ts",
+        "tools/e2e/music-p12.mjs"
+      ],
+      "may_edit_shared": [],
+      "depends_on": [
+        "F0"
+      ],
+      "acceptance": [
+        "Unit: music-flac-remux converts a synthetic fMP4 FLAC (init + 2 segments built in the spec with a small box-builder helper from utils/music-mp4-boxes.ts; no binary fixture files) into a byte stream starting with 'fLaC' + STREAMINFO from dfLa + concatenated frames; Vorbis comment writer round-trips tags; MP4 ilst writer produces a parsable moov/udta/meta/ilst.",
+        "Downloading a track from the track menu shows a tray card 'Downloading <title> 35 %' with Cancel; on completion a file '<Artist> - <Title>.flac' (lossless manifest) or '.m4a' (AAC) is saved (Playwright download event; previews download 30 s files - acceptable).",
+        "Album download produces a ZIP named '<Artist> - <Album>.zip' containing numbered tracks, cover.jpg, and per settings: .m3u8, .cue, .nfo, .json, .lrc files (lyrics via MusicLyricsService - may be empty if P3 not merged yet).",
+        "Settings > Downloads: quality (Lossless/High/Low), filename template with tokens {artist} {album} {title} {track} {year} and preview, sidecar toggles, 'Save to folder' (File System Access; hidden when unsupported), ZIP vs separate files.",
+        "MUSIC_DOWNLOADS_ENABLED=false hides every download entry point (track menu/album page read this constant through the service's enabled signal)."
+      ],
+      "external_needs": "Owner confirmation that public downloads are acceptable (see docs/music-features.md 'Needs from the owner' #2). No keys.",
+      "brief": "Downloads reuse the existing manifest + seg proxy: for kind 'segments' fetch init + all segments (concurrency 4, AbortController, progress by segment count) and for kind 'file' fetch the URL. Lossless: remux FLAC-in-fMP4 to native FLAC in pure TS (utils/music-flac-remux.ts): parse moov/trak/mdia/minf/stbl/stsd/fLaC/dfLa to get the METADATA_BLOCKs (STREAMINFO), then for each moof/mdat take the samples (trun sample sizes) - they are raw FLAC frames - and write 'fLaC' + metadata blocks (set last-block flag correctly, add VORBIS_COMMENT + PICTURE) + frames. AAC: keep fMP4 as .m4a and add an ilst (or, if that proves fragile, save untagged .m4a and report). Tag writers: port js/metadata.flac.js (Vorbis comments + PICTURE) and the ilst part of js/metadata.mp4.js; fields title, artist, album, albumartist, tracknumber, date, isrc, copyright, cover (fetched via proxiedImage, 640px), lyrics (MusicLyricsService.toLRC or plain). Bulk: dynamic import('client-zip') downloadZip with an async generator (js/downloads.js bulkDownload yieldFiles pattern, js/bulk-download-writer.ts), sidecars via utils/music-playlist-files.ts generators (P7 implements them; F0 stub returns '' until merged), cover.jpg. Folder writer: showDirectoryPicker when available (js/bulk-download-writer.ts). Filename template: js/utils.js formatPathTemplate. Queue/progress UI: js/downloads.js addDownloadTask/updateDownloadProgress/completeDownloadTask -> the tray component (fixed bottom-right above the player bar, collapsible, z-[60]). downloadArtist(id): MusicService.artist(id) albums -> sequential album zips (confirm dialog with count). Do not port ffmpeg or the TIDAL quality ladder."
+    },
+    {
+      "id": "P13",
+      "title": "Scrobbling (late, optional): ListenBrainz, Libre.fm, Maloja, Last.fm via server signing",
+      "features": [
+        "SC01",
+        "SC02",
+        "SC03",
+        "SC04",
+        "SC05",
+        "SC06",
+        "SC07",
+        "SC08",
+        "SC09",
+        "ST08"
+      ],
+      "owned_files": [
+        "src/app/services/music-scrobbler.service.ts",
+        "src/app/services/music-scrobbler.service.spec.ts",
+        "src/app/services/music-scrobble-*.ts",
+        "src/app/utils/music-md5.ts",
+        "src/app/utils/music-md5.spec.ts",
+        "src/app/pages/music-settings/sections/music-settings-scrobbling/**",
+        "lib/music/scrobble.js",
+        "tools/e2e/music-p13.mjs"
+      ],
+      "may_edit_shared": [],
+      "depends_on": [
+        "F0"
+      ],
+      "acceptance": [
+        "Settings > Scrobbling: threshold slider (25-100 %, default 50, cap 4 min); per service enable + credentials: ListenBrainz token, Maloja URL + key, Libre.fm username/password, Last.fm (Connect button / username+password) - Last.fm controls show 'Not configured on this site' when the server reports no key.",
+        "With ListenBrainz enabled (fetch to api.listenbrainz.org mocked in e2e), playing past the threshold sends exactly one 'single' listen with the track metadata, and a 'playing_now' at track start; paused time does not count.",
+        "Failed submissions are queued in fiesta:music:secret:scrobble-queue and retried on the next success/online event.",
+        "Liking a track with love-on-like on calls each enabled service's love endpoint once (library.onFavoriteChange).",
+        "lib/music/scrobble.js 'lastfm' action: POST {method, params} signs with LASTFM_API_SECRET server-side and forwards to ws.audioscrobbler.com/2.0 (allow-listed methods auth.getToken, auth.getSession, auth.getMobileSession, track.updateNowPlaying, track.scrobble, track.love, track.unlove, user.getRecentTracks, user.getTopArtists); returns 503 {error:'lastfm_not_configured'} without env keys; Cache-Control no-store.",
+        "Credentials/session keys live only under fiesta:music:secret:* (excluded from backups)."
+      ],
+      "external_needs": "LASTFM_API_KEY and LASTFM_API_SECRET on Vercel (owner). ListenBrainz/Maloja/Libre.fm need no site key (visitor credentials).",
+      "brief": "Optional, late package. Port js/multi-scrobbler.js (fan-out lifecycle), js/lastfm.js (auth flows L186-233 password login, web auth token/session, signed calls - but sign on the server via the lastfm action; never ship the secret), js/librefm.js (same protocol as Last.fm with libre.fm base URL and Fiesta's own arbitrary api_key/secret strings - Libre.fm signs client-side is acceptable since any string works; use utils/music-md5.ts ported from js/md5.js), js/listenbrainz.js (submit-listens, MBID lookup optional, love via feedback endpoint), js/maloja.js (newscrobble API; warn on mixed content http URLs), settings UI js/settings.js L208-718 + L484-515 threshold. Engine: subscribe to player.on('trackstart'|'trackend'|'pause'|'play'|'seek') and count played seconds (not wall clock); threshold = min(duration * percent, 240 s); duration < 30 s never scrobbles (Last.fm rule). MusicScrobblerService.start() is called by F0's startup service and must be cheap when nothing is enabled. Do not port Monochrome's default Last.fm key/secret or 'monochrome_music_app' strings. SC09 (owner profile widget) is optional: only build a small component if time permits and do not mount it anywhere (report it for Z)."
+    },
+    {
+      "id": "Z",
+      "title": "Integration: reconcile TODO(Z), wire cross-package bits, full verification, docs",
+      "features": [
+        "CT11",
+        "UI18"
+      ],
+      "owned_files": [
+        "EVERYTHING (runs alone after all packages)",
+        "docs/handoff.md",
+        "docs/music-features.md",
+        "docs/music-work-packages.json",
+        "tools/e2e/music.mjs",
+        "tools/e2e/music-all.mjs"
+      ],
+      "may_edit_shared": [],
+      "depends_on": [
+        "F0",
+        "P1",
+        "P2",
+        "P3",
+        "P4",
+        "P5",
+        "P6",
+        "P7",
+        "P8",
+        "P9",
+        "P10",
+        "P11",
+        "P12"
+      ],
+      "acceptance": [
+        "`grep -rn 'TODO(Z)' src lib api` is empty (each resolved or converted to a tracked follow-up listed in docs/handoff.md).",
+        "`npx ng build` (production) passes; initial bundle < 2 MB warning; lazy chunks for lyrics, EQ, visualizer, butterchurn, kuroshiro, client-zip, papaparse are separate.",
+        "`npx ng test --watch=false --browsers=ChromeHeadless` passes except the 5 known MovieService apikey specs.",
+        "tools/e2e/music-all.mjs runs music.mjs and every music-p*.mjs against one ng serve + harness and all checks PASS locally; then against the Vercel preview with --token-file (FULL playback).",
+        "Manual/Playwright a11y sweep on bar, queue, Now Playing, lyrics, palette, menus, settings: no unlabeled buttons (script: every button has an accessible name), focus returns after closing overlays, reduced-motion emulation shows no running CSS animations in music UI.",
+        "Mobile 390px and desktop 1280px screenshots of /music, album, artist, library, playlist, settings, Now Playing, queue, lyrics have no horizontal overflow and nothing hidden under the player bar or bottom nav.",
+        "Non-music pages (home, movie page, TV, search) unaffected: existing e2e scripts tools/e2e/player.mjs, searchcheck.mjs still pass; music shortcuts inactive on /movie/*.",
+        "docs/handoff.md Music section updated (what shipped, env vars, owner questions); docs/music-features.md statuses updated to DONE/DEFERRED."
+      ],
+      "external_needs": "Vercel preview deploy + TIDAL token file for FULL-playback verification; owner answers from 'Needs from the owner'.",
+      "brief": "Run alone after every parallel package reports. Collect each package's 'Needs from Z' list and TODO(Z) comments and resolve them in the shared files (player/settings/library/ui services, music.service.ts, api/music.js, lib/tidal.js, app.component, app.routes, styles.css, cache.interceptor, vercel.json). Typical wiring to verify: P1 bar uses P6 like button + P5 waveform; P2 Now Playing mounts P3 lyrics view + P5 visualizer; P10 menus call P12 downloads and P9 radio; P10 palette reads P11 registry and P5 visualizer helpers; P6 sharing uses P7 buildShareUrl (switch v0 links to v1); P12 sidecars use P7 generators + P3 lyrics; P11/P7 clear every fiesta-music-* IndexedDB reported by P3/P4/P5. Check settings key collisions across settings.scoped names. Remove dead stubs (e.g. if a package moved functionality). Write tools/e2e/music-all.mjs that spawns each script sequentially with the same baseUrl/token args and summarizes. Bundle audit with `npx ng build --stats-json` if a budget warns. Deploy a preview (owner's normal flow), run the suite with the token file, update docs. Do not commit until the orchestrator says so."
+    }
+  ]
+}

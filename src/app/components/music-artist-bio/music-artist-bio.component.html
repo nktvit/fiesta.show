@@ -1,0 +1,48 @@
+@if (bio(); as b) {
+  <section class="max-w-3xl" aria-label="About the artist">
+    <h2 class="mb-2 text-lg font-semibold">About</h2>
+    <p class="whitespace-pre-line text-sm leading-relaxed text-gray-300">{{ excerpt() }}</p>
+    @if (truncated()) {
+      <button type="button" (click)="openDialog()" aria-haspopup="dialog"
+        class="mt-2 inline-flex min-h-10 items-center rounded-full px-1 text-sm font-medium text-indigo-400 hover:text-indigo-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Read more</button>
+    }
+  </section>
+
+  <app-music-dialog [title]="'About ' + (name() || 'the artist')" [(open)]="dialogOpen" size="lg">
+    @for (p of paragraphs(); track $index) {
+      <p class="mb-3 text-sm leading-relaxed text-gray-300">{{ p }}</p>
+    }
+    @if (mentioned().length) {
+      <p class="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-gray-400">Mentioned</p>
+      <ul class="flex flex-wrap gap-2">
+        @for (l of mentioned(); track l.route) {
+          <li>
+            <a [routerLink]="l.route" (click)="dialogOpen.set(false)"
+              class="inline-flex min-h-10 items-center rounded-full border border-white/10 bg-white/5 px-3 text-sm text-gray-200 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{{ l.label }}</a>
+          </li>
+        }
+      </ul>
+    }
+    @if (b.source) {
+      <p class="mt-4 text-xs text-gray-400">Source: {{ b.source }}</p>
+    }
+  </app-music-dialog>
+}
+
+@if (linkViews().length) {
+  <ul class="mt-4 flex flex-wrap gap-2" aria-label="Artist links">
+    @for (l of linkViews(); track l.key) {
+      <li>
+        <a [href]="l.url" target="_blank" rel="noopener noreferrer" [title]="l.host" [attr.aria-label]="l.label + ' (opens in a new tab)'"
+          class="inline-flex h-10 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3.5 text-sm font-medium text-gray-200 transition-colors hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 motion-reduce:transition-none">
+          @if (l.path) {
+            <svg class="h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path [attr.d]="l.path" /></svg>
+          } @else {
+            <svg class="h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" /></svg>
+          }
+          {{ l.label }}
+        </a>
+      </li>
+    }
+  </ul>
+}

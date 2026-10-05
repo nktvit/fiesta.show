@@ -32,6 +32,10 @@
     "api/comments.js": {
       "memory": 1024,
       "maxDuration": 15
+    },
+    "api/music.js": {
+      "memory": 1024,
+      "maxDuration": 30
     }
   },
   "buildCommand": "npm run build",

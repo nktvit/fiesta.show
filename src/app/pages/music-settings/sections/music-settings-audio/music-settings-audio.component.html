@@ -1,0 +1,130 @@
+<section aria-labelledby="music-settings-audio-title" class="space-y-8">
+  <div>
+    <h2 id="music-settings-audio-title" class="mb-1 text-lg font-semibold">Audio</h2>
+    <p class="text-sm text-gray-400">Shape the sound with an equalizer, correct your headphones with AutoEQ, or change the stereo image. Nothing here runs until you switch it on.</p>
+  </div>
+
+  <div id="setting-eq" class="space-y-4" aria-labelledby="music-eq-heading">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <h3 id="music-eq-heading" class="sr-only">Equalizer</h3>
+      <app-music-eq-switch label="Equalizer" [checked]="eq().enabled" (checkedChange)="setEnabled($event)" />
+      <button type="button" (click)="reset()"
+        class="h-10 rounded-full bg-white/5 px-4 text-sm font-medium text-gray-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Reset</button>
+    </div>
+
+    @if (!eq().enabled) {
+      <p class="text-xs text-amber-400">The equalizer is off. Changes below are saved but you will not hear them until you switch it on.</p>
+    }
+
+    <div role="tablist" aria-label="Equalizer mode" class="flex flex-wrap gap-2">
+      @for (m of modes; track m.id) {
+        <button type="button" role="tab" [attr.aria-selected]="eq().mode === m.id" aria-controls="music-eq-panel" (click)="setMode(m.id)"
+          class="h-10 rounded-full px-4 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+          [class]="eq().mode === m.id ? 'bg-white text-black' : 'bg-white/5 text-gray-300 hover:text-white'">{{ m.label }}</button>
+      }
+    </div>
+
+    <div class="grid gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 sm:grid-cols-3">
+      <label class="block text-sm text-gray-300">
+        <span class="flex justify-between"><span>Preamp</span><span class="tabular-nums text-gray-400">{{ eq().preamp > 0 ? '+' : '' }}{{ eq().preamp.toFixed(1) }} dB</span></span>
+        <input type="range" [min]="preampMin" [max]="preampMax" step="0.5" [value]="eq().preamp" aria-label="Preamp (dB)"
+          (input)="setPreamp($any($event.target).value)" (dblclick)="setPreamp('0')" title="Double-click to reset"
+          class="mt-1 h-10 w-full accent-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" />
+      </label>
+      @if (eq().mode !== 'autoeq') {
+        <label class="block text-sm text-gray-300">
+          Preset
+          <select aria-label="Preset" [value]="presetValue()" (change)="setPreset($any($event.target).value)"
+            class="mt-1 h-10 w-full rounded-lg border border-white/10 bg-[#121212] px-3 text-sm text-white focus:border-indigo-400 focus:outline-none">
+            <option value="" [selected]="presetValue() === ''">Custom</option>
+            <optgroup label="Presets">
+              @for (p of presets; track p.id) { <option [value]="p.id" [selected]="presetValue() === p.id">{{ p.name }}</option> }
+            </optgroup>
+            @if (eq().mode === 'graphic' && graph.customPresets().length > 0) {
+              <optgroup label="Your presets">
+                @for (p of graph.customPresets(); track p.id) { <option [value]="'custom:' + p.id" [selected]="presetValue() === 'custom:' + p.id">{{ p.name }}</option> }
+              </optgroup>
+            }
+            @if (eq().mode === 'parametric') {
+              <optgroup label="Shelves and mid/side">
+                @for (p of structurePresets; track p.id) { <option [value]="p.id" [selected]="presetValue() === p.id">{{ p.name }}</option> }
+              </optgroup>
+            }
+          </select>
+        </label>
+        <label class="block text-sm text-gray-300">
+          Bands
+          <select aria-label="Band count" [value]="bandCount()" (change)="setCount($any($event.target).value)"
+            class="mt-1 h-10 w-full rounded-lg border border-white/10 bg-[#121212] px-3 text-sm text-white focus:border-indigo-400 focus:outline-none">
+            @for (n of counts; track n) { <option [value]="n" [selected]="bandCount() === n">{{ n }}</option> }
+          </select>
+        </label>
+      }
+    </div>
+
+    <div id="music-eq-panel" role="tabpanel">
+      @switch (eq().mode) {
+        @case ('graphic') {
+          <app-music-eq-graphic />
+        }
+        @case ('parametric') {
+          <div class="space-y-3">
+            <app-music-eq-parametric-graph [bands]="eq().bands" [(selected)]="selectedBand" (bandChange)="onBandChange($event)" (bandRemove)="onBandRemove($event)" />
+            <app-music-eq-band-controls [bands]="eq().bands" [(selected)]="selectedBand" (bandChange)="onBandChange($event)"
+              (bandRemove)="onBandRemove($event)" (bandAdd)="onBandAdd()" />
+          </div>
+        }
+        @case ('autoeq') {
+          <app-music-eq-autoeq-browser />
+        }
+      }
+    </div>
+
+    <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <button type="button" (click)="toggleTransfer()" [attr.aria-expanded]="transferOpen()" aria-controls="music-eq-transfer"
+        class="flex h-10 w-full items-center justify-between rounded-lg text-left text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+        <span>Import and export (EqualizerAPO text)</span>
+        <svg viewBox="0 0 24 24" class="h-4 w-4 transition-transform motion-reduce:transition-none" [class.rotate-180]="transferOpen()" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+      </button>
+      @if (transferOpen()) {
+        <div id="music-eq-transfer" class="mt-3 space-y-3">
+          <label class="block text-sm text-gray-300">
+            Settings text
+            <textarea rows="8" spellcheck="false" aria-label="Equalizer settings text" [value]="transferText()" (input)="transferText.set($any($event.target).value)"
+              placeholder="Preamp: -3.0 dB&#10;Filter 1: ON PK Fc 1000 Hz Gain 3.0 dB Q 1.00"
+              class="mt-1 w-full rounded-lg border border-white/10 bg-white/5 p-3 font-mono text-xs text-white placeholder-gray-500 focus:border-indigo-400 focus:outline-none"></textarea>
+          </label>
+          @if (transferError()) {
+            <p class="text-sm text-amber-400" role="alert">{{ transferError() }}</p>
+          }
+          <div class="flex flex-wrap gap-2">
+            <button type="button" (click)="exportText()" class="h-10 rounded-full bg-white/5 px-4 text-sm font-medium text-gray-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Export current</button>
+            <button type="button" (click)="copyText()" class="h-10 rounded-full bg-white/5 px-4 text-sm font-medium text-gray-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Copy</button>
+            <button type="button" (click)="downloadText()" class="h-10 rounded-full bg-white/5 px-4 text-sm font-medium text-gray-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Download .txt</button>
+            <label class="inline-flex h-10 cursor-pointer items-center rounded-full bg-white/5 px-4 text-sm font-medium text-gray-300 focus-within:ring-2 focus-within:ring-indigo-400 hover:text-white">
+              Import file
+              <input type="file" accept=".txt,text/plain" class="sr-only" aria-label="Import equalizer file" (change)="importFile($event)" />
+            </label>
+            <button type="button" (click)="applyText()" class="h-10 rounded-full bg-indigo-600 px-4 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Import text</button>
+          </div>
+        </div>
+      }
+    </div>
+
+    <details class="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-gray-300">
+      <summary class="cursor-pointer rounded font-medium text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">How the equalizer works</summary>
+      <ul class="mt-3 list-disc space-y-2 pl-5 text-gray-400">
+        <li><span class="text-gray-200">Graphic</span> is the simple one: one slider per frequency, plus presets you can save.</li>
+        <li><span class="text-gray-200">Parametric</span> gives each band its own frequency, gain and Q. Low and high shelves boost or cut everything below or above a frequency.</li>
+        <li><span class="text-gray-200">Mid/Side</span> bands act only on what is the same in both channels (mid, usually vocals and bass) or only on what differs (side, the width).</li>
+        <li><span class="text-gray-200">AutoEQ</span> compares a measurement of your headphones with a target curve and places bands that cancel the difference.</li>
+        <li>Lower the <span class="text-gray-200">preamp</span> when you boost, otherwise loud passages can clip. AutoEQ sets it for you.</li>
+      </ul>
+    </details>
+  </div>
+
+  <div id="setting-dsp" class="space-y-3">
+    <h3 class="text-base font-semibold">Stereo and headphones</h3>
+    <app-music-eq-dsp />
+  </div>
+</section>

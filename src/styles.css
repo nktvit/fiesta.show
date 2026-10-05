@@ -85,6 +85,24 @@ body.nav-sheet-open #bmc-close-btn {
   display: none !important;
 }
 
+/* Music overlays (side panels, sheets, dialogs, Now Playing): the same lock as
+   the genre sheet, under its own class so the two never release each other.
+   utils/music-scroll-lock.ts ref-counts it and supplies `top: -<scrollY>px`. */
+body.music-overlay-open {
+  overflow: hidden;
+  position: fixed;
+  left: 0;
+  right: 0;
+  width: 100%;
+}
+
+body.music-overlay-open > div,
+body.music-overlay-open #bmc-wbtn,
+body.music-overlay-open #bmc-iframe,
+body.music-overlay-open #bmc-close-btn {
+  display: none !important;
+}
+
 @media screen and (max-width: 767px) {
   input, select, textarea {
     font-size: 16px;
@@ -102,6 +120,39 @@ app-root > div > router-outlet + * {
   display: flex;
   flex-direction: column;
   flex: 1 0 auto;
+}
+
+/* "New" badge on the Music tab: a barely-there breathing pulse (scale 1 -> 1.07
+   with a soft red halo), slow enough to read as a hint rather than an alert. */
+.new-badge {
+  animation: new-badge-pulse 2.6s ease-in-out infinite;
+}
+
+@keyframes new-badge-pulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgb(239 68 68 / 0); }
+  50% { transform: scale(1.07); box-shadow: 0 0 0 3px rgb(239 68 68 / 0.22); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .new-badge { animation: none; }
+}
+
+/* The music mini player is fixed above the mobile tab bar, which is exactly
+   where the Buy-Me-a-Coffee button and its bubble float. While a track is
+   loaded, lift them over the player (~4rem tall). */
+@media screen and (max-width: 639px) {
+  body.has-music-bar #bmc-wbtn,
+  body.has-music-bar > div[style*="bottom: 16px"] {
+    bottom: calc(8.75rem + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}
+
+/* sm and up the mini player sits at bottom: 0 (~81px tall) and the BMC button
+   (bottom-right, 18px margin) covered its volume controls. Lift it above the bar. */
+@media screen and (min-width: 640px) {
+  body.has-music-bar #bmc-wbtn {
+    bottom: calc(5.0625rem + 18px) !important;
+  }
 }
 
 /* Hide the Buy-Me-a-Coffee widget while the search field is focused. It sits at
@@ -129,4 +180,23 @@ video-skin video::-webkit-media-text-track-container {
   translate: 0 var(--media-caption-track-y, 0);
   transition: translate var(--media-caption-track-duration, 0s) ease-out;
   transition-delay: var(--media-caption-track-delay, 0s);
+}
+
+/* Music context menu: slides in and out (Angular animate.enter / animate.leave keep the
+   element mounted until the leave animation ends). Phone = bottom sheet rising from the
+   edge; desktop = popover easing a few px from the cursor. Reduced motion cuts instead. */
+@keyframes ctx-sheet-in { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@keyframes ctx-sheet-out { from { transform: translateY(0); } to { transform: translateY(100%); } }
+@keyframes ctx-pop-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes ctx-pop-out { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-8px); } }
+@keyframes ctx-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ctx-fade-out { from { opacity: 1; } to { opacity: 0; } }
+.ctx-sheet-in { animation: ctx-sheet-in 260ms cubic-bezier(0.32, 0.72, 0, 1) both; }
+.ctx-sheet-out { animation: ctx-sheet-out 200ms cubic-bezier(0.4, 0, 1, 1) both; }
+.ctx-pop-in { animation: ctx-pop-in 140ms ease-out both; }
+.ctx-pop-out { animation: ctx-pop-out 110ms ease-in both; }
+.ctx-fade-in { animation: ctx-fade-in 200ms ease-out both; }
+.ctx-fade-out { animation: ctx-fade-out 200ms ease-in both; }
+@media (prefers-reduced-motion: reduce) {
+  .ctx-sheet-in, .ctx-sheet-out, .ctx-pop-in, .ctx-pop-out, .ctx-fade-in, .ctx-fade-out { animation: none; }
 }

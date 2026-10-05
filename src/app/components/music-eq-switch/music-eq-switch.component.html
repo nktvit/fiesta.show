@@ -1,0 +1,11 @@
+<button type="button" role="switch" [attr.aria-checked]="checked()" [attr.aria-label]="label()" (click)="toggle()"
+  class="inline-flex h-10 items-center gap-3 rounded-full pr-1 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+  <span class="relative h-6 w-11 flex-shrink-0 rounded-full transition-colors motion-reduce:transition-none"
+    [class]="checked() ? 'bg-indigo-600' : 'bg-white/15'">
+    <span class="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white transition-transform motion-reduce:transition-none"
+      [class]="checked() ? 'translate-x-5' : 'translate-x-0'"></span>
+  </span>
+  @if (showLabel()) {
+    <span class="font-medium text-white">{{ label() }}</span>
+  }
+</button>

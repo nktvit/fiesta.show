@@ -1,9 +1,41 @@
-import { HttpInterceptorFn, HttpResponse } from '@angular/common/http';
+import { HttpInterceptorFn, HttpRequest, HttpResponse } from '@angular/common/http';
 import { of, tap } from 'rxjs';
 
 const cache = new Map<string, { response: HttpResponse<unknown>; timestamp: number }>();
 
-function getCacheDuration(url: string): number {
+/** Drops cached responses (all, or those whose URL contains `match`). Used by Music Settings → System. */
+export function clearHttpCache(match?: string): number {
+  let n = 0;
+  for (const key of [...cache.keys()]) {
+    if (!match || key.includes(match)) {
+      cache.delete(key);
+      n++;
+    }
+  }
+  return n;
+}
+
+// /api/music: streams and personal calls are never cached; search-ish results
+// briefly; catalogue pages for half an hour.
+function musicCacheDuration(action: string | null): number {
+  switch (action) {
+    case 'manifest':
+    case 'seg':
+    case 'img':
+    case 'lastfm':
+      return 0;
+    case 'search':
+    case 'suggest':
+    case 'search-type':
+      return 300000;
+    default:
+      return 1800000;
+  }
+}
+
+function getCacheDuration(req: HttpRequest<unknown>): number {
+  const url = req.url;
+  if (url.includes('/api/music')) return musicCacheDuration(req.params.get('action'));
   if (url.includes('/api/movie')) return Infinity;
   if (url.includes('/api/omdb')) return Infinity;
   if (url.includes('omdbapi.com')) return Infinity;
@@ -15,7 +47,7 @@ function getCacheDuration(url: string): number {
 export const cacheInterceptor: HttpInterceptorFn = (req, next) => {
   if (req.method !== 'GET') return next(req);
 
-  const duration = getCacheDuration(req.url);
+  const duration = getCacheDuration(req);
   if (duration === 0) return next(req);
 
   const cached = cache.get(req.urlWithParams);

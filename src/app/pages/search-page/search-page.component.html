@@ -43,19 +43,21 @@
 
       <!-- Live genres, not invented example queries: they cannot rot, they cannot
            land on the not-found screen, and TmdbService.getGenres() is shareReplay
-           cached and already fetched by the navbar. Mobile is a one-row scroller
-           that bleeds to the screen edge (the same gesture as the People row
-           below); sm:+ wraps inside the rail. -->
+           cached and already fetched by the navbar. Every genre is shown as a
+           coloured tile in a wrapping grid (no horizontal scroller); the colour
+           follows the genre's character, see utils/genre-style.ts. This grid is
+           also the only genre entry point on mobile (there is no Genres tab). -->
       @if (!hasQuery && genres.length > 0) {
-        <div class="-mx-6 mt-5 flex gap-2 overflow-x-auto px-6 pb-1 scrollbar-hide sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0"
+        <div class="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5"
           role="group" aria-label="Browse by genre">
           @for (genre of genres; track genre.id) {
             <a [routerLink]="['/genre', genre.id]"
-              class="inline-flex h-11 flex-none items-center rounded-lg bg-white/5 px-4 text-sm font-medium text-gray-200
-                     ring-1 ring-inset ring-white/10 transition-colors duration-150
-                     hover:bg-indigo-600 hover:text-white hover:ring-indigo-500
-                     focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400
-                     motion-reduce:transition-none sm:h-9 sm:px-3.5">
+              class="flex h-16 items-center justify-center rounded-xl bg-gradient-to-br px-3 text-center text-sm font-semibold text-white
+                     ring-1 ring-inset ring-white/10 transition-transform duration-150
+                     hover:scale-[1.03] active:scale-95
+                     focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white
+                     motion-reduce:transition-none motion-reduce:hover:scale-100 motion-reduce:active:scale-100"
+              [class]="genreGradient(genre.id)">
               {{ genre.name }}
             </a>
           }

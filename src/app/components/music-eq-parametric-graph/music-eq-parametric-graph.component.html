@@ -1,0 +1,42 @@
+<div class="relative rounded-2xl border border-white/10 bg-white/5 p-2">
+  <canvas #cv tabindex="0" role="application" aria-label="Parametric equalizer graph" aria-describedby="music-eq-graph-help"
+    class="block h-56 w-full touch-none select-none rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 sm:h-64"
+    (pointerdown)="onPointerDown($event)" (pointermove)="onPointerMove($event)" (pointerup)="onPointerUp($event)"
+    (pointercancel)="onPointerUp($event)" (contextmenu)="onContextMenu($event)" (keydown)="onKeydown($event)"></canvas>
+  <p id="music-eq-graph-help" class="px-2 pb-1 pt-2 text-xs text-gray-400">
+    Drag a node for frequency and gain, scroll over it for Q, long-press or right-click for options. Keyboard: [ ] pick a band, arrows move it, Page Up/Down change Q, Enter opens options.
+  </p>
+  <p class="sr-only" aria-live="polite">{{ summary() }}</p>
+</div>
+
+@if (menu(); as m) {
+  <div #menuEl role="menu" aria-label="Band options" (keydown)="onMenuKeydown($event)"
+    class="fixed z-[60] w-56 rounded-xl border border-white/10 bg-[#121212]/95 p-1 text-sm text-white shadow-xl backdrop-blur-md"
+    [style.left.px]="m.x" [style.top.px]="m.y">
+    <p class="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-gray-400">Filter type</p>
+    @for (t of types; track t.id) {
+      <button type="button" role="menuitemradio" [attr.aria-checked]="menuBand()?.type === t.id" (click)="setType(t.id)"
+        class="flex h-10 w-full items-center justify-between rounded-lg px-3 text-left hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+        {{ t.label }}
+        @if (menuBand()?.type === t.id) { <span class="text-indigo-400" aria-hidden="true">&#10003;</span> }
+      </button>
+    }
+    <p class="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-gray-400">Channel</p>
+    @for (c of channels; track c.id) {
+      <button type="button" role="menuitemradio" [attr.aria-checked]="menuBand()?.channel === c.id" (click)="setChannel(c.id)"
+        class="flex h-10 w-full items-center justify-between rounded-lg px-3 text-left hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+        {{ c.label }}
+        @if (menuBand()?.channel === c.id) { <span class="text-indigo-400" aria-hidden="true">&#10003;</span> }
+      </button>
+    }
+    <div class="my-1 border-t border-white/10"></div>
+    <button type="button" role="menuitem" (click)="resetGain()"
+      class="flex h-10 w-full items-center rounded-lg px-3 text-left hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Reset gain to 0 dB</button>
+    @if (allowRemove()) {
+      <button type="button" role="menuitem" (click)="removeBand()"
+        class="flex h-10 w-full items-center rounded-lg px-3 text-left text-amber-400 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Remove band</button>
+    }
+    <button type="button" role="menuitem" (click)="closeMenu()"
+      class="flex h-10 w-full items-center rounded-lg px-3 text-left text-gray-400 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Close</button>
+  </div>
+}

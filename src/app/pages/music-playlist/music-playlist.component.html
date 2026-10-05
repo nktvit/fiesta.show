@@ -1,0 +1,113 @@
+<main class="flex-grow bg-[#0a0a0a] text-white">
+  <app-navbar [showSearchBox]="false" [transparent]="false"></app-navbar>
+  <app-music-subnav />
+
+  <div class="px-4 py-8 md:px-12 lg:px-16">
+    <a routerLink="/music" class="mb-6 inline-block text-sm text-gray-400 hover:text-white">&larr; Music</a>
+    @switch (status()) {
+      @case ('loading') {
+        <div class="flex flex-col gap-6 sm:flex-row" aria-busy="true" aria-label="Loading playlist">
+          <div class="aspect-square w-56 animate-pulse rounded bg-white/5 motion-reduce:animate-none"></div>
+          <div class="h-40 flex-1 animate-pulse rounded bg-white/5 motion-reduce:animate-none"></div>
+        </div>
+      }
+      @case ('missing') {
+        <h1 class="mb-2 text-2xl font-bold md:text-3xl">Playlist not available</h1>
+        <p class="text-sm text-amber-400">This playlist isn't available. It may have been removed.</p>
+      }
+      @case ('error') {
+        <h1 class="mb-2 text-2xl font-bold md:text-3xl">Playlist</h1>
+        <p class="text-sm text-amber-400">Couldn't load this playlist. Try again in a moment.</p>
+      }
+      @case ('done') {
+        @if (playlist(); as p) {
+          <div class="mb-8 flex flex-col gap-6 sm:flex-row sm:items-end" data-testid="playlist-header">
+            @if (p.cover) {
+              <img [src]="p.cover" alt="" width="224" height="224" class="aspect-square w-56 rounded bg-gray-800 object-cover shadow-xl" />
+            } @else {
+              <div class="flex aspect-square w-56 items-center justify-center rounded bg-gray-800 text-gray-500">
+                <svg class="h-12 w-12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M3 6h12M3 12h8M3 18h8M17 14v6M14 17h6" /></svg>
+              </div>
+            }
+            <div class="min-w-0">
+              <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Playlist</p>
+              <h1 class="my-1 text-2xl font-bold md:text-4xl">{{ p.title }}</h1>
+              @if (p.description) {
+                <p class="mb-1 line-clamp-3 max-w-2xl text-sm text-gray-300" [title]="p.description">{{ p.description }}</p>
+              }
+              <p class="text-sm text-gray-400">
+                @if (p.creator) { <span class="text-gray-300">{{ p.creator }}</span> · }
+                {{ total() || tracks().length }} songs, {{ duration(totalSeconds()) }}
+              </p>
+              <div class="mt-4 flex flex-wrap items-center gap-2">
+                <button type="button" (click)="playAll()" [disabled]="!tracks().length"
+                  class="inline-flex h-11 items-center gap-2 rounded-full bg-indigo-600 px-6 text-sm font-semibold text-white hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50">
+                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" /></svg>
+                  Play
+                </button>
+                <button type="button" (click)="shuffleAll()" [disabled]="!tracks().length"
+                  class="inline-flex h-11 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-5 text-sm font-medium text-white hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50">
+                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5" /></svg>
+                  Shuffle
+                </button>
+                @if (item(); as it) {
+                  <app-music-like-button [item]="it" />
+                }
+                <button type="button" (click)="saveCopy()" [disabled]="saving() || !tracks().length"
+                  class="inline-flex h-11 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-5 text-sm font-medium text-white hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50">
+                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V6a2 2 0 0 1 2-2h9" /></svg>
+                  {{ saving() ? 'Saving...' : 'Save a copy' }}
+                </button>
+                <button type="button" (click)="addToPlaylist()" aria-label="Add playlist to another playlist" title="Add to playlist" [disabled]="!tracks().length"
+                  class="flex h-11 w-11 items-center justify-center rounded-full text-gray-300 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50">
+                  <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M3 6h12M3 12h8M3 18h8M17 14v6M14 17h6" /></svg>
+                </button>
+                <button type="button" (click)="share()" aria-label="Share playlist" title="Share"
+                  class="flex h-11 w-11 items-center justify-center rounded-full text-gray-300 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+                  <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3M7 8l5-5 5 5M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5" /></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="mb-6 max-w-4xl" data-testid="playlist-tracks">
+            @for (t of tracks(); track t.id; let i = $index) {
+              <app-music-track-row [track]="t" [queue]="tracks()" [number]="i + 1"></app-music-track-row>
+            } @empty {
+              <p class="text-sm text-gray-400">No songs we can play in this playlist right now.</p>
+            }
+          </div>
+
+          @if (hasMore()) {
+            <div class="mb-10 flex max-w-4xl justify-center">
+              <button type="button" (click)="loadMore()" [disabled]="busy()"
+                class="h-11 rounded-full border border-white/10 bg-white/5 px-6 text-sm font-medium text-white hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-60">
+                {{ busy() ? 'Loading...' : 'Load more songs' }}
+              </button>
+            </div>
+          }
+
+          @if (recsStatus() === 'loading') {
+            <section class="mb-10 max-w-4xl" aria-busy="true" aria-label="Loading recommended songs">
+              <h2 class="mb-3 text-lg font-semibold">Recommended songs</h2>
+              @for (_ of [1,2,3]; track $index) {
+                <div class="mb-2 h-14 animate-pulse rounded-lg bg-white/5 motion-reduce:animate-none"></div>
+              }
+            </section>
+          } @else if (visibleRecs().length) {
+            <section class="mb-10 max-w-4xl" aria-label="Recommended songs" data-testid="playlist-recs">
+              <div class="mb-3 flex items-center gap-2">
+                <h2 class="flex-1 text-lg font-semibold">Recommended songs</h2>
+                <button type="button" (click)="loadRecs()"
+                  class="rounded-full px-3 py-2 text-sm text-gray-400 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Refresh</button>
+              </div>
+              @for (t of visibleRecs(); track t.id) {
+                <app-music-track-row [track]="t" [queue]="visibleRecs()"></app-music-track-row>
+              }
+            </section>
+          }
+        }
+      }
+    }
+  </div>
+</main>

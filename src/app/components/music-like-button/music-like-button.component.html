@@ -1,0 +1,8 @@
+<button type="button" (click)="toggle($event)"
+  [attr.aria-pressed]="liked()" [attr.aria-label]="liked() ? 'Unlike' : 'Like'" [title]="(liked() ? 'Unlike ' : 'Like ') + name()"
+  class="flex items-center justify-center rounded-full hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+  [class]="size() === 'sm' ? 'h-10 w-10' : 'h-11 w-11'"
+  [class.text-indigo-400]="liked()" [class.text-gray-400]="!liked()">
+  <svg class="transition-transform duration-150 motion-reduce:transition-none" [class]="(size() === 'sm' ? 'h-4 w-4' : 'h-5 w-5') + (pop() ? ' scale-125' : '')"
+    viewBox="0 0 24 24" [attr.fill]="liked() ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><path d="M12 20.5s-7.5-4.6-9.3-9.2C1.4 8 3.4 4.5 7 4.5c2 0 3.5 1.1 5 3 1.5-1.9 3-3 5-3 3.6 0 5.6 3.5 4.3 6.8-1.8 4.6-9.3 9.2-9.3 9.2z" /></svg>
+</button>

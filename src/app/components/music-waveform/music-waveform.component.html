@@ -1,0 +1,8 @@
+@if (path(); as d) {
+  <svg class="absolute inset-0 h-full w-full" viewBox="0 0 1000 100" preserveAspectRatio="none" aria-hidden="true" focusable="false" data-waveform="rest">
+    <path [attr.d]="d" class="fill-white/15" />
+  </svg>
+  <svg class="absolute inset-0 h-full w-full" viewBox="0 0 1000 100" preserveAspectRatio="none" aria-hidden="true" focusable="false" data-waveform="played" [style.clip-path]="clip()">
+    <path [attr.d]="d" class="fill-indigo-400/60" />
+  </svg>
+}

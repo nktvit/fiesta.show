@@ -1,0 +1,80 @@
+<section id="setting-lyrics" aria-labelledby="music-settings-lyrics-title" class="space-y-8">
+  <div>
+    <h2 id="music-settings-lyrics-title" class="text-lg font-semibold">Lyrics</h2>
+    <p class="mt-1 text-sm text-gray-400">Lyrics are looked up from the sources below when you open the lyrics panel. Nothing is sent until then.</p>
+  </div>
+
+  <fieldset class="space-y-1">
+    <legend class="mb-2 text-sm font-semibold text-gray-200">Sources</legend>
+    <p class="mb-3 text-xs text-gray-400">Tried in this order; the first good match wins. Lyrics files added to the site always come first.</p>
+    @for (p of providers; track p.id) {
+      <label class="flex min-h-[2.75rem] cursor-pointer items-center justify-between gap-4 rounded-lg border border-white/10 bg-white/5 px-4 py-2">
+        <span class="min-w-0">
+          <span class="block text-sm text-white">{{ p.label }}</span>
+          <span class="block truncate text-xs text-gray-400" [title]="p.hint">{{ p.hint }}</span>
+        </span>
+        <input type="checkbox" role="switch" [attr.name]="'lyrics-provider-' + p.id" [checked]="providerOn(p.id)"
+          (change)="setProvider(p.id, $any($event.target).checked)" [attr.aria-label]="'Use ' + p.label"
+          class="h-5 w-5 flex-shrink-0 accent-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" />
+      </label>
+    }
+  </fieldset>
+
+  <fieldset class="space-y-1">
+    <legend class="mb-2 text-sm font-semibold text-gray-200">Defaults</legend>
+    <label class="flex min-h-[2.75rem] cursor-pointer items-center justify-between gap-4 rounded-lg border border-white/10 bg-white/5 px-4 py-2">
+      <span class="min-w-0">
+        <span class="block text-sm text-white">Romanize by default</span>
+        <span class="block text-xs text-gray-400">Show a Latin-script line under lyrics in other scripts.</span>
+      </span>
+      <input type="checkbox" role="switch" name="lyrics-romanize" [checked]="prefs().romanize" (change)="set('romanize', $any($event.target).checked)"
+        class="h-5 w-5 flex-shrink-0 accent-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" />
+    </label>
+    <label class="flex min-h-[2.75rem] cursor-pointer items-center justify-between gap-4 rounded-lg border border-white/10 bg-white/5 px-4 py-2">
+      <span class="min-w-0">
+        <span class="block text-sm text-white">Translate by default</span>
+        <span class="block text-xs text-gray-400">Show a translation under each line.</span>
+      </span>
+      <input type="checkbox" role="switch" name="lyrics-translate" [checked]="prefs().translate" (change)="set('translate', $any($event.target).checked)"
+        class="h-5 w-5 flex-shrink-0 accent-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" />
+    </label>
+    <label class="flex min-h-[2.75rem] items-center justify-between gap-4 rounded-lg border border-white/10 bg-white/5 px-4 py-2">
+      <span class="text-sm text-white">Translate into</span>
+      <select name="lyrics-target-language" [value]="prefs().targetLang" (change)="setLanguage($any($event.target).value)"
+        class="h-10 max-w-[12rem] rounded-full border border-white/10 bg-white/5 px-3 text-sm text-gray-200 focus:border-indigo-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+        @for (l of languages; track l.code) {
+          <option [value]="l.code" [selected]="l.code === prefs().targetLang" class="bg-[#121212]">{{ l.name }}</option>
+        }
+      </select>
+    </label>
+    <p class="pt-1 text-xs text-gray-400">Translation and romanization use Google Translate; Japanese Romaji is made on your device.</p>
+  </fieldset>
+
+  <fieldset class="space-y-1">
+    <legend class="mb-2 text-sm font-semibold text-gray-200">Display</legend>
+    <label class="flex min-h-[2.75rem] cursor-pointer items-center justify-between gap-4 rounded-lg border border-white/10 bg-white/5 px-4 py-2">
+      <span class="min-w-0">
+        <span class="block text-sm text-white">Karaoke word highlighting</span>
+        <span class="block text-xs text-gray-400">Light up each word as it is sung, when the source has word timing.</span>
+      </span>
+      <input type="checkbox" role="switch" name="lyrics-karaoke" [checked]="prefs().karaoke" (change)="set('karaoke', $any($event.target).checked)"
+        class="h-5 w-5 flex-shrink-0 accent-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" />
+    </label>
+    <label class="flex min-h-[2.75rem] cursor-pointer items-center justify-between gap-4 rounded-lg border border-white/10 bg-white/5 px-4 py-2">
+      <span class="min-w-0">
+        <span class="block text-sm text-white">Blur lines that are not playing</span>
+        <span class="block text-xs text-gray-400">Off automatically when Reduce blur is on in Interface.</span>
+      </span>
+      <input type="checkbox" role="switch" name="lyrics-blur" [checked]="prefs().blur" (change)="set('blur', $any($event.target).checked)"
+        class="h-5 w-5 flex-shrink-0 accent-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" />
+    </label>
+    <label class="flex min-h-[2.75rem] cursor-pointer items-center justify-between gap-4 rounded-lg border border-white/10 bg-white/5 px-4 py-2">
+      <span class="min-w-0">
+        <span class="block text-sm text-white">Hide lines already sung</span>
+        <span class="block text-xs text-gray-400">Fade out earlier lines as the song moves on.</span>
+      </span>
+      <input type="checkbox" role="switch" name="lyrics-hide-played" [checked]="prefs().hidePlayed" (change)="set('hidePlayed', $any($event.target).checked)"
+        class="h-5 w-5 flex-shrink-0 accent-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" />
+    </label>
+  </fieldset>
+</section>

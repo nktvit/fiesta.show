@@ -1,0 +1,77 @@
+{
+  "_comment": "Editors picks for the Music home. Owner-curated: each entry is a TIDAL album (kind album, id) or playlist (kind playlist, uuid) with the fields the cards show (title, cover, ...). Edit freely.",
+  "picks": [
+    {
+      "kind": "album",
+      "id": 58990510,
+      "title": "OK Computer",
+      "artist": "Radiohead",
+      "artistId": 64518,
+      "year": "1997",
+      "cover": "https://resources.tidal.com/images/e77e4cc0/6cd0/4522/807d/88aeac488065/640x640.jpg",
+      "tracks": 12,
+      "duration": 3216,
+      "quality": "LOSSLESS"
+    },
+    {
+      "kind": "album",
+      "id": 68714459,
+      "title": "Rumours",
+      "artist": "Fleetwood Mac",
+      "artistId": 1134,
+      "year": "1977",
+      "cover": "https://resources.tidal.com/images/69e3c5f7/d5d2/49b5/93e4/ebda7d36eabd/640x640.jpg",
+      "tracks": 11,
+      "duration": 2391,
+      "quality": "LOSSLESS"
+    },
+    {
+      "kind": "album",
+      "id": 47696788,
+      "title": "Currents",
+      "artist": "Tame Impala",
+      "artistId": 3736815,
+      "year": "2015",
+      "cover": "https://resources.tidal.com/images/76fba1fe/8178/485d/8490/b0112729fac2/640x640.jpg",
+      "tracks": 13,
+      "duration": 3072,
+      "quality": "LOSSLESS"
+    },
+    {
+      "kind": "album",
+      "id": 20115556,
+      "title": "Random Access Memories",
+      "artist": "Daft Punk",
+      "artistId": 8847,
+      "year": "2013",
+      "cover": "https://resources.tidal.com/images/b66a5c40/c34d/4507/a0dc/5f98e46fdd20/640x640.jpg",
+      "tracks": 13,
+      "duration": 4479,
+      "quality": "LOSSLESS"
+    },
+    {
+      "kind": "album",
+      "id": 161314,
+      "title": "Mezzanine",
+      "artist": "Massive Attack",
+      "artistId": 9056,
+      "year": "1998",
+      "cover": "https://resources.tidal.com/images/be99cdda/5b02/41c6/8396/7b793478f2e1/640x640.jpg",
+      "tracks": 11,
+      "duration": 3823,
+      "quality": "LOSSLESS"
+    },
+    {
+      "kind": "album",
+      "id": 35470507,
+      "title": "good kid, m.A.A.d city (Deluxe)",
+      "artist": "Kendrick Lamar",
+      "artistId": 3816041,
+      "year": "2012",
+      "cover": "https://resources.tidal.com/images/04daaeea/056e/44eb/bc7f/e8ecc5d6dfd5/640x640.jpg",
+      "tracks": 16,
+      "duration": 5270,
+      "quality": "LOSSLESS"
+    }
+  ]
+}

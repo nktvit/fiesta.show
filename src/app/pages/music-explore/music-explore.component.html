@@ -1,0 +1,83 @@
+<main class="flex-grow bg-[#0a0a0a] text-white">
+  <app-navbar [showSearchBox]="false" [transparent]="false"></app-navbar>
+  <app-music-subnav />
+
+  <div class="px-4 py-8 md:px-12 lg:px-16">
+    @if (page()) {
+      <a routerLink="/music/explore" class="mb-4 inline-block text-sm text-gray-400 hover:text-white">&larr; Explore</a>
+    }
+    <h1 class="mb-6 text-2xl font-bold md:text-3xl">{{ heading() }}</h1>
+
+    @switch (status()) {
+      @case ('loading') {
+        <div aria-busy="true" aria-label="Loading explore">
+          <div class="mb-3 h-6 w-40 animate-pulse rounded bg-white/5 motion-reduce:animate-none"></div>
+          <div class="mb-8 flex flex-wrap gap-2">
+            @for (_ of [1,2,3,4,5,6,7,8,9,10]; track $index) {
+              <div class="h-10 w-28 animate-pulse rounded-full bg-white/5 motion-reduce:animate-none"></div>
+            }
+          </div>
+          <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+            @for (_ of [1,2,3,4,5,6]; track $index) {
+              <div class="aspect-square animate-pulse rounded bg-white/5 motion-reduce:animate-none"></div>
+            }
+          </div>
+        </div>
+      }
+      @case ('unavailable') {
+        <div data-testid="explore-unavailable" class="max-w-xl rounded-lg border border-white/10 bg-white/5 p-6">
+          <p class="mb-1 text-sm font-medium text-amber-400">Explore isn't available right now.</p>
+          <p class="text-sm text-gray-400">Genres and moods couldn't be loaded. Search for something instead, or try again in a moment.</p>
+          <a routerLink="/music" class="mt-4 inline-flex h-10 items-center rounded-full bg-indigo-600 px-5 text-sm font-semibold text-white hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Back to Music</a>
+        </div>
+      }
+      @case ('done') {
+        @for (s of shelves(); track $index) {
+          @switch (s.kind) {
+            @case ('links') {
+              <section class="mb-8" [attr.aria-label]="s.title || 'Browse'">
+                @if (s.title) { <h2 class="mb-3 text-lg font-semibold">{{ s.title }}</h2> }
+                <ul class="flex flex-wrap gap-2">
+                  @for (l of s.items; track l.path) {
+                    <li>
+                      <a routerLink="/music/explore" [queryParams]="{ page: l.path }"
+                        class="inline-flex min-h-10 items-center rounded-full border border-white/10 bg-white/5 px-4 text-sm text-gray-200 hover:border-indigo-400 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{{ l.title }}</a>
+                    </li>
+                  }
+                </ul>
+              </section>
+            }
+            @case ('albums') {
+              <app-music-rail [title]="s.title || 'Albums'">
+                @for (a of s.items; track a.id) { <app-music-album-card [album]="a" /> }
+              </app-music-rail>
+            }
+            @case ('artists') {
+              <app-music-rail [title]="s.title || 'Artists'">
+                @for (a of s.items; track a.id) { <app-music-artist-card [artist]="a" /> }
+              </app-music-rail>
+            }
+            @case ('playlists') {
+              <app-music-rail [title]="s.title || 'Playlists'">
+                @for (p of s.items; track p.uuid) { <app-music-playlist-card [playlist]="p" /> }
+              </app-music-rail>
+            }
+            @case ('mixes') {
+              <app-music-rail [title]="s.title || 'Mixes'">
+                @for (m of s.items; track m.id) { <app-music-playlist-card [playlist]="m" /> }
+              </app-music-rail>
+            }
+            @case ('tracks') {
+              <section class="mb-8 max-w-4xl" [attr.aria-label]="s.title || 'Songs'">
+                <h2 class="mb-3 text-lg font-semibold">{{ s.title || 'Songs' }}</h2>
+                @for (t of s.items; track t.id) {
+                  <app-music-track-row [track]="t" [queue]="s.items"></app-music-track-row>
+                }
+              </section>
+            }
+          }
+        }
+      }
+    }
+  </div>
+</main>

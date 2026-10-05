@@ -1,0 +1,51 @@
+<app-music-dialog [title]="editing() ? 'Edit playlist' : 'New playlist'" [(open)]="open" size="md">
+  <form (submit)="$event.preventDefault(); save()" class="space-y-4" id="music-playlist-editor-form">
+    <div>
+      <label for="mpe-name" class="mb-1 block text-xs font-medium text-gray-400">Name</label>
+      <input id="mpe-name" type="text" name="name" [ngModel]="name" (ngModelChange)="onName($event)" maxlength="100" required placeholder="My playlist"
+        class="h-11 w-full rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-white placeholder-gray-500 focus:border-indigo-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" />
+      @if (touched() && !nameValue().trim()) {
+        <p class="mt-1 text-xs text-amber-400" role="alert">A name is required.</p>
+      }
+    </div>
+    <div>
+      <label for="mpe-desc" class="mb-1 block text-xs font-medium text-gray-400">Description</label>
+      <textarea id="mpe-desc" name="description" [(ngModel)]="description" maxlength="300" rows="3" placeholder="Optional"
+        class="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-indigo-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"></textarea>
+    </div>
+    <div>
+      <label for="mpe-cover" class="mb-1 block text-xs font-medium text-gray-400">Cover image URL</label>
+      <div class="flex items-center gap-3">
+        @if (cover()) {
+          <img [src]="cover()" alt="" width="56" height="56" class="h-14 w-14 flex-shrink-0 rounded bg-gray-800 object-cover" />
+        }
+        <input id="mpe-cover" type="url" name="cover" [value]="coverIsData() ? '' : cover()" (input)="setCoverUrl($any($event.target).value)"
+          [placeholder]="coverIsData() ? 'Using an uploaded image' : 'https://...'" inputmode="url"
+          class="h-11 min-w-0 flex-1 rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-white placeholder-gray-500 focus:border-indigo-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" />
+      </div>
+      <div class="mt-2 flex flex-wrap gap-2">
+        <label class="inline-flex h-10 cursor-pointer items-center rounded-full bg-white/5 px-4 text-xs font-medium text-gray-300 hover:text-white focus-within:ring-2 focus-within:ring-indigo-400">
+          Upload image
+          <input type="file" accept="image/*" class="sr-only" aria-label="Upload cover image" (change)="onFile($event)" />
+        </label>
+        @if (canCollage()) {
+          <button type="button" (click)="useCollage()" [disabled]="busy()"
+            class="inline-flex h-10 items-center rounded-full bg-white/5 px-4 text-xs font-medium text-gray-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50">Use collage</button>
+        }
+        @if (cover()) {
+          <button type="button" (click)="cover.set('')"
+            class="inline-flex h-10 items-center rounded-full bg-white/5 px-4 text-xs font-medium text-gray-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Remove cover</button>
+        }
+      </div>
+      @if (error()) {
+        <p class="mt-2 text-xs text-amber-400" role="alert">{{ error() }}</p>
+      }
+    </div>
+  </form>
+  <div dialogFooter class="flex justify-end gap-2 px-5 pb-4 pt-2">
+    <button type="button" (click)="open.set(false)"
+      class="h-11 rounded-full bg-white/5 px-5 text-sm text-gray-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Cancel</button>
+    <button type="submit" form="music-playlist-editor-form" [disabled]="busy()"
+      class="h-11 rounded-full bg-indigo-600 px-5 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50">{{ editing() ? 'Save' : 'Create' }}</button>
+  </div>
+</app-music-dialog>

@@ -1,0 +1,94 @@
+<section id="setting-downloads" aria-labelledby="music-settings-downloads-title" class="space-y-8">
+  <div>
+    <h2 id="music-settings-downloads-title" class="text-lg font-semibold">Downloads</h2>
+    <p class="mt-1 text-sm text-gray-400">Save tracks and albums as files. Lossless tracks become real .flac files with tags and cover art.</p>
+  </div>
+
+  @if (!downloads.enabled()) {
+    <p class="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-amber-400" data-downloads-off>Downloads are turned off on this site.</p>
+  } @else {
+    <fieldset class="space-y-1">
+      <legend class="mb-2 text-sm font-semibold text-gray-200">Quality</legend>
+      <div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Download quality">
+        @for (q of qualities; track q.id) {
+          <button type="button" role="radio" [attr.aria-checked]="prefs().quality === q.id" (click)="setQuality(q.id)" [attr.data-quality]="q.id" [title]="q.hint"
+            class="h-10 rounded-full px-4 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+            [class]="prefs().quality === q.id ? 'bg-white text-black' : 'bg-white/5 text-gray-300 hover:bg-white/10'">{{ q.label }}</button>
+        }
+      </div>
+      <p class="pt-1 text-xs text-gray-400">{{ qualityHint() }}. Without a signed-in TIDAL account tracks are 30 second previews.</p>
+    </fieldset>
+
+    <fieldset class="space-y-3">
+      <legend class="mb-2 text-sm font-semibold text-gray-200">File names</legend>
+      <p class="text-xs text-gray-400">Tokens: @for (t of tokens; track t) { <code class="mr-1 rounded bg-white/10 px-1">{{ t }}</code> } Use / to make folders.</p>
+      <label class="block">
+        <span class="mb-1 block text-sm text-white">Single track</span>
+        <input type="text" name="download-track-template" [value]="prefs().trackTemplate" (change)="setTemplate('trackTemplate', $any($event.target).value)" spellcheck="false" autocomplete="off"
+          class="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-white focus:border-indigo-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" />
+        <span class="mt-1 block truncate text-xs text-gray-400" data-preview-track [title]="trackPreview()">Preview: {{ trackPreview() }}</span>
+      </label>
+      <label class="block">
+        <span class="mb-1 block text-sm text-white">Inside an album, playlist or ZIP</span>
+        <input type="text" name="download-bulk-template" [value]="prefs().bulkTemplate" (change)="setTemplate('bulkTemplate', $any($event.target).value)" spellcheck="false" autocomplete="off"
+          class="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-white focus:border-indigo-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" />
+        <span class="mt-1 block truncate text-xs text-gray-400" data-preview-bulk [title]="bulkPreview()">Preview: {{ bulkPreview() }}</span>
+      </label>
+    </fieldset>
+
+    <fieldset class="space-y-1">
+      <legend class="mb-2 text-sm font-semibold text-gray-200">Albums and playlists</legend>
+      <div class="flex flex-wrap gap-2" role="radiogroup" aria-label="How albums are saved">
+        <button type="button" role="radio" [attr.aria-checked]="prefs().bulkMode === 'zip'" (click)="setBulkMode('zip')" data-bulk-mode="zip"
+          class="h-10 rounded-full px-4 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+          [class]="prefs().bulkMode === 'zip' ? 'bg-white text-black' : 'bg-white/5 text-gray-300 hover:bg-white/10'">One ZIP file</button>
+        <button type="button" role="radio" [attr.aria-checked]="prefs().bulkMode === 'files'" (click)="setBulkMode('files')" data-bulk-mode="files"
+          class="h-10 rounded-full px-4 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+          [class]="prefs().bulkMode === 'files' ? 'bg-white text-black' : 'bg-white/5 text-gray-300 hover:bg-white/10'">Separate files</button>
+      </div>
+      @if (prefs().bulkMode === 'files' && !prefs().saveToFolder) {
+        <p class="pt-1 text-xs text-amber-400">Your browser may ask to allow several downloads at once. Saving to a folder avoids that.</p>
+      }
+    </fieldset>
+
+    <fieldset class="space-y-1">
+      <legend class="mb-2 text-sm font-semibold text-gray-200">Extra files in album downloads</legend>
+      @for (s of sidecarRows; track s.id) {
+        <app-music-setting-row [id]="'dl-sidecar-' + s.id" [label]="s.label" [description]="s.hint" kind="switch"
+          [checked]="prefs().sidecars[s.id]" (checkedChange)="setSidecar(s.id, $event)" />
+      }
+      <app-music-setting-row id="dl-lyrics-sidecar" label="Lyrics file" description="A .lrc (or .ttml) file next to each track, when lyrics are found.">
+        <select name="download-lyrics-sidecar" aria-label="Lyrics file format" [value]="prefs().lyricsSidecar" (change)="setLyricsSidecar($any($event.target).value)"
+          class="h-10 rounded-lg border border-white/10 bg-[#121212] px-3 text-white focus:border-indigo-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+          <option value="off">Off</option>
+          <option value="lrc">LRC</option>
+          <option value="ttml">TTML</option>
+        </select>
+      </app-music-setting-row>
+    </fieldset>
+
+    <fieldset class="space-y-1">
+      <legend class="mb-2 text-sm font-semibold text-gray-200">Tags</legend>
+      <app-music-setting-row id="dl-embed-cover" label="Embed cover art" description="Put the cover inside each file." kind="switch"
+        [checked]="prefs().embedCover" (checkedChange)="setFlag('embedCover', $event)" />
+      <app-music-setting-row id="dl-embed-lyrics" label="Embed lyrics" description="Put the lyrics inside each file when they are found." kind="switch"
+        [checked]="prefs().embedLyrics" (checkedChange)="setFlag('embedLyrics', $event)" />
+    </fieldset>
+
+    @if (folderSupported) {
+      <fieldset class="space-y-1">
+        <legend class="mb-2 text-sm font-semibold text-gray-200">Save to folder</legend>
+        <app-music-setting-row id="dl-save-folder" label="Write straight into a folder" kind="switch" [disabled]="!folder()"
+          [description]="folder() ? 'Folder: ' + folder() : 'Choose a folder first.'" [checked]="prefs().saveToFolder && !!folder()" (checkedChange)="setFlag('saveToFolder', $event)" />
+        <div class="flex flex-wrap gap-2 px-3">
+          <button type="button" (click)="chooseFolder()" data-choose-folder
+            class="h-10 rounded-full bg-indigo-600 px-4 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{{ folder() ? 'Change folder' : 'Choose folder' }}</button>
+          @if (folder()) {
+            <button type="button" (click)="clearFolder()"
+              class="h-10 rounded-full bg-white/5 px-4 text-sm text-gray-300 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Forget folder</button>
+          }
+        </div>
+      </fieldset>
+    }
+  }
+</section>

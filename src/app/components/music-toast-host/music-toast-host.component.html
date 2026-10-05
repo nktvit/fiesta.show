@@ -1,0 +1,23 @@
+<div role="status" aria-live="polite" aria-atomic="false"
+  class="pointer-events-none fixed inset-x-0 z-[70] flex flex-col items-center gap-2 px-4"
+  [class]="player.track()
+    ? 'bottom-[calc(8rem+env(safe-area-inset-bottom,0px))] sm:bottom-24'
+    : 'bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] sm:bottom-6'">
+  @for (t of toast.toasts(); track t.id) {
+    <div class="pointer-events-auto flex w-full max-w-md items-center gap-3 rounded-lg border border-white/10 bg-[#1f1f1f]/95 px-4 py-2 text-sm shadow-xl"
+      [class.backdrop-blur-md]="!settings.reduceBlur()">
+      @if (t.tone === 'warn') {
+        <svg class="h-5 w-5 flex-shrink-0 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" /></svg>
+      }
+      <p class="min-w-0 flex-1 py-1" [class.text-amber-400]="t.tone === 'warn'" [class.text-white]="t.tone !== 'warn'">{{ t.message }}</p>
+      @if (t.action; as a) {
+        <button type="button" (click)="toast.act(t.id)"
+          class="h-10 flex-shrink-0 rounded-full px-3 text-sm font-semibold text-indigo-400 hover:bg-white/10 hover:text-indigo-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{{ a.label }}</button>
+      }
+      <button type="button" (click)="toast.dismiss(t.id)" aria-label="Dismiss"
+        class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
+      </button>
+    </div>
+  }
+</div>

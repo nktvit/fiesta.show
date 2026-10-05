@@ -1,0 +1,60 @@
+<div class="space-y-2" role="group" aria-label="Band controls">
+  <div class="hidden grid-cols-[1.75rem_2.5rem_7rem_6rem_6rem_5rem_6rem_2.5rem] gap-2 px-2 text-[10px] font-semibold uppercase tracking-wide text-gray-400 sm:grid" aria-hidden="true">
+    <span>#</span><span>On</span><span>Type</span><span>Freq (Hz)</span><span>Gain (dB)</span><span>Q</span><span>Channel</span><span></span>
+  </div>
+  @for (b of bands(); track $index) {
+    <div class="grid grid-cols-3 items-end gap-2 rounded-xl border p-3 sm:grid-cols-[1.75rem_2.5rem_7rem_6rem_6rem_5rem_6rem_2.5rem] sm:items-center sm:p-2"
+      [class]="selected() === $index ? 'border-indigo-400/60 bg-white/10' : 'border-white/10 bg-white/5'"
+      [attr.data-band]="$index" (focusin)="selected.set($index)">
+      <span class="text-xs font-semibold tabular-nums text-gray-400 sm:text-center">{{ $index + 1 }}</span>
+      <label class="flex h-10 items-center justify-center">
+        <input type="checkbox" [checked]="b.enabled" (change)="patch($index, { enabled: $any($event.target).checked })"
+          [attr.aria-label]="'Band ' + ($index + 1) + ' enabled'" class="h-5 w-5 accent-indigo-500 focus-visible:ring-2 focus-visible:ring-indigo-400" />
+      </label>
+      <label class="col-span-1 flex flex-col text-[10px] uppercase tracking-wide text-gray-400 sm:contents">
+        <span class="sm:sr-only">Type</span>
+        <select [value]="b.type" (change)="setType($index, $any($event.target).value)" [attr.aria-label]="'Band ' + ($index + 1) + ' type'"
+          class="h-10 rounded-lg border border-white/10 bg-[#121212] px-2 text-sm normal-case tracking-normal text-white focus:border-indigo-400 focus:outline-none">
+          @for (t of types; track t.id) { <option [value]="t.id" [selected]="b.type === t.id">{{ t.label }}</option> }
+        </select>
+      </label>
+      <label class="flex flex-col text-[10px] uppercase tracking-wide text-gray-400 sm:contents">
+        <span class="sm:sr-only">Freq (Hz)</span>
+        <input type="number" inputmode="decimal" min="10" max="22000" step="1" [value]="b.freq" [attr.aria-label]="'Band ' + ($index + 1) + ' frequency (Hz)'"
+          (change)="setNumber($index, 'freq', $any($event.target).value, $any($event.target))"
+          class="h-10 w-full rounded-lg border border-white/10 bg-white/5 px-2 text-sm normal-case tracking-normal text-white focus:border-indigo-400 focus:outline-none" />
+      </label>
+      <label class="flex flex-col text-[10px] uppercase tracking-wide text-gray-400 sm:contents">
+        <span class="sm:sr-only">Gain (dB)</span>
+        <input type="number" inputmode="decimal" min="-24" max="24" step="0.1" [value]="b.gain" [attr.aria-label]="'Band ' + ($index + 1) + ' gain (dB)'"
+          (change)="setNumber($index, 'gain', $any($event.target).value, $any($event.target))"
+          class="h-10 w-full rounded-lg border border-white/10 bg-white/5 px-2 text-sm normal-case tracking-normal text-white focus:border-indigo-400 focus:outline-none" />
+      </label>
+      <label class="flex flex-col text-[10px] uppercase tracking-wide text-gray-400 sm:contents">
+        <span class="sm:sr-only">Q</span>
+        <input type="number" inputmode="decimal" min="0.1" max="20" step="0.05" [value]="b.q" [attr.aria-label]="'Band ' + ($index + 1) + ' Q'"
+          (change)="setNumber($index, 'q', $any($event.target).value, $any($event.target))"
+          class="h-10 w-full rounded-lg border border-white/10 bg-white/5 px-2 text-sm normal-case tracking-normal text-white focus:border-indigo-400 focus:outline-none" />
+      </label>
+      <label class="flex flex-col text-[10px] uppercase tracking-wide text-gray-400 sm:contents">
+        <span class="sm:sr-only">Channel</span>
+        <select [value]="b.channel" (change)="setChannel($index, $any($event.target).value)" [attr.aria-label]="'Band ' + ($index + 1) + ' channel (stereo, mid or side)'"
+          class="h-10 rounded-lg border border-white/10 bg-[#121212] px-2 text-sm normal-case tracking-normal text-white focus:border-indigo-400 focus:outline-none">
+          @for (c of channels; track c.id) { <option [value]="c.id" [selected]="b.channel === c.id">{{ c.label }}</option> }
+        </select>
+      </label>
+      @if (allowRemove()) {
+        <button type="button" (click)="bandRemove.emit($index)" [disabled]="bands().length <= 3" [attr.aria-label]="'Remove band ' + ($index + 1)"
+          class="flex h-10 w-10 items-center justify-center rounded-full text-gray-400 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-30">
+          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+        </button>
+      } @else {
+        <span></span>
+      }
+    </div>
+  }
+  @if (allowAdd()) {
+    <button type="button" (click)="bandAdd.emit()" [disabled]="bands().length >= maxBands()"
+      class="h-10 rounded-full bg-white/5 px-4 text-sm font-medium text-gray-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-40">Add band</button>
+  }
+</div>
