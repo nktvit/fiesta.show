@@ -1,0 +1,6 @@
+<app-music-side-panel title="Lyrics" [open]="ui.panel() === 'lyrics'" (openChange)="!$event && ui.closePanel()">
+  <!-- Only alive while the panel is open: no clock or lookups while it is closed. -->
+  @if (ui.panel() === 'lyrics') {
+    <app-music-lyrics-view mode="panel" />
+  }
+</app-music-side-panel>
