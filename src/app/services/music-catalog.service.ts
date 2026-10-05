@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { Observable } from 'rxjs';
+import { catchError, map, Observable, of } from 'rxjs';
 import { MusicAlbum, MusicArtist, MusicTrack } from './music.service';
 
 /**
@@ -45,6 +45,19 @@ export interface MusicAotyScore {
   userCount?: number;
   mustHear?: boolean;
   url?: string;
+}
+
+/** One artist picture. `credit` (author and licence) is set for Wikimedia Commons photos and must be shown. */
+export interface MusicArtistImage {
+  url: string;
+  w: number;
+  h: number;
+  source: 'tidal' | 'deezer' | 'wikimedia' | 'fanart';
+  /** photo: a picture of the artist; cover: album art (gallery only, never a backdrop). */
+  kind: 'photo' | 'cover';
+  credit?: string;
+  /** Commons file page, for the credit link. */
+  page?: string;
 }
 
 /** An artist bio as plain text; `links` are the albums/artists it mentions, as Fiesta routes. */
@@ -107,6 +120,14 @@ export class MusicCatalogService {
 
   artistLinks(id: number | string): Observable<MusicArtistLink[]> {
     return this.get('artist-links', { id });
+  }
+
+  /** Up to 8 distinct artist pictures from keyless sources; [] when none (never errors). */
+  artistImages(id: number | string): Observable<MusicArtistImage[]> {
+    return this.get<{ images?: MusicArtistImage[] }>('artist-images', { id }).pipe(
+      map((r) => (Array.isArray(r.images) ? r.images : [])),
+      catchError(() => of([] as MusicArtistImage[])),
+    );
   }
 
   /** Album of the Year scores; null when the album isn't listed there. */
