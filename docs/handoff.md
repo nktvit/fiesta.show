@@ -47,6 +47,12 @@ Git worktrees for all of this are under `.claude/worktrees/` (`music-tab`, `merg
   (TIDAL profile art, Deezer exact-name match, Wikimedia Commons via MusicBrainz->Wikidata with credits, album covers), palette from the artist photo, glass
   panels + cross-fading backdrop, wrapping gallery + lightbox, initials fallback on artist cards. Known: Deezer's CDN rate-blocks some IPs (proxy retries,
   client falls back), same-name artists can get the wrong Deezer photo, `FANART_TV_KEY` (free key) would add HD backdrops, real iPhone unverified.
+- **`fix/artist-layout` - MERGED to main (`b780280`, 2026-10-06, user said "go ahead")** and verified live on Radiohead (Chromium + WebKit at 1920x1080,
+  1366x768, 390x844: no Photos section, centred column <= 1400px, first Popular row inside the first viewport, Popular and About side by side, no overflow, no page
+  errors). The artist Photos gallery + lightbox were removed (images still drive the hero backdrop, portrait and palette; Wikimedia credit line stays under the page,
+  40px tap target). Local e2e `tools/e2e/music-artist-glass.mjs` 134/136 (the 2 misses are the WebKit Splin theme checks, flaky locally when Deezer's CDN blocks
+  this IP; the live site themes Splin fine). Note: Radiohead's link buttons include `plus.google.com`, `open.qobuz.com`, `qobuz.com` (qobuz is partly a store) - not
+  filtered yet. Mac gotcha: `timeout` does not exist (exit 127), do not use it to cap commands.
 - **Angular optimisation: DONE, verified, NOT merged** - branch `perf/angular-optimisation` (tip `a228cb3`; merges `perf/build-tests`, `perf/startup-images`,
   `perf/player-page`; audit `docs/angular-refactor-report-2026-10-04.md`). Mergeable with caveats. Items done: #1 BMC widget async after render, #2
   `@angular/animations` removed (67.9 kB lazy chunk gone), #3 hls.js + player listeners outside the zone + OnPush (change-detection ticks over 30 s of playback
