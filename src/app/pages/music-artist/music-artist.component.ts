@@ -5,7 +5,6 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { catchError, EMPTY, firstValueFrom, merge, switchMap, tap } from 'rxjs';
 import { MusicAlbumCardComponent } from '../../components/music-album-card/music-album-card.component';
 import { MusicArtistBackdropComponent } from '../../components/music-artist-backdrop/music-artist-backdrop.component';
-import { MusicArtistGalleryComponent } from '../../components/music-artist-gallery/music-artist-gallery.component';
 import { MusicArtistBioComponent } from '../../components/music-artist-bio/music-artist-bio.component';
 import { MusicArtistCardComponent } from '../../components/music-artist-card/music-artist-card.component';
 import { MusicLikeButtonComponent } from '../../components/music-like-button/music-like-button.component';
@@ -75,7 +74,7 @@ function shuffled<T>(list: T[]): T[] {
   selector: 'app-music-artist',
   imports: [
     NavbarComponent, RouterLink, MusicTrackRowComponent, MusicSubnavComponent, MusicAlbumCardComponent,
-    MusicArtistCardComponent, MusicLikeButtonComponent, MusicArtistBioComponent, MusicArtistBackdropComponent, MusicArtistGalleryComponent,
+    MusicArtistCardComponent, MusicLikeButtonComponent, MusicArtistBioComponent, MusicArtistBackdropComponent,
   ],
   templateUrl: './music-artist.component.html',
 })
@@ -114,8 +113,14 @@ export class MusicArtistComponent {
     const photos = this.images().filter((i) => i.kind === 'photo' && i.source !== 'tidal').map((i) => i.url);
     return [...new Set([...first, ...photos])].slice(0, 3);
   });
-  /** Gallery pictures; a gallery of one is not shown. */
-  readonly gallery = computed(() => (this.images().length >= 2 ? this.images() : []));
+  /** Credit lines for the displayed pictures (backdrop and portrait) that carry a licence, e.g. Wikimedia Commons photos. */
+  protected readonly credits = computed(() => {
+    const shown = new Set([...this.backdropUrls(), this.portrait()]);
+    const seen = new Set<string>();
+    return this.images()
+      .filter((i) => i.credit && shown.has(i.url) && !seen.has(i.credit) && !!seen.add(i.credit))
+      .map((i) => ({ text: i.credit as string, href: i.page || i.url }));
+  });
   protected readonly glassPanel = computed(() => (this.settings.reduceBlur() ? GLASS_PANEL_SOLID : GLASS_PANEL));
   /** Portrait files that failed to load; the next candidate takes over. */
   protected readonly badPortraits = signal<ReadonlySet<string>>(new Set());
