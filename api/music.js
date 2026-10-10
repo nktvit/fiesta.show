@@ -5,7 +5,7 @@
 //   manifest ?id=&quality=     how to play a track: segment list + proxied URLs,
 //                              plus TIDAL's ReplayGain/peak values when present
 //                              (quality: LOW | HIGH | LOSSLESS | HI_RES_LOSSLESS)
-//   seg      ?u=<b64>[&n=]     audio bytes, proxied (TIDAL's CDN 403s a browser Origin)
+//   seg      ?u=<b64>[&n=][&c=1..8]     audio bytes, proxied (TIDAL's CDN 403s a browser Origin)
 //   img      ?u=<b64url>       cover bytes from resources.tidal.com / image.tidal.com
 //                              with CORS, so canvases can read them (dynamic colour,
 //                              visualizer); any other host is a 400
@@ -226,21 +226,75 @@ function segUrl(target) {
   return '/api/music?action=seg&u=' + Buffer.from(target).toString('base64url');
 }
 
+/** Most segments one `seg` call may concatenate (c param) and how many upstream fetches run ahead. */
+const SEG_MAX_COUNT = 8;
+const SEG_PARALLEL = 3;
+
+function segTarget(q, n) {
+  const target = Buffer.from(String(q.u || ''), 'base64url').toString().replace('$Number$', String(n));
+  return isTidalAudioHost(target) ? target : null;
+}
+
 async function seg(q, req, res) {
-  const target = Buffer.from(String(q.u || ''), 'base64url').toString().replace('$Number$', String(+q.n || 0));
-  if (!isTidalAudioHost(target)) return res.status(400).json({ error: 'bad_target' });
-  const headers = {};
-  if (req.headers.range) headers.Range = req.headers.range;
-  const r = await fetch(target, { headers });
-  if (!r.ok && r.status !== 206) return res.status(r.status === 404 ? 404 : 502).json({ error: 'upstream_' + r.status });
-  for (const h of ['content-type', 'content-range', 'accept-ranges']) {
-    const v = r.headers.get(h);
-    if (v) res.setHeader(h, v);
-  }
+  const n0 = +q.n || 0;
+  const c = Math.min(SEG_MAX_COUNT, Math.max(1, Math.floor(+q.c) || 1));
+  if (!segTarget(q, n0)) return res.status(400).json({ error: 'bad_target' });
   // The URL is signed and short-lived but also unique per track+segment, so a
   // viewer's browser can reuse it (seek back) for a while.
-  res.setHeader('Cache-Control', 'private, max-age=1800');
-  res.status(r.status).end(Buffer.from(await r.arrayBuffer()));
+  const cache = 'private, max-age=1800';
+  if (c === 1) {
+    const headers = {};
+    if (req.headers.range) headers.Range = req.headers.range;
+    const r = await fetch(segTarget(q, n0), { headers });
+    if (!r.ok && r.status !== 206) return res.status(r.status === 404 ? 404 : 502).json({ error: 'upstream_' + r.status });
+    for (const h of ['content-type', 'content-range', 'accept-ranges']) {
+      const v = r.headers.get(h);
+      if (v) res.setHeader(h, v);
+    }
+    res.setHeader('Cache-Control', cache);
+    return res.status(r.status).end(Buffer.from(await r.arrayBuffer()));
+  }
+
+  // Batch: segments n..n+c-1 back to back in one streamed body (Range ignored).
+  // Upstream fetches run SEG_PARALLEL ahead; bodies are forwarded in order as chunks arrive.
+  const ac = new AbortController();
+  res.on('close', () => ac.abort());
+  const start = (i) => fetch(segTarget(q, n0 + i), { signal: ac.signal }).then((r) => r, (e) => ({ failed: e }));
+  const pending = [];
+  for (let i = 0; i < Math.min(c, SEG_PARALLEL); i++) pending.push(start(i));
+  let sent = false;
+  try {
+    for (let i = 0; i < c; i++) {
+      const r = await pending[i];
+      const next = i + SEG_PARALLEL;
+      if (next < c) pending.push(start(next));
+      if (r.failed || !r.ok) {
+        if (!sent) {
+          const st = r.failed ? 502 : r.status;
+          return res.status(st === 404 ? 404 : 502).json({ error: 'upstream_' + (r.failed ? 'fetch' : r.status) });
+        }
+        if (!r.failed && r.status >= 400 && r.status < 500) break; // past the last segment (TIDAL answers 404, or 400 on previews)
+        res.destroy(); // mid-stream failure: truncating silently would corrupt the audio
+        return;
+      }
+      if (!sent) {
+        const type = r.headers.get('content-type');
+        if (type) res.setHeader('content-type', type);
+        res.setHeader('Cache-Control', cache);
+        res.statusCode = 200;
+        sent = true;
+      }
+      for await (const chunk of r.body) {
+        if (!res.write(chunk)) await new Promise((ok) => res.once('drain', ok));
+      }
+    }
+    res.end();
+  } catch (e) {
+    if (sent) res.destroy();
+    else if (!res.headersSent) res.status(502).json({ error: 'upstream_fetch' });
+  } finally {
+    ac.abort();
+  }
 }
 
 // Cover art through our origin with CORS, so the client can draw it on a canvas

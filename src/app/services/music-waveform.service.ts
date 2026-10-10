@@ -5,6 +5,7 @@ import {
 } from '../utils/music-waveform-peaks';
 import { MusicManifest, MusicService, MusicTrack } from './music.service';
 import { MusicSettingsService } from './music-settings.service';
+import { SEG_MAX_BATCH, batchUrl } from '../utils/music-seg-batch';
 
 const DB_NAME = 'fiesta-music-waveform';
 const STORE = 'peaks';
@@ -134,7 +135,10 @@ export class MusicWaveformService {
       return this.fetchLimited([m.url], signal);
     }
     if (!m.init || !m.media || !m.durations?.length) return null;
-    const urls = [m.init, ...m.durations.map((_, i) => `${m.media}&n=${i + 1}`)];
+    const urls = [m.init];
+    for (let n = 1; n <= m.durations.length; n += SEG_MAX_BATCH) {
+      urls.push(batchUrl(m.media, n, Math.min(SEG_MAX_BATCH, m.durations.length - n + 1)));
+    }
     return this.fetchLimited(urls, signal);
   }
 
