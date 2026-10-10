@@ -1,5 +1,31 @@
 # Session handoff
 
+## HOSTING MOVED TO CLOUDFLARE (2026-10-10) - READ THIS FIRST
+
+Vercel disabled the project (`402 DEPLOYMENT_DISABLED`, usage limit hit three times over, cause unknown), so production now runs on a
+**Cloudflare Worker with static assets**: worker `fiesta-show`, account `14884bc18e4d20f21979a2c88813aade`
+(`8rwxjpv6cs@privaterelay.appleid.com`), custom domain `fiesta.show` (zone `84017dd0f74605e47f0fc10f8fb59fba`), also
+`fiesta-show.vitos.workers.dev`. Free plan, no Workers Paid (user: buy it only when needed).
+- Code: `src/worker/*` (adapter `node-compat.ts`, `api-router.ts`, `pages.ts` = old middleware: TV UA -> /lite, bot meta, cached 1 h),
+  `wrangler.jsonc`, `lib/page-meta.mjs`. `api/*.js` handlers are unchanged Node `(req,res)` style. `DEPLOY_ENV` replaces `VERCEL_ENV`
+  (Vercel fallbacks still in the code; `vercel.json` and `middleware.js` kept).
+- Deploy (manual; no git integration yet): `rm -f src/environments/environment.ts && DEPLOY_ENV=production npm run build &&
+  CLOUDFLARE_ACCOUNT_ID=14884bc18e4d20f21979a2c88813aade npx wrangler deploy --env=""`. Secrets via `wrangler secret put ... --env=""`.
+- **Audio**: TIDAL's audio CDN returns 403 to any request with an `Origin` header (browsers) or a `Cf-Worker` header (every Worker
+  subrequest), so the Worker cannot proxy audio. The manifest (`SEG_VIA_RELAY=1`) hands the browser HMAC-signed URLs to the Mac mini relay
+  `relay.fiesta.show/tidal/seg` (`tools/fiesta-proxy/tidal-seg.mjs`, installed on the box with `install-tidal-seg.sh`; box backup
+  `relay.mjs.bak-20261010T181712Z`). Audio costs zero Worker requests. Segments are batched 1/4/8 per request (~12 requests per track
+  instead of ~70). Rollback: delete secret `SEG_VIA_RELAY` (falls back to the `/api/music?action=seg` proxy, which does NOT work on Workers).
+- Secrets on the Worker: OMDB, TMDB, TIDAL_CLIENT_ID/SECRET, KV_REST_API_URL/TOKEN (Upstash), MUSIC_SHARED_SESSION=1, STREAM_RELAY_URL/SECRET,
+  STREAM_PROXY_*, SEG_VIA_RELAY=1. NOT set: TIDAL_COUNTRY, MUSIC_BLOCKED_IDS, LASTFM_*, FANART_TV_KEY (were not in Vercel's pullable env).
+  Vercel "sensitive" vars cannot be pulled (come back as a placeholder); STREAM_RELAY_SECRET was read from the box (`ssh mm`, `RELAY_SECRET`).
+- Verified live 2026-10-10: pages, /lite, Tizen UA, bot meta, /api/music (EPs & Singles dedupe 50 -> 33), /api/stream, FULL manifest,
+  real Chromium playback of a lossless track (time advanced, segments 200 via relay). NOT verified: free-plan 10 ms CPU under load,
+  likes/comments write path, a movie playing in a browser, iOS/real device, www.fiesta.show, Cloudflare WAF/rate-limit rules (not set up yet).
+- Stale tests: 9 MovieService/TmdbService specs fail on main (they expect omdbapi.com, code calls /api/omdb); pre-existing.
+- Next: WAF rate limits on `/api/*`, Bot Fight Mode, Turnstile on comment/like POSTs, Workers Builds git deploys, Web Analytics token,
+  decide what to do with the Vercel project, repo copy of `tools/fiesta-proxy/relay.mjs` is stale (box copy is the real one).
+
 ## STATE AT END OF SESSION (2026-10-05) - READ THIS FIRST
 
 **This file is the ONLY handoff. It lives on `main` (docs/handoff.md) and is updated by a docs-only commit on
