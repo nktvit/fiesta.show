@@ -17,7 +17,8 @@ Vercel disabled the project (`402 DEPLOYMENT_DISABLED`, usage limit hit three ti
   `relay.mjs.bak-20261010T181712Z`). Audio costs zero Worker requests. Segments are batched 1/4/8 per request (~12 requests per track
   instead of ~70). Rollback: delete secret `SEG_VIA_RELAY` (falls back to the `/api/music?action=seg` proxy, which does NOT work on Workers).
 - Secrets on the Worker: OMDB, TMDB, TIDAL_CLIENT_ID/SECRET, KV_REST_API_URL/TOKEN (Upstash), MUSIC_SHARED_SESSION=1, STREAM_RELAY_URL/SECRET,
-  STREAM_PROXY_*, SEG_VIA_RELAY=1. NOT set: TIDAL_COUNTRY, MUSIC_BLOCKED_IDS, LASTFM_*, FANART_TV_KEY (were not in Vercel's pullable env).
+  STREAM_PROXY_*, SEG_VIA_RELAY=1. This is the full set Vercel production had. TIDAL_COUNTRY, MUSIC_BLOCKED_IDS, LASTFM_* and FANART_TV_KEY
+  never existed on Vercel (owner confirmed), so nothing is missing: defaults apply, scrobbling and HD artist backdrops are simply off.
   Vercel "sensitive" vars cannot be pulled (come back as a placeholder); STREAM_RELAY_SECRET was read from the box (`ssh mm`, `RELAY_SECRET`).
 - Verified live 2026-10-10: pages, /lite, Tizen UA, bot meta, /api/music (EPs & Singles dedupe 50 -> 33), /api/stream, FULL manifest,
   real Chromium playback of a lossless track (time advanced, segments 200 via relay). NOT verified: free-plan 10 ms CPU under load,
