@@ -222,8 +222,20 @@ function gainFields(info) {
   return out;
 }
 
+// With SEG_VIA_RELAY=1 the browser fetches audio straight from the Mac mini relay
+// (/tidal/seg, tools/fiesta-proxy/tidal-seg.mjs) using a URL we sign here: TIDAL's CDN
+// rejects Cloudflare Workers (Cf-Worker header) and browsers (Origin header), and this
+// keeps the audio bytes off the metered Worker/serverless side entirely.
 function segUrl(target) {
-  return '/api/music?action=seg&u=' + Buffer.from(target).toString('base64url');
+  const u = Buffer.from(target).toString('base64url');
+  const base = (process.env.STREAM_RELAY_URL || '').replace(/\/$/, '');
+  const secret = process.env.STREAM_RELAY_SECRET || '';
+  if (process.env.SEG_VIA_RELAY === '1' && base && secret) {
+    const exp = Math.floor(Date.now() / 1000) + 6 * 3600;
+    const sig = require('crypto').createHmac('sha256', secret).update(`${exp}.${u}`).digest('base64url');
+    return `${base}/tidal/seg?u=${u}&t=${exp}.${sig}`;
+  }
+  return '/api/music?action=seg&u=' + u;
 }
 
 /** Most segments one `seg` call may concatenate (c param) and how many upstream fetches run ahead. */
