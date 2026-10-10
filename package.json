@@ -4,6 +4,9 @@
   "scripts": {
     "prebuild": "node scripts/set-env.js",
     "start": "ng serve",
+    "cf:dev": "wrangler dev",
+    "cf:build": "npm run build",
+    "cf:deploy": "wrangler deploy --env=\"\"",
     "build": "npm install --prefix tv && npm run build --prefix tv && ng build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
@@ -35,10 +38,8 @@
     "@tailwindcss/typography": "^0.5.15",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.38.4",
-    "@vercel/analytics": "^1.5.0",
     "@vercel/functions": "^1.6.0",
     "@vercel/node": "^5.1.14",
-    "@vercel/speed-insights": "^2.0.0",
     "ai": "^7.0.93",
     "butterchurn": "^2.6.7",
     "butterchurn-presets": "^2.4.7",
@@ -73,6 +74,7 @@
     "karma-jasmine-html-reporter": "~2.1.0",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.15",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "wrangler": "^4.149.0"
   }
 }

@@ -1,4 +1,5 @@
 import { MusicManifest } from './music.service';
+import { batchCount, batchUrl } from '../utils/music-seg-batch';
 
 /** Seconds of audio to keep buffered ahead of the playhead. */
 const BUFFER_AHEAD = 40;
@@ -181,6 +182,8 @@ export class MusicDeck {
       return k + 1;
     };
     let cursor = 1;
+    /** Requests since start / last seek: drives the 1 -> 4 -> 8 batch ramp. */
+    let step = 0;
     if (startAt > 0 && durations.length) {
       cursor = segmentAt(startAt);
       a.currentTime = startAt;
@@ -190,7 +193,10 @@ export class MusicDeck {
     const onSeeking = () => {
       const t = a.currentTime;
       const buffered = Array.from({ length: a.buffered.length }, (_, k) => [a.buffered.start(k), a.buffered.end(k)]);
-      if (!buffered.some(([s, e]) => s <= t && e > t)) cursor = segmentAt(t);
+      if (!buffered.some(([s, e]) => s <= t && e > t)) {
+        cursor = segmentAt(t);
+        step = 0;
+      }
     };
     a.addEventListener('seeking', onSeeking);
 
@@ -207,8 +213,11 @@ export class MusicDeck {
             sb.remove(0, a.currentTime - BUFFER_BEHIND);
             await done;
           }
-          const n = cursor++;
-          const buf = await fetchBuf(`${m.media}&n=${n}`);
+          const n = cursor;
+          // A standby deck only needs ~10 s: two small batches, not a full window.
+          const c = batchCount(step++, n, durations.length, this.ahead <= PREPARE_AHEAD ? 2 : undefined);
+          cursor += c;
+          const buf = await fetchBuf(batchUrl(m.media!, n, c));
           if (!alive()) break;
           await append(buf);
         }

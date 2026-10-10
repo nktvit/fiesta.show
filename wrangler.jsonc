@@ -1,0 +1,29 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "fiesta-show",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2025-09-01",
+  "compatibility_flags": ["nodejs_compat", "nodejs_compat_populate_process_env"],
+  "observability": { "enabled": true },
+  "assets": {
+    // Angular application builder output; the tv/ bundle is copied to /lite by angular.json.
+    "directory": "dist/movie-streamer/browser",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    // Only these paths invoke the Worker; every other static hit is served free by the asset layer.
+    "run_worker_first": ["/api/*", "/movie/*", "/person/*", "/music/*", "/"]
+  },
+  "vars": { "DEPLOY_ENV": "production" },
+  "env": {
+    "preview": {
+      "name": "fiesta-show-preview",
+      "vars": { "DEPLOY_ENV": "preview" },
+      "assets": {
+        "directory": "dist/movie-streamer/browser",
+        "binding": "ASSETS",
+        "not_found_handling": "single-page-application",
+        "run_worker_first": ["/api/*", "/movie/*", "/person/*", "/music/*", "/"]
+      }
+    }
+  }
+}

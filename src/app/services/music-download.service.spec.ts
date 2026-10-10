@@ -48,7 +48,17 @@ describe('MusicDownloadService', () => {
     spyOn(window, 'fetch').and.callFake((input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes('u=init')) return Promise.resolve(new Response(makeFlacInit() as BodyInit));
-      if (url.includes('u=media')) return Promise.resolve(new Response(makeFragment([new Uint8Array([1, 2, 3]), new Uint8Array([4, 5])], +url.split('&n=')[1]) as BodyInit));
+      if (url.includes('u=media')) {
+        // The server concatenates `c` consecutive segments (capped by the track's two segments).
+        const n = +(/&n=(\d+)/.exec(url)?.[1] ?? 1);
+        const c = +(/&c=(\d+)/.exec(url)?.[1] ?? 1);
+        const parts: Uint8Array[] = [];
+        for (let k = n; k < n + c && k <= 2; k++) parts.push(makeFragment([new Uint8Array([1, 2, 3]), new Uint8Array([4, 5])], k) as Uint8Array);
+        const out = new Uint8Array(parts.reduce((t, a) => t + a.length, 0));
+        let o = 0;
+        for (const a of parts) { out.set(a, o); o += a.length; }
+        return Promise.resolve(new Response(out as BodyInit));
+      }
       if (url.includes('action=img')) return Promise.resolve(new Response(new Uint8Array([0xff, 0xd8, 0xff]) as BodyInit, { headers: { 'content-type': 'image/jpeg' } }));
       return Promise.resolve(new Response('', { status: 404 }));
     });

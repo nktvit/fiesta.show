@@ -8,7 +8,7 @@
 //
 // It validates the token and writes TIDAL_DEV_ACCESS_TOKEN to .env.local
 // (gitignored). The token lasts about 4 hours; the music API ignores it in
-// production (VERCEL_ENV=production). It never prints the token.
+// production (DEPLOY_ENV=production). It never prints the token.
 
 import fs from 'node:fs';
 import path from 'node:path';
