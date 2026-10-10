@@ -1,12 +1,13 @@
 import { MusicManifest } from '../services/music.service';
+import { SEG_MAX_BATCH, batchUrl } from './music-seg-batch';
 
 /**
  * Fetches a track's audio through the manifest and seg proxy: a "segments"
- * manifest is the init segment plus every numbered media segment (4 at a time),
+ * manifest is the init segment plus every numbered media segment (8 per request, 2 requests at a time),
  * a "file" manifest is one URL. Progress counts segments. Owned by package P12.
  */
 
-export const SEGMENT_CONCURRENCY = 4;
+export const SEGMENT_CONCURRENCY = 2;
 
 export interface FetchedAudio {
   kind: 'segments' | 'file';
@@ -60,16 +61,21 @@ export async function fetchAudio(
   const tick = () => onProgress?.(++done / total);
   const init = await getWithRetry(f, m.init, signal);
   tick();
-  const parts: Uint8Array[] = new Array<Uint8Array>(count);
+  // One request per batch of up to SEG_MAX_BATCH segments; a part is a batch's concatenated
+  // fragments (the remuxer and the MP4 writer both take concatenated fragments).
+  const batches = Math.ceil(count / SEG_MAX_BATCH);
+  const parts: Uint8Array[] = new Array<Uint8Array>(batches);
   let next = 0;
   const worker = async () => {
-    while (next < count) {
-      const i = next++;
-      parts[i] = await getWithRetry(f, `${m.media}&n=${i + 1}`, signal);
-      tick();
+    while (next < batches) {
+      const b = next++;
+      const first = b * SEG_MAX_BATCH + 1;
+      const c = Math.min(SEG_MAX_BATCH, count - first + 1);
+      parts[b] = await getWithRetry(f, batchUrl(m.media!, first, c), signal);
+      for (let k = 0; k < c; k++) tick();
     }
   };
-  await Promise.all(Array.from({ length: Math.min(SEGMENT_CONCURRENCY, count) }, worker));
+  await Promise.all(Array.from({ length: Math.min(SEGMENT_CONCURRENCY, batches) }, worker));
   return { kind: 'segments', codec: m.codec || '', mime: m.mime || '', init, parts };
 }
 

@@ -11,19 +11,29 @@ describe('music-download-fetch', () => {
     const progress: number[] = [];
     const f: FetchLike = (url) => {
       urls.push(url);
-      const n = url.endsWith('init') ? 0 : +url.split('&n=')[1];
+      const n = url.endsWith('init') ? 0 : +url.split('&n=')[1].split('&')[0];
       return ok([n]);
     };
     const a = await fetchAudio(manifest, { fetchFn: f, onProgress: (p) => progress.push(p) });
     expect(a.kind).toBe('segments');
     expect(Array.from(a.init)).toEqual([0]);
-    expect(a.parts.map((p) => p[0])).toEqual([1, 2, 3]);
-    expect(urls.length).toBe(4);
-    expect(progress.length).toBe(4);
+    expect(a.parts.map((p) => p[0])).toEqual([1]);
+    expect(urls).toEqual(['/seg?u=init', '/seg?u=media&n=1&c=3']);
+    expect(progress.length).toBe(4); // still one tick per segment + init
     expect(progress[progress.length - 1]).toBe(1);
   });
 
-  it('never runs more than 4 segment fetches at once', async () => {
+  it('a 70-segment track takes <= 12 requests and splits at 8 per batch', async () => {
+    const urls: string[] = [];
+    const f: FetchLike = (url) => { urls.push(url); return ok([1]); };
+    const a = await fetchAudio({ ...manifest, durations: new Array(70).fill(4) }, { fetchFn: f });
+    expect(urls.length).toBeLessThanOrEqual(12);
+    expect(urls.length).toBe(1 + 9);
+    expect(a.parts.length).toBe(9);
+    expect(urls[urls.length - 1]).toBe('/seg?u=media&n=65&c=6');
+  });
+
+  it('never runs more than 2 batch fetches at once', async () => {
     let live = 0;
     let peak = 0;
     const f: FetchLike = async () => {
@@ -33,8 +43,8 @@ describe('music-download-fetch', () => {
       live--;
       return { ok: true, status: 200, arrayBuffer: () => Promise.resolve(new ArrayBuffer(1)) };
     };
-    await fetchAudio({ ...manifest, durations: new Array(12).fill(1) }, { fetchFn: f });
-    expect(peak).toBeLessThanOrEqual(4);
+    await fetchAudio({ ...manifest, durations: new Array(40).fill(1) }, { fetchFn: f });
+    expect(peak).toBeLessThanOrEqual(2);
     expect(peak).toBeGreaterThan(1);
   });
 
