@@ -136,3 +136,18 @@ Steps 2-3 can start immediately and need no Cloudflare account. Realistically 1-
 - Keep serving full lossless to all visitors from the personal TIDAL session? It is the likeliest cost driver and a licensing
   grey area; the plan keeps it behind `MUSIC_SHARED_SESSION` and rate limits, but it is your call.
 - Still need iOS 15? Unrelated to hosting, but it gates the Angular upgrade.
+
+## 7. Findings from the first build (2026-10-10)
+
+- **TIDAL's audio CDN (`sp-*.audio.tidal.com`) rejects (403) any request carrying a `Cf-Worker` header**, which every Cloudflare
+  Worker subrequest gets and cannot remove. Verified: plain curl 200; same URL with `Cf-Worker: x` 403; `workerd` locally and the
+  deployed Worker both 403. It also 403s any request with an `Origin` header, so browsers cannot fetch segments directly.
+  => the `seg` audio proxy CANNOT run inside a Worker. Everything else tested works from Workers (TIDAL API, TIDAL cover CDN, TMDB,
+  OMDB, Deezer, Wikimedia, MusicBrainz).
+- Audio needs a non-Worker origin. Recommended: the existing Mac mini relay (`tools/fiesta-proxy`, behind a Cloudflare tunnel,
+  already token-gated, already carries video bytes on home bandwidth). Add `/tidal/seg`; the Worker's `manifest` action signs
+  short-lived URLs (HMAC with the relay secret) and the browser fetches segments straight from the relay hostname, so audio costs
+  ZERO Worker requests. Trade-off: lossless depends on the home uplink and the Mac mini being up (it already does for the session token).
+- Segment batching (`feat/seg-batching`, 1/4/8 ramp, ~12 requests per 4-min track instead of ~70) is done and still useful (fewer
+  relay round trips), merged into `feat/cloudflare-worker`.
+- Worker on workers.dev: https://fiesta-show.vitos.workers.dev (account 14884bc1..., zone for fiesta.show lives in account 8rwxjpv6cs@privaterelay.appleid.com / 14884bc18e4d20f21979a2c88813aade).
