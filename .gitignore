@@ -55,3 +55,6 @@ Thumbs.db
 /.agents/**
 /.claude/**
 .env*
+.dev.vars*
+/dist-worker
+/.wrangler
