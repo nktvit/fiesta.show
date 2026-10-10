@@ -2,7 +2,7 @@ import { environment } from '../../environments/environment';
 
 /**
  * Which deployment this build is: 'production' | 'preview' | 'development'.
- * scripts/set-env.js stamps it from VERCEL_ENV at build time. A local environment.ts
+ * scripts/set-env.js stamps it from DEPLOY_ENV (or VERCEL_ENV) at build time. A local environment.ts
  * generated before the field existed has no value, which means local development.
  */
 export const DEPLOY_ENV: string = (environment as { deployEnv?: string }).deployEnv ?? 'development';

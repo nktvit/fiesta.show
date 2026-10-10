@@ -12,12 +12,13 @@ if (fs.existsSync(file)) {
 
 fs.mkdirSync(dir, { recursive: true });
 
-const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1';
+const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1' || process.env.WORKERS_CI === '1' || !!process.env.DEPLOY_ENV;
 
 const content = isProduction
   ? `export const environment = {
   production: true,
-  deployEnv: '${process.env.VERCEL_ENV || 'production'}',
+  deployEnv: '${process.env.DEPLOY_ENV || process.env.VERCEL_ENV || 'production'}',
+  cfAnalyticsToken: '${process.env.CF_WEB_ANALYTICS_TOKEN || ''}',
   OMDB_API_KEY: '',
 };
 `

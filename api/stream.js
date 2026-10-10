@@ -57,7 +57,7 @@ module.exports = async function handler(req, res) {
       master: data.master,
       upstream: data.upstream,
       server: data.server ?? null,
-      env: process.env.VERCEL_ENV || 'development',
+      env: process.env.DEPLOY_ENV || process.env.VERCEL_ENV || 'development',
     });
   } catch (e) {
     console.error('stream resolve error:', e);
