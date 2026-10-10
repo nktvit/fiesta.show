@@ -6,7 +6,7 @@
     "start": "ng serve",
     "cf:dev": "wrangler dev",
     "cf:build": "npm run build",
-    "cf:deploy": "wrangler deploy",
+    "cf:deploy": "wrangler deploy --env=\"\"",
     "build": "npm install --prefix tv && npm run build --prefix tv && ng build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
