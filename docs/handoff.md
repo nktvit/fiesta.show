@@ -34,6 +34,10 @@ Vercel disabled the project (`402 DEPLOYMENT_DISABLED`, usage limit hit three ti
   it was never reproducible (0.5-1 s), so test seeks with CDP throttling (`Network.emulateNetworkConditions`), and beware: the slider click lands a few
   seconds off the computed fraction, so measure "resumed" by time advancing, not by reaching the target. Remaining idea: auto-fall back to the AAC
   rendition when the measured segment throughput is too low for lossless.
+- **Movie page blank/slow (2026-10-12, `fix/movie-slow`)**: OMDB itself answers in 0.6-56 s (measured directly, key from `.env.example`); the page renders nothing
+  until `/api/movie` returns, so ~1 in 3 loads was blank for seconds. `api/movie.js` now gives OMDB 3.5 s and falls back to TMDB (cached 120 s);
+  `api-router.ts` caches `/api/movie` GETs in the Cache API (Workers ignore `s-maxage`). Worst case cold ~3.7 s, repeat 0.05 s. A trailer works when the page
+  loads (checked Chromium + WebKit). Idea not done: render the page from TMDB data first and fill OMDB fields when they arrive.
 - Stale tests: 9 MovieService/TmdbService specs fail on main (they expect omdbapi.com, code calls /api/omdb); pre-existing.
 - Next: WAF rate limits on `/api/*`, Bot Fight Mode, Turnstile on comment/like POSTs, Workers Builds git deploys, Web Analytics token,
   decide what to do with the Vercel project, repo copy of `tools/fiesta-proxy/relay.mjs` is stale (box copy is the real one).
