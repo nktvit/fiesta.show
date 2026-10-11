@@ -28,6 +28,12 @@ Vercel disabled the project (`402 DEPLOYMENT_DISABLED`, usage limit hit three ti
 - **Deploy gotcha**: the Worker caches generated meta HTML for `/movie/*`, `/person/*`, `/music/*` (bots) in the Cache API; that HTML embeds hashed bundle
   names, so after a deploy old entries gave a BLANK page. The cache key now includes the Worker version (`CF_VERSION` binding). After every deploy check
   `/movie/<id>` loads in a browser, not just `/`.
+- **Music seek stability (2026-10-11, `fix/music-seek`)**: with 8-segment batches (~3.5 MB) a seek out of the buffer waited for the OLD position's batch
+  on the shared relay uplink (and appended it). `music-deck.ts` now aborts the in-flight request on a seek/dispose, wakes the loop and restarts the
+  1/4/8 ramp; `BUFFER_BEHIND` 20 -> 60 s. Throttled-network test (Chromium): resume 8.3-9.1 s -> 2.1-2.6 s at 2 MB/s, >12 s -> ~4 s at 1 MB/s. On a fast link
+  it was never reproducible (0.5-1 s), so test seeks with CDP throttling (`Network.emulateNetworkConditions`), and beware: the slider click lands a few
+  seconds off the computed fraction, so measure "resumed" by time advancing, not by reaching the target. Remaining idea: auto-fall back to the AAC
+  rendition when the measured segment throughput is too low for lossless.
 - Stale tests: 9 MovieService/TmdbService specs fail on main (they expect omdbapi.com, code calls /api/omdb); pre-existing.
 - Next: WAF rate limits on `/api/*`, Bot Fight Mode, Turnstile on comment/like POSTs, Workers Builds git deploys, Web Analytics token,
   decide what to do with the Vercel project, repo copy of `tools/fiesta-proxy/relay.mjs` is stale (box copy is the real one).
