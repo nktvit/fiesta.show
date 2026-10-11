@@ -36,9 +36,12 @@ export async function handleSitePage(request: Request, env: Env, ctx: ExecutionC
   else if (musicMatch && bot) fetchMeta = (c) => fetchMusicMeta(c, musicMatch[1], musicMatch[2]);
   if (!fetchMeta) return null;
 
-  // Cache the generated HTML per URL + bot flag so crawlers do not re-hit upstreams.
+  // Cache the generated HTML per URL + bot flag so crawlers do not re-hit upstreams. The key
+  // carries the Worker version: the HTML embeds the hashed bundle names, so an entry from an
+  // older deploy points at scripts that no longer exist (blank page until it expires).
   const cache = (globalThis as any).caches?.default as Cache | undefined;
-  const cacheKey = new Request(url.origin + url.pathname + url.search + (url.search ? '&' : '?') + '__meta=' + (bot ? 'bot' : 'user'));
+  const version = ((env as any).CF_VERSION?.id as string | undefined) ?? 'dev';
+  const cacheKey = new Request(url.origin + url.pathname + url.search + (url.search ? '&' : '?') + '__meta=' + (bot ? 'bot' : 'user') + '&v=' + version);
   try {
     const hit = await cache?.match(cacheKey);
     if (hit) return hit;
