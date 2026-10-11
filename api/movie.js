@@ -30,7 +30,9 @@ module.exports = async function handler(req, res) {
   try {
     // Fetch OMDB details and TMDB find in parallel
     var omdbUrl = 'https://www.omdbapi.com/?apikey=' + omdbKey + '&i=' + encodeURIComponent(id) + '&plot=full';
-    var requests = [fetch(omdbUrl)];
+    // OMDB is the slow, erratic one (seen 0.6-56 s). Never let it hold the page: give up after
+    // OMDB_TIMEOUT_MS and build the answer from TMDB, as when OMDB is out of quota.
+    var requests = [fetchOmdb(omdbUrl)];
 
     if (tmdbKey) {
       var tmdbUrl = 'https://api.themoviedb.org/3/find/' + id + '?api_key=' + tmdbKey + '&external_source=imdb_id';
@@ -38,7 +40,14 @@ module.exports = async function handler(req, res) {
     }
 
     var responses = await Promise.all(requests);
-    var omdbData = await responses[0].json();
+    var omdbData = null;
+    try {
+      omdbData = responses[0] ? await responses[0].json() : null;
+    } catch (e) {
+      omdbData = null; // the body stalled past the timeout, or was not JSON
+    }
+    var omdbTimedOut = !omdbData;
+    if (omdbTimedOut) omdbData = { Response: 'False', Error: 'OMDB timed out' };
 
     // Parse TMDB result (needed when OMDB lacks a title or is out of quota)
     var tmdbMatch = null;
@@ -67,6 +76,10 @@ module.exports = async function handler(req, res) {
     var omdbError = omdbData.Response === 'False' ? (omdbData.Error || 'Movie not found') : null;
     if (omdbError) {
       if (!tmdbMatch) {
+        if (omdbTimedOut) {
+          res.setHeader('Cache-Control', 'no-store');
+          return res.status(504).json({ error: omdbError, Response: 'False' });
+        }
         res.setHeader('Cache-Control', 's-maxage=600');
         return res.status(404).json({ error: omdbError, Response: 'False' });
       }
@@ -80,7 +93,8 @@ module.exports = async function handler(req, res) {
       // hour so OMDB's ratings, awards and US box office return once it resets.
       // A title OMDB genuinely lacks is re-checked daily.
       var transient = /limit|api key/i.test(omdbError);
-      res.setHeader('Cache-Control', 's-maxage=' + (transient ? 3600 : 86400) + ', stale-while-revalidate=600');
+      // A timeout is even shorter-lived: OMDB usually answers on the next try.
+      res.setHeader('Cache-Control', 's-maxage=' + (omdbTimedOut ? 120 : transient ? 3600 : 86400) + ', stale-while-revalidate=600');
     }
 
     if (!omdbError) {
@@ -97,6 +111,16 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: 'Failed to fetch movie details', details: error.message });
   }
 };
+
+var OMDB_TIMEOUT_MS = 3500;
+
+// Resolves to the OMDB Response, or null when OMDB errors or does not answer in time.
+function fetchOmdb(url) {
+  return fetch(url, { signal: AbortSignal.timeout(OMDB_TIMEOUT_MS) }).catch(function(e) {
+    console.error('OMDB fetch failed:', e && e.name);
+    return null;
+  });
+}
 
 function na(v) {
   return v === undefined || v === null || v === '' || v === 'N/A';
