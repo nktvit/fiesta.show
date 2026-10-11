@@ -3,8 +3,8 @@ import { batchCount, batchUrl } from '../utils/music-seg-batch';
 
 /** Seconds of audio to keep buffered ahead of the playhead. */
 const BUFFER_AHEAD = 40;
-/** Seconds of already-played audio kept for seeking back before it is trimmed. */
-const BUFFER_BEHIND = 20;
+/** Seconds of already-played audio kept for seeking back before it is trimmed (~15 MB of lossless at 60 s). */
+const BUFFER_BEHIND = 60;
 /** What a standby deck buffers before the switch (init + the first ~10 s). */
 export const PREPARE_AHEAD = 10;
 /** Give up on a MediaSource that never opens (element reused, tab frozen). */
@@ -58,6 +58,8 @@ export class MusicDeck {
   private ahead = BUFFER_AHEAD;
   private objectUrl: string | null = null;
   private loopDone = false;
+  /** Cancels the in-flight segment request: on a seek out of the buffer, a track change, dispose. */
+  private pumpAbort: AbortController | null = null;
 
   constructor(el: HTMLAudioElement) {
     this.el = el;
@@ -88,6 +90,8 @@ export class MusicDeck {
   /** Stops the pipeline and releases the element. */
   dispose(): void {
     this.seq++;
+    this.pumpAbort?.abort();
+    this.pumpAbort = null;
     this.trackId = null;
     this.manifest = null;
     this.ready = false;
@@ -164,13 +168,14 @@ export class MusicDeck {
       sb.appendBuffer(buf);
       return done;
     };
-    const fetchBuf = async (url: string) => {
-      const r = await fetch(url);
+    this.pumpAbort = new AbortController();
+    const fetchBuf = async (url: string, signal: AbortSignal) => {
+      const r = await fetch(url, { signal });
       if (!r.ok) throw new Error('segment ' + r.status);
       return r.arrayBuffer();
     };
 
-    await append(await fetchBuf(m.init!));
+    await append(await fetchBuf(m.init!, this.pumpAbort.signal));
     if (!alive()) return seq;
 
     // Where segment n starts, for mapping a seek (or a restored position) to a segment.
@@ -184,6 +189,10 @@ export class MusicDeck {
     let cursor = 1;
     /** Requests since start / last seek: drives the 1 -> 4 -> 8 batch ramp. */
     let step = 0;
+    /** Bumped by every seek out of the buffer: a request started before it is stale. */
+    let epoch = 0;
+    /** Wakes the feeding loop out of its idle sleep (a seek must not wait up to 500 ms). */
+    let wake: (() => void) | null = null;
     if (startAt > 0 && durations.length) {
       cursor = segmentAt(startAt);
       a.currentTime = startAt;
@@ -196,6 +205,12 @@ export class MusicDeck {
       if (!buffered.some(([s, e]) => s <= t && e > t)) {
         cursor = segmentAt(t);
         step = 0;
+        // Do not let the batch fetched for the old position (up to ~3.5 MB over a shared
+        // uplink) delay the one the listener is waiting for: drop it and fetch from here.
+        epoch++;
+        this.pumpAbort?.abort();
+        this.pumpAbort = new AbortController();
+        wake?.();
       }
     };
     a.addEventListener('seeking', onSeeking);
@@ -205,7 +220,8 @@ export class MusicDeck {
       try {
         while (alive() && cursor <= durations.length) {
           if (this.bufferedAhead() > this.ahead) {
-            await new Promise((r) => setTimeout(r, 500));
+            await new Promise<void>((r) => { wake = r; setTimeout(r, 500); });
+            wake = null;
             continue;
           }
           if (a.buffered.length && a.buffered.start(0) < a.currentTime - BUFFER_BEHIND - 10) {
@@ -213,12 +229,21 @@ export class MusicDeck {
             sb.remove(0, a.currentTime - BUFFER_BEHIND);
             await done;
           }
+          const ep = epoch;
+          const signal = this.pumpAbort!.signal;
           const n = cursor;
           // A standby deck only needs ~10 s: two small batches, not a full window.
           const c = batchCount(step++, n, durations.length, this.ahead <= PREPARE_AHEAD ? 2 : undefined);
           cursor += c;
-          const buf = await fetchBuf(batchUrl(m.media!, n, c));
+          let buf: ArrayBuffer;
+          try {
+            buf = await fetchBuf(batchUrl(m.media!, n, c), signal);
+          } catch (e) {
+            if (ep !== epoch || !alive()) continue; // cancelled by a seek or a track change
+            throw e;
+          }
           if (!alive()) break;
+          if (ep !== epoch) continue; // a seek happened while it was in flight: stale data
           await append(buf);
         }
         if (alive() && cursor > durations.length && ms.readyState === 'open') ms.endOfStream();

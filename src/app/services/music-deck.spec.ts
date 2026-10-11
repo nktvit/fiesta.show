@@ -81,4 +81,32 @@ describe('MusicDeck segment batching', () => {
     deck2.dispose();
     expect(urls.some((u) => /&c=8/.test(u))).toBeFalse();
   });
+  it('a seek out of the buffer cancels the in-flight batch and refetches from the new position', async () => {
+    const handlers: Record<string, (() => void)[]> = {};
+    const audio = el() as unknown as { currentTime: number; addEventListener: (t: string, cb: () => void) => void };
+    audio.addEventListener = (t, cb) => { (handlers[t] ||= []).push(cb); };
+    let aborted = 0;
+    urls.length = 0;
+    fetchSpy.and.callFake(((u: string, init?: { signal?: AbortSignal }) => {
+      urls.push(u);
+      if (/&n=2&c=4$/.test(u)) { // the old position's batch: never completes on its own
+        return new Promise((_, reject) => init?.signal?.addEventListener('abort', () => { aborted++; reject(new DOMException('x', 'AbortError')); }));
+      }
+      return Promise.resolve({ ok: true, status: 200, arrayBuffer: () => Promise.resolve(new ArrayBuffer(1)) });
+    }) as unknown as typeof fetch);
+
+    const deck = new MusicDeck(audio as unknown as HTMLAudioElement);
+    await deck.load(manifest(70), 1, () => true);
+    await new Promise((r) => setTimeout(r, 60)); // init, n=1, then the stuck n=2&c=4
+    expect(urls[urls.length - 1]).toBe('/seg?u=media&n=2&c=4');
+
+    audio.currentTime = 200; // 4 s segments: segment 51, nothing buffered there
+    (handlers['seeking'] || []).forEach((f) => f());
+    await new Promise((r) => setTimeout(r, 60));
+
+    expect(aborted).toBe(1);
+    // the very next request after the cancelled batch: the ramp restarts with a single segment
+    expect(urls[urls.indexOf('/seg?u=media&n=2&c=4') + 1]).toBe('/seg?u=media&n=51');
+    deck.dispose();
+  });
 });
