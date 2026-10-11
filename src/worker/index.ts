@@ -10,7 +10,7 @@ export interface Env {
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
-    if (url.pathname.startsWith('/api/')) return callApi(request);
+    if (url.pathname.startsWith('/api/')) return callApi(request, ctx);
     try {
       const res = await handleSitePage(request, env, ctx);
       if (res) return res;
