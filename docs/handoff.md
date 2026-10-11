@@ -23,6 +23,11 @@ Vercel disabled the project (`402 DEPLOYMENT_DISABLED`, usage limit hit three ti
 - Verified live 2026-10-10: pages, /lite, Tizen UA, bot meta, /api/music (EPs & Singles dedupe 50 -> 33), /api/stream, FULL manifest,
   real Chromium playback of a lossless track (time advanced, segments 200 via relay). NOT verified: free-plan 10 ms CPU under load,
   likes/comments write path, a movie playing in a browser, iOS/real device, www.fiesta.show, Cloudflare WAF/rate-limit rules (not set up yet).
+- **Safari seek bug fixed (2026-10-11)**: in desktop Safari 17+ seeking far outside the buffer froze (hls.js picked ManagedMediaSource: no segment
+  requests, `seeking` stuck). `preferManagedMediaSource: false` in `movie-player.component.ts`; WebKit seek test 3/3 ok (was 0/3). Music was not affected.
+- **Deploy gotcha**: the Worker caches generated meta HTML for `/movie/*`, `/person/*`, `/music/*` (bots) in the Cache API; that HTML embeds hashed bundle
+  names, so after a deploy old entries gave a BLANK page. The cache key now includes the Worker version (`CF_VERSION` binding). After every deploy check
+  `/movie/<id>` loads in a browser, not just `/`.
 - Stale tests: 9 MovieService/TmdbService specs fail on main (they expect omdbapi.com, code calls /api/omdb); pre-existing.
 - Next: WAF rate limits on `/api/*`, Bot Fight Mode, Turnstile on comment/like POSTs, Workers Builds git deploys, Web Analytics token,
   decide what to do with the Vercel project, repo copy of `tools/fiesta-proxy/relay.mjs` is stale (box copy is the real one).
