@@ -501,6 +501,14 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
       const hls = new Hls({
         enableWorker: true,
         debug: this.hlsDebug,
+        // Desktop Safari 17+ has both MediaSource and ManagedMediaSource, and hls.js
+        // prefers the managed one. With it, a seek outside the buffered range never
+        // loaded anything: `seeking` stayed true forever, no segment was requested and
+        // the buffer stayed at 0-30 s (reproduced in WebKit on fiesta.show; the same
+        // seek with ManagedMediaSource removed resumes in ~2 s, like Chrome). Use the
+        // plain MediaSource where it exists. iPhones have only ManagedMediaSource, and
+        // hls.js still falls back to it there.
+        preferManagedMediaSource: false,
         capLevelToPlayerSize: false, // never downscale to the <video> element's pixel size
         // Was 8_000_000, and that was itself a bug. level-controller only
         // auto-derives a start estimate when this is left undefined, so an explicit
