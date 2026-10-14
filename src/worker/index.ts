@@ -1,5 +1,6 @@
 import { callApi } from './api-router';
 import { handleSitePage } from './pages';
+import { sitemapResponse } from './sitemap';
 import { isBotUserAgent } from '../../lib/page-meta.mjs';
 
 export interface Env {
@@ -14,6 +15,7 @@ export interface Env {
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+    if (url.pathname === '/sitemap.xml') return sitemapResponse(request, env, ctx);
     const action = url.searchParams.get('action');
     if (url.pathname === '/api/stream') {
       const denied = await guardPlayback(request, env.STREAM_LIMIT);
