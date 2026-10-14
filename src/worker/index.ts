@@ -7,14 +7,20 @@ export interface Env {
   DEPLOY_ENV?: string;
   /** Workers Rate Limiting binding (wrangler.jsonc `ratelimits`). */
   STREAM_LIMIT?: { limit(o: { key: string }): Promise<{ success: boolean }> };
+  MUSIC_LIMIT?: { limit(o: { key: string }): Promise<{ success: boolean }> };
   [key: string]: unknown;
 }
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+    const action = url.searchParams.get('action');
     if (url.pathname === '/api/stream') {
-      const denied = await guardPlayback(request, env);
+      const denied = await guardPlayback(request, env.STREAM_LIMIT);
+      if (denied) return denied;
+    } else if (url.pathname === '/api/music' && (action === 'manifest' || action === 'seg')) {
+      // Audio: the manifest hands out the signed relay URLs, seg is the fallback byte path.
+      const denied = await guardPlayback(request, action === 'manifest' ? env.MUSIC_LIMIT : undefined);
       if (denied) return denied;
     }
     if (url.pathname.startsWith('/api/')) return callApi(request, ctx);
@@ -32,17 +38,17 @@ const json = (status: number, error: string, extra: Record<string, string> = {})
   new Response(JSON.stringify({ error }), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...extra } });
 
 /**
- * Only people watch films: /api/stream hands out the signed relay URLs, so crawlers (and clients
+ * Only people watch films and listen to music: /api/stream and /api/music?action=manifest hand out the signed relay URLs, so crawlers (and clients
  * with no User-Agent) get nothing here while the rest of the site stays open to them. A viewer
  * resolves a stream once per title/episode, so the per-IP limit is far above normal use.
  */
-async function guardPlayback(request: Request, env: Env): Promise<Response | null> {
+async function guardPlayback(request: Request, limiter?: Env['STREAM_LIMIT']): Promise<Response | null> {
   const ua = request.headers.get('user-agent') || '';
   if (!ua || isBotUserAgent(ua)) return json(403, 'playback_not_available_for_bots');
-  if (env.STREAM_LIMIT) {
+  if (limiter) {
     const ip = request.headers.get('cf-connecting-ip') || 'unknown';
     try {
-      if (!(await env.STREAM_LIMIT.limit({ key: ip })).success) return json(429, 'too_many_requests', { 'retry-after': '60' });
+      if (!(await limiter.limit({ key: ip })).success) return json(429, 'too_many_requests', { 'retry-after': '60' });
     } catch {
       /* the limiter is best-effort */
     }

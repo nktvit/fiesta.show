@@ -6,7 +6,8 @@
 - Normal viewer for comparison: 70 s of movie playback = ~230 static + ~12 API + 29 relay /hls requests (static is cached).
 - Owner decision: bots may crawl the site (managed robots.txt is already on in the dashboard, everything allowed); bots must NOT get playback. Do not add Disallow rules for bots.
 - Done (Worker `af145425`, branch `fix/robots`): `/api/stream` (the only source of signed relay URLs) returns 403 `playback_not_available_for_bots` for bot UAs (`isBotUserAgent`) and empty UA, and 429 above 20 req/min per IP (`STREAM_LIMIT` Rate Limiting binding in wrangler.jsonc, top-level only, NOT yet on `env.preview`). Checked live: bot 403, bot on /movie page 200, 80 parallel requests -> 42x429.
-- Not covered: a bot that spoofs a browser UA; `/api/music` seg (audio) has no bot gate or limit; relay `/hls` itself is still token-gated only. A WAF/Bot Fight Mode rule would need a dashboard action.
+- Music (Worker `77a49714`): same gate on `/api/music?action=manifest` and `action=seg` (bot/empty UA -> 403); manifest also limited to 60/min per IP (`MUSIC_LIMIT`). Search/album/artist stay open to bots. Live check: real track manifest browser 200, bot 403, 200-burst -> 169x429.
+- Not covered: a bot that spoofs a browser UA; the `ratelimits` bindings are top-level only (not `env.preview`); relay `/hls` itself is still token-gated only. A WAF/Bot Fight Mode rule would need a dashboard action.
 - Cloudflare GraphQL analytics queries live in `$CLAUDE_JOB_DIR/tmp/cfq*.mjs` (token = wrangler oauth; zone 84017dd0..., account 14884bc1...).
 
 ## HOSTING MOVED TO CLOUDFLARE (2026-10-10) - READ THIS FIRST

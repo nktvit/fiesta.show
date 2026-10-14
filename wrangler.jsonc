@@ -16,7 +16,10 @@
     "run_worker_first": ["/api/*", "/movie/*", "/person/*", "/music/*", "/"]
   },
   "vars": { "DEPLOY_ENV": "production" },
-  "ratelimits": [{ "name": "STREAM_LIMIT", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } }],
+  "ratelimits": [
+    { "name": "STREAM_LIMIT", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } },
+    { "name": "MUSIC_LIMIT", "namespace_id": "1002", "simple": { "limit": 60, "period": 60 } }
+  ],
   
   "env": {
     "preview": {
