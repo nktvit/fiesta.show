@@ -223,7 +223,7 @@ Read-only audit, no code changed. Clone of github.com/monochrome-music/monochrom
 - OpenSubtitles legacy REST `rest.opensubtitles.org/search/imdbid-X`, `dl.opensubtitles.org/en/download/file/{id}.gz` (browser fetches .gz direct, falls back to `/api/subs`).
 - Stream relay (`STREAM_RELAY_URL`, `STREAM_RELAY_SECRET`): `api/stream.js` -> `/resolve`; relay (`tools/fiesta-proxy/relay.mjs`) scrapes `vidsrc.me`, `cloudnestra.com`, `vsembed.ru`, headless browser for Turnstile.
 - Upstash Redis (`UPSTASH_REDIS_REST_*` / `KV_REST_API_*`): likes, comments, rate limit.
-- Vercel AI Gateway, `openai/gpt-5.4-nano`: comment moderation (`lib/moderation.js`, OIDC token).
+- Comment moderation (`lib/moderation.js`): Workers AI `@cf/meta/llama-3.3-70b-instruct-fp8-fast` via the `AI` binding (free tier, no key; Worker sets `globalThis.__CF_AI`). The Vercel AI Gateway path (`openai/gpt-5.4-nano`) is only a fallback when no binding exists; on Cloudflare it fails with `Unauthenticated ... AI_GATEWAY_API_KEY`, which is what broke posting after the move (422 "Couldn't verify this comment"). Eval: 10/10 on Workers AI (run through a temp worker with an `ai` binding; the REST API is not reachable with the wrangler OAuth token).
 - YouTube iframe API (trailers), Vercel Analytics + Speed Insights, Google Fonts (Roboto), Buy Me a Coffee widget.
 - Gaps: OMDB key plaintext in gitignored `src/environments/environment.ts` (ends up in dev client JS). Dev `tmdb.service.ts` reads undefined `environment.TMDB_API_KEY`. `.env.example` has unused `BACKEND_URL`, `USE_STATIC_DATA`.
 

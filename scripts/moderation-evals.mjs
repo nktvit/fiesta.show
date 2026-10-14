@@ -83,7 +83,7 @@ const CASES = [
 // clear that window on its own, so pace calls within this run instead of
 // hoping retries catch up.
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const CALL_GAP_MS = 15000;
+const CALL_GAP_MS = process.env.CF_AI_TOKEN ? 500 : 15000;
 
 let passed = 0;
 let failed = 0;

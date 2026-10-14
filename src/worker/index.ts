@@ -9,12 +9,15 @@ export interface Env {
   /** Workers Rate Limiting binding (wrangler.jsonc `ratelimits`). */
   STREAM_LIMIT?: { limit(o: { key: string }): Promise<{ success: boolean }> };
   MUSIC_LIMIT?: { limit(o: { key: string }): Promise<{ success: boolean }> };
+  /** Workers AI binding, used by lib/moderation.js for comment moderation. */
+  AI?: { run(model: string, input: unknown): Promise<any> };
   [key: string]: unknown;
 }
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+    (globalThis as any).__CF_AI = env.AI;
     if (url.pathname === '/sitemap.xml') return sitemapResponse(request, env, ctx);
     const action = url.searchParams.get('action');
     if (url.pathname === '/api/stream') {
