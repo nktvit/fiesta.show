@@ -1,2 +1,7 @@
+# Reflectionbot (reflection.ai) was 76% of all requests and 98% of the bytes in the last
+# 24 h (~364k requests, ~19 GB/day, mostly video segments): please do not crawl.
+User-agent: Reflectionbot
+Disallow: /
+
 User-agent: *
 Allow: /

@@ -1,5 +1,13 @@
 # Session handoff
 
+## TRAFFIC SPIKE 2026-10-11..13 = Reflectionbot (2026-10-14) - READ THIS
+
+- Cause: crawler `Reflectionbot/1.0 (reflection.ai/bot)`, ~364k req/day = 76% of requests, 98% of bytes (~19 GB/day: ~16.6 GB are `relay.fiesta.show/hls` segments through the Mac mini). ~100 IPs in 16.216.88.0/24 (AWS), ~10k req each, i.e. ~7 req/min per IP: below a human viewer, so a per-IP rate limit would not stop it. Bot was present at lower volume since 09-25 (38k-92k req per 3 days); the jump on 10-11 is x6.
+- Normal viewer for comparison: 70 s of movie playback = ~230 static + ~12 API + 29 relay /hls requests (static is cached).
+- Done: Reflectionbot Disallow in `src/robots.txt` (deployed, Worker version `79aa67cb`, branch `fix/robots`). A robots.txt is advisory only.
+- NOT done (needs dashboard or a token with Zone WAF edit): WAF rule `(http.user_agent contains "Reflectionbot")` block, Block AI bots / managed robots.txt toggle, same on `relay.fiesta.show`. Managed robots.txt does not appear active (live file has no Cloudflare block).
+- Cloudflare GraphQL analytics queries live in `$CLAUDE_JOB_DIR/tmp/cfq*.mjs` (token = wrangler oauth; zone 84017dd0..., account 14884bc1...).
+
 ## HOSTING MOVED TO CLOUDFLARE (2026-10-10) - READ THIS FIRST
 
 Vercel disabled the project (`402 DEPLOYMENT_DISABLED`, usage limit hit three times over, cause unknown), so production now runs on a
