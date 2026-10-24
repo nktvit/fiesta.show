@@ -55,6 +55,8 @@ export class MusicDeck {
   ready = false;
   /** The link repeatedly took about as long to fetch a segment as the segment plays: lossless will not keep up. */
   onSlowLink: (() => void) | null = null;
+  /** A segment batch was appended: the buffered ranges changed (the element fires no event for MSE appends). */
+  onAppended: (() => void) | null = null;
   /** Background pipeline failures of the current load (segment fetch, append). */
   onError: ((e: unknown) => void) | null = null;
 
@@ -267,6 +269,7 @@ export class MusicDeck {
             if (++slowStreak === SLOW_LINK_STREAK) this.onSlowLink?.();
           } else slowStreak = 0;
           await append(buf);
+          this.onAppended?.();
         }
         if (alive() && cursor > durations.length && ms.readyState === 'open') ms.endOfStream();
       } catch (e) {

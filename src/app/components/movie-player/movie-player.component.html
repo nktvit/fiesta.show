@@ -53,16 +53,20 @@
   }
 
   <!-- Mid-playback buffering: the video holds the last decoded frame; spinner
-       floats over it without blocking the native controls. The Video.js skin
-       draws its own, so this one is for the native UI only. -->
-  @if (started() && buffering() && !errorMsg() && playerUi() === 'native') {
-    <div class="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+       floats over it without blocking the controls. The Video.js skin draws its
+       own, but at ~16 px it is easy to miss after a seek, so this one shows for
+       both UIs (the skin's sits under its circle). -->
+  @if (started() && buffering() && !errorMsg()) {
+    <div class="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-3" role="status" aria-live="polite">
       <div class="flex h-16 w-16 sm:h-20 sm:w-20 items-center justify-center rounded-full bg-black/55 backdrop-blur-md ring-1 ring-white/10 shadow-2xl">
         <svg class="h-7 w-7 sm:h-8 sm:w-8 animate-spin text-white" fill="none" viewBox="0 0 24 24" aria-hidden="true">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
           <path class="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
         </svg>
       </div>
+      @if (bufferingLong()) {
+        <span class="rounded-full bg-black/55 px-3 py-1 text-xs text-gray-100 backdrop-blur-md">Still loading, slow connection…</span>
+      }
     </div>
   }
 

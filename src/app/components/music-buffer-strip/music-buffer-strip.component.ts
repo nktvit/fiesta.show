@@ -8,7 +8,7 @@ import { Component, computed, input } from '@angular/core';
 @Component({
   selector: 'app-music-buffer-strip',
   template: `
-    <div class="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 overflow-hidden rounded-full bg-white/10" aria-hidden="true" data-buffer-strip>
+    <div class="pointer-events-none absolute inset-x-0 bottom-0 h-1 overflow-hidden rounded-full bg-white/10" aria-hidden="true" data-buffer-strip>
       @for (r of segments(); track r.left) {
         <span class="absolute inset-y-0 bg-white/40" [style.left.%]="r.left" [style.width.%]="r.width"></span>
       }

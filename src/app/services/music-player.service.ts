@@ -784,6 +784,7 @@ export class MusicPlayerService {
       if (!isActive() || !this.track()) return;
       this.handleFailure(e, this.track()!, this.index());
     };
+    deck.onAppended = () => { if (isActive()) this.syncBuffered(a); };
     deck.onSlowLink = () => {
       if (!isActive() || !this.track()) return;
       const tier = QUALITY_LADDER.indexOf((deck.manifest?.quality ?? '') as MusicQuality);
@@ -853,6 +854,7 @@ export class MusicPlayerService {
     if (this.needsLoad) return;
     const t = a.currentTime;
     this.position.set(t);
+    this.syncBuffered(a);
     const run = this.run;
     if (run && !a.paused) {
       const delta = t - run.lastTime;
