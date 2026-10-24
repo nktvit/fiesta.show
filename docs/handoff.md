@@ -1,5 +1,16 @@
 # Session handoff
 
+## PLAYBACK POLISH (2026-10-24, branch `fix/playback-polish`, deployed Worker `3978fe68`, NOT merged to main yet)
+
+- Measured with Playwright + CDP throttling (note: `downloadThroughput: mbps * 125000` is Mbit/s, not MB/s; the old notes say "2 MB/s" but meant Mbit/s). Scripts live in `$CLAUDE_JOB_DIR/tmp/pw` (`fb4.mjs` seek stalls, `slow2.mjs` sustained slow link, `mv3.mjs`/`mv4.mjs`/`start.mjs` movies).
+- **Music, bug found**: after a seek the ramp asked for 4 segments (~7 s to download at 2 Mbit/s) with only one segment (4 s) buffered -> guaranteed stall of 5-9 s. `affordableCount()` in `music-seg-batch.ts` + a throughput estimate in `music-deck.ts` (a slowdown is believed at once, a speed-up half way) now size each batch to what the buffer covers. Stall in the 9.75 s after a seek: 2 Mbit/s 5.5-6.7 s -> 0-1 s; 1.5 Mbit/s 6-9 s -> 0-1.75 s; fast links unchanged.
+- **Music, slow links**: two requests in a row that take >80% of a segment's playing time with <8 s buffered -> `deck.onSlowLink` -> player restarts at AAC 320 (`HIGH`) from the same position, toast "Slow connection: switched to AAC...", and `slowCap` keeps AAC for the rest of the session while the quality setting is unchanged (resets on reload; never goes back up). At 0.7 Mbit/s: stalled 21 s -> 8.5 s per 40 s, at 1 Mbit/s 20 s -> 4.5 s.
+- **Music UI**: `app-music-buffer-strip` under the seek bar (player bar and now-playing): loaded ranges (light) plus a sliding indigo marker while `loading() || seeking()`; new `buffered` and `seeking` signals in `music-player.service.ts` (updated on append, timeupdate, progress, seeking/seeked). Reduced-motion shows a static bar.
+- **Movies**: playback itself is stable (4 and 8 Mbit/s: 0 stalls in 60 s, ABR drops to 714p at 4 Mbit/s). Far seeks resume in 1.2-3.7 s at 8 Mbit/s, 2.2-4.8 s at 3 Mbit/s. UI fix: the Video.js skin only shows a ~16 px spinner, so the big buffering overlay now shows for both UIs, plus "Still loading, slow connection..." after 3 s (`bufferingLong`).
+- Start-up: unthrottled first frame ~2.3 s (page -> /api/movie -> /api/stream -> master -> segments); 8 Mbit/s ~5.9 s, 4 Mbit/s ~9 s (mostly bundles + hls.js + first segment).
+- NOT done (ideas): `/api/stream` is only requested after `/api/movie` returns because the player is mounted after the metadata (cold movie = up to 3.7 s later; prefetching needs the movie/tv type, a wrong guess costs a relay resolve); `modulepreload` for the hls.js chunk (~0.6 s); smaller first segment after a music seek (Range request); AAC step-up when the link recovers; real iPhone untested (WebKit desktop checked: music seek 0.5-1.2 s, no errors).
+- Tests: 517/526 pass; the same 9 stale MovieService/TmdbService specs fail as before. New: `affordableCount` specs, deck spec for the slow-link batch size.
+
 ## TRAFFIC SPIKE 2026-10-11..13 = Reflectionbot (2026-10-14) - READ THIS
 
 - Cause: crawler `Reflectionbot/1.0 (reflection.ai/bot)`, ~364k req/day = 76% of requests, 98% of bytes (~19 GB/day: ~16.6 GB are `relay.fiesta.show/hls` segments through the Mac mini). ~100 IPs in 16.216.88.0/24 (AWS), ~10k req each, i.e. ~7 req/min per IP: below a human viewer, so a per-IP rate limit would not stop it. Bot was present at lower volume since 09-25 (38k-92k req per 3 days); the jump on 10-11 is x6.
