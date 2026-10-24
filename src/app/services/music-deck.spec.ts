@@ -39,7 +39,7 @@ describe('MusicDeck segment batching', () => {
   afterEach(() => { win.MediaSource = saved; });
 
   const el = () => ({
-    preload: '', src: '', currentTime: 0, buffered: { length: 0, start: () => 0, end: () => 0 },
+    preload: '', src: '', currentTime: 0, paused: true, buffered: { length: 0, start: () => 0, end: () => 0 },
     addEventListener() {}, removeEventListener() {}, pause() {}, hasAttribute: () => false, removeAttribute() {}, load() {},
   }) as unknown as HTMLAudioElement;
 
@@ -107,6 +107,24 @@ describe('MusicDeck segment batching', () => {
     expect(aborted).toBe(1);
     // the very next request after the cancelled batch: the ramp restarts with a single segment
     expect(urls[urls.indexOf('/seg?u=media&n=2&c=4') + 1]).toBe('/seg?u=media&n=51');
+    deck.dispose();
+  });
+
+  it('on a slow link asks for fewer segments than the ramp when the buffer cannot cover a bigger batch', async () => {
+    // Playing, 2 s buffered; each request moves 1 MB in 400 ms (~2.5 MB/s) -> 0.4 s per 1 MB segment,
+    // so (2 s - 1 s margin) / 0.4 s = 2 segments are affordable, not the ramp's 4.
+    fetchSpy.and.callFake(((u: string) => {
+      urls.push(u);
+      return new Promise((r) => setTimeout(() => r({ ok: true, status: 200, arrayBuffer: () => Promise.resolve(new ArrayBuffer(u.includes('init') ? 1 : 1_000_000)) }), 400));
+    }) as unknown as typeof fetch);
+    const e = el() as unknown as { paused: boolean; buffered: { length: number; start: () => number; end: () => number } };
+    e.paused = false;
+    e.buffered = { length: 1, start: () => 0, end: () => 2 };
+    const deck = new MusicDeck(e as unknown as HTMLAudioElement);
+    await deck.load(manifest(70), 1, () => true);
+    for (let i = 0; i < 100 && urls.length < 3; i++) await new Promise((r) => setTimeout(r, 20));
+    expect(urls[1]).toBe('/seg?u=media&n=1');
+    expect(urls[2]).toBe('/seg?u=media&n=2&c=2');
     deck.dispose();
   });
 });

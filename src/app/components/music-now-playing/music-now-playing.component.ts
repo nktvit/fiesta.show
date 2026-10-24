@@ -3,6 +3,7 @@ import {
   Component, DestroyRef, ElementRef, computed, effect, inject, signal, untracked, viewChild,
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { MusicBufferStripComponent } from '../music-buffer-strip/music-buffer-strip.component';
 import { MusicPlayerService } from '../../services/music-player.service';
 import { MusicSettingsService } from '../../services/music-settings.service';
 import { MusicUiService } from '../../services/music-ui.service';
@@ -26,7 +27,7 @@ const MAX_TILT_DEG = 8;
  */
 @Component({
   selector: 'app-music-now-playing',
-  imports: [A11yModule, RouterLink, MusicLikeButtonComponent, MusicLyricsViewComponent, MusicVisualizerComponent],
+  imports: [A11yModule, RouterLink, MusicBufferStripComponent, MusicLikeButtonComponent, MusicLyricsViewComponent, MusicVisualizerComponent],
   templateUrl: './music-now-playing.component.html',
 })
 export class MusicNowPlayingComponent {

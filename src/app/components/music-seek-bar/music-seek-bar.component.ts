@@ -1,6 +1,7 @@
 import { Component, ElementRef, computed, inject, input, output, signal, DestroyRef } from '@angular/core';
 import { time } from '../../utils/music-format';
 import { MusicWaveformComponent } from '../music-waveform/music-waveform.component';
+import { MusicBufferStripComponent } from '../music-buffer-strip/music-buffer-strip.component';
 
 /**
  * Native range seek bar with a hover-time tooltip. While the pointer is down
@@ -10,7 +11,7 @@ import { MusicWaveformComponent } from '../music-waveform/music-waveform.compone
  */
 @Component({
   selector: 'app-music-seek-bar',
-  imports: [MusicWaveformComponent],
+  imports: [MusicWaveformComponent, MusicBufferStripComponent],
   templateUrl: './music-seek-bar.component.html',
   host: { class: 'block min-w-0 flex-1' },
 })
@@ -19,6 +20,9 @@ export class MusicSeekBarComponent {
   readonly duration = input(0);
   readonly trackId = input<number | null>(null);
   readonly showWaveform = input(false);
+  /** Loaded ranges and whether the player is waiting for data (see app-music-buffer-strip). */
+  readonly buffered = input<readonly (readonly [number, number])[]>([]);
+  readonly busy = input(false);
   /** Committed seek target in seconds. */
   readonly seekTo = output<number>();
 

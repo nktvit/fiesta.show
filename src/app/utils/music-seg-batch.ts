@@ -24,3 +24,15 @@ export function batchCount(step: number, next: number, total: number, cap = SEG_
 export function batchUrl(media: string, n: number, c: number): string {
   return c > 1 ? `${media}&n=${n}&c=${c}` : `${media}&n=${n}`;
 }
+
+/**
+ * How many segments the current link can fetch before the buffer runs dry: a batch of `c`
+ * takes about c * (segBytes / bytesPerSec) seconds, and playback eats `bufferedSec` meanwhile.
+ * Without this the 1 -> 4 -> 8 ramp asks for 4 segments (~7 s at 2 Mbit/s) with only one
+ * segment (4 s) buffered, which is a guaranteed stall right after a seek on a slow link.
+ */
+export function affordableCount(bufferedSec: number, bytesPerSec: number, segBytes: number, marginSec = 1): number {
+  if (!(bytesPerSec > 0) || !(segBytes > 0)) return SEG_MAX_BATCH;
+  const secondsPerSegment = segBytes / bytesPerSec;
+  return Math.max(1, Math.floor((bufferedSec - marginSec) / secondsPerSegment));
+}

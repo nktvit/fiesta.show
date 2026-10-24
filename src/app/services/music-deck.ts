@@ -1,5 +1,5 @@
 import { MusicManifest } from './music.service';
-import { batchCount, batchUrl } from '../utils/music-seg-batch';
+import { affordableCount, batchCount, batchUrl } from '../utils/music-seg-batch';
 
 /** Seconds of audio to keep buffered ahead of the playhead. */
 const BUFFER_AHEAD = 40;
@@ -7,6 +7,8 @@ const BUFFER_AHEAD = 40;
 const BUFFER_BEHIND = 60;
 /** What a standby deck buffers before the switch (init + the first ~10 s). */
 export const PREPARE_AHEAD = 10;
+/** Slow requests in a row before the player is told to step down a quality tier. */
+const SLOW_LINK_STREAK = 2;
 /** Give up on a MediaSource that never opens (element reused, tab frozen). */
 const SOURCE_OPEN_TIMEOUT = 15000;
 
@@ -51,6 +53,8 @@ export class MusicDeck {
   manifest: MusicManifest | null = null;
   /** Init appended (segments) / source set (file): the element can play. */
   ready = false;
+  /** The link repeatedly took about as long to fetch a segment as the segment plays: lossless will not keep up. */
+  onSlowLink: (() => void) | null = null;
   /** Background pipeline failures of the current load (segment fetch, append). */
   onError: ((e: unknown) => void) | null = null;
 
@@ -191,6 +195,11 @@ export class MusicDeck {
     let step = 0;
     /** Bumped by every seek out of the buffer: a request started before it is stale. */
     let epoch = 0;
+    /** Measured throughput of the last request (bytes/s, first byte included) and its bytes per segment. */
+    let rate = 0;
+    let segBytes = 0;
+    /** Consecutive requests that were barely faster than playback while the buffer was thin. */
+    let slowStreak = 0;
     /** Wakes the feeding loop out of its idle sleep (a seek must not wait up to 500 ms). */
     let wake: (() => void) | null = null;
     if (startAt > 0 && durations.length) {
@@ -233,9 +242,12 @@ export class MusicDeck {
           const signal = this.pumpAbort!.signal;
           const n = cursor;
           // A standby deck only needs ~10 s: two small batches, not a full window.
-          const c = batchCount(step++, n, durations.length, this.ahead <= PREPARE_AHEAD ? 2 : undefined);
+          let c = batchCount(step++, n, durations.length, this.ahead <= PREPARE_AHEAD ? 2 : undefined);
+          // Playing: never ask for more than the buffer can cover at the speed the last request ran.
+          if (!a.paused) c = Math.min(c, affordableCount(this.bufferedAhead(), rate, segBytes));
           cursor += c;
           let buf: ArrayBuffer;
+          const t0 = performance.now();
           try {
             buf = await fetchBuf(batchUrl(m.media!, n, c), signal);
           } catch (e) {
@@ -244,6 +256,16 @@ export class MusicDeck {
           }
           if (!alive()) break;
           if (ep !== epoch) continue; // a seek happened while it was in flight: stale data
+          const seconds = Math.max(0.05, (performance.now() - t0) / 1000);
+          // Believe a slowdown at once (the buffer is what pays for a wrong guess), trust a speed-up half way.
+          const sample = buf.byteLength / seconds;
+          rate = rate && sample > rate ? 0.5 * (rate + sample) : sample;
+          segBytes = buf.byteLength / c;
+          // Only while playing a full-length window (not a standby deck's top-up) and not for a lone first segment.
+          const segSeconds = durations[n - 1] || 4;
+          if (!a.paused && this.ahead > PREPARE_AHEAD && seconds / c > 0.8 * segSeconds && this.bufferedAhead() < 2 * segSeconds) {
+            if (++slowStreak === SLOW_LINK_STREAK) this.onSlowLink?.();
+          } else slowStreak = 0;
           await append(buf);
         }
         if (alive() && cursor > durations.length && ms.readyState === 'open') ms.endOfStream();
