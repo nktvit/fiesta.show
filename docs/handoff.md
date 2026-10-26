@@ -1,5 +1,15 @@
 # Session handoff
 
+## SUBTITLES vs SAFARI FULLSCREEN HUD (2026-10-26, branch `fix/subtitle-fullscreen-position`, built and tested, NOT deployed yet)
+
+- Report: in Safari (Mac) native fullscreen the floating HUD (volume / play / scrubber) covered the subtitles. Cause: cues sit on the default bottom line; the Video.js skin lifts captions only in its own fullscreen (`--media-caption-track-y`), the native `<video controls>` / `webkitDisplayingFullscreen` case had nothing.
+- Fix (`movie-player.component.ts` + `.html`): while the `<video>` itself is fullscreen (`webkitbeginfullscreen`/`webkitendfullscreen`, `fullscreenchange`, `webkitDisplayingFullscreen`), every cue gets `snapToLines=false, lineAlign='end', line=80` (bottom edge of the box at 80% of the picture height); on exit they go back to `snapToLines=true, line='auto'`. New cues are placed the same way in `fillTrack`. Unit test added. Checked in WebKit that the events reach the real player and the cue properties apply; the macOS HUD itself cannot be reproduced headless, so the exact clearance (80%) is untested on a real Mac - if it still touches, lower the number in `placeCue`.
+- This branch already contains `fix/playback-polish` (merged in), so deploying it keeps those changes. Deploying from `main` would NOT (it lacks them until merged).
+
+## TESTING RULE: no sound (2026-10-26, user request)
+
+Automated browser runs must be silent: Chromium gets `--mute-audio`; WebKit has no such flag, so every Playwright script also installs an init script that forces `muted`/`volume` and swallows connections to `AudioContext.destination`. Already applied to all scripts in `$CLAUDE_JOB_DIR/tmp/pw`; new scripts must do the same. Unit tests use fake audio elements.
+
 ## PLAYBACK POLISH (2026-10-24, branch `fix/playback-polish`, deployed Worker `3978fe68`, NOT merged to main yet)
 
 - Measured with Playwright + CDP throttling (note: `downloadThroughput: mbps * 125000` is Mbit/s, not MB/s; the old notes say "2 MB/s" but meant Mbit/s). Scripts live in `$CLAUDE_JOB_DIR/tmp/pw` (`fb4.mjs` seek stalls, `slow2.mjs` sustained slow link, `mv3.mjs`/`mv4.mjs`/`start.mjs` movies).
