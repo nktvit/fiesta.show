@@ -18,6 +18,8 @@
       (canplay)="onCanPlay()"
       (seeking)="onSeeking()"
       (seeked)="onSeeked()"
+      (webkitbeginfullscreen)="onNativeFullscreen(videoEl, true)"
+      (webkitendfullscreen)="onNativeFullscreen(videoEl, false)"
     >
       @for (t of subtitleTracks(); track t.src) {
         <track kind="subtitles" [src]="stubVtt" [attr.srclang]="t.lang" [attr.label]="t.label" [default]="t.isDefault" (load)="onTrackLoaded($event)" (error)="onTrackLoaded($event)" />

@@ -106,4 +106,18 @@ describe('MoviePlayerComponent', () => {
     component.onPlaybackPaused({ ...video, ended: true } as HTMLVideoElement);
     expect(component.paused()).toBeFalse();
   });
+
+  it('lifts subtitle cues above Safari\'s fullscreen HUD and puts them back on exit', () => {
+    const cue = new VTTCue(0, 5, 'hello');
+    const video = { textTracks: [{ cues: [cue] }] } as unknown as HTMLVideoElement;
+
+    component.onNativeFullscreen(video, true);
+    expect(cue.snapToLines).toBeFalse();
+    expect(cue.lineAlign).toBe('end');
+    expect(cue.line).toBe(80);
+
+    component.onNativeFullscreen(video, false);
+    expect(cue.snapToLines).toBeTrue();
+    expect(cue.line).toBe('auto');
+  });
 });

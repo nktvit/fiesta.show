@@ -160,6 +160,8 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
 
   constructor() {
     document.addEventListener('keydown', this.onDocumentKeydown, true);
+    document.addEventListener('fullscreenchange', this.onFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', this.onFullscreenChange);
     if (this.playerUi() === 'custom') MoviePlayerComponent.loadVideoJs();
 
     // Attach the stream once both the resolved master URL and the <video> exist.
@@ -203,6 +205,8 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
 
   ngOnDestroy() {
     document.removeEventListener('keydown', this.onDocumentKeydown, true);
+    document.removeEventListener('fullscreenchange', this.onFullscreenChange);
+    document.removeEventListener('webkitfullscreenchange', this.onFullscreenChange);
     this.destroyHls();
     if (this.bufferingTimer) clearTimeout(this.bufferingTimer);
     if (this.subtitleNoticeTimer) clearTimeout(this.subtitleNoticeTimer);
@@ -755,6 +759,53 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     this.clearBuffering();
   }
 
+  // Safari's own fullscreen draws a floating HUD (volume, play, scrubber) over the bottom ~15%
+  // of the picture, right where cues sit by default. Lift them while the <video> itself is the
+  // fullscreen element (the Video.js skin lifts captions by itself, in its own fullscreen).
+  private nativeFullscreen = false;
+
+  private isNativeFullscreen(video: HTMLVideoElement): boolean {
+    const d = document as Document & { webkitFullscreenElement?: Element | null };
+    return !!(video as HTMLVideoElement & { webkitDisplayingFullscreen?: boolean }).webkitDisplayingFullscreen
+      || d.fullscreenElement === video || d.webkitFullscreenElement === video;
+  }
+
+  onNativeFullscreen(video: HTMLVideoElement, force?: boolean) {
+    this.nativeFullscreen = force ?? this.isNativeFullscreen(video);
+    this.applyCuePosition(video);
+  }
+
+  private onFullscreenChange = () => {
+    const video = this.videoEl()?.nativeElement;
+    if (video) this.onNativeFullscreen(video);
+  };
+
+  /** Bottom edge of the cue box at 80% of the picture height in native fullscreen, default placement otherwise. */
+  private placeCue(cue: TextTrackCue) {
+    const c = cue as VTTCue;
+    if (!('line' in c)) return;
+    try {
+      if (this.nativeFullscreen) {
+        c.snapToLines = false;
+        c.lineAlign = 'end';
+        c.line = 80;
+      } else if (!c.snapToLines) {
+        c.snapToLines = true;
+        c.lineAlign = 'start';
+        c.line = 'auto';
+      }
+    } catch {
+      // an engine without these setters just keeps the default placement
+    }
+  }
+
+  private applyCuePosition(video: HTMLVideoElement) {
+    for (let i = 0; i < video.textTracks.length; i++) {
+      const cues = video.textTracks[i].cues;
+      for (let k = 0; cues && k < cues.length; k++) this.placeCue(cues[k]);
+    }
+  }
+
   private failPlayback(detail: string) {
     this.destroyHls();
     this.attachedUrl = null; // allow a retry to re-attach the same master
@@ -961,7 +1012,9 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     if (!CueCtor) return;
     for (const c of cues) {
       try {
-        track.addCue(new CueCtor(c.start, c.end, c.text));
+        const cue = new CueCtor(c.start, c.end, c.text);
+        this.placeCue(cue);
+        track.addCue(cue);
       } catch {
         // a malformed cue must not take the rest of the file down with it
       }
