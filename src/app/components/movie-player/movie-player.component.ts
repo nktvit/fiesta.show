@@ -63,6 +63,8 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   // Mid-playback stall (waiting on buffer, transient HLS recovery, seek). The
   // <video> keeps the last decoded frame on screen; we overlay a spinner.
   readonly buffering = signal(false);
+  /** Still waiting a few seconds after the spinner came up: say so. */
+  readonly bufferingLong = signal(false);
 
   // preview-only debug: show whether segments load direct vs via the proxy
   readonly env = signal<string | null>(null);
@@ -142,6 +144,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   private nativeErrorHandler: (() => void) | null = null;
   // Defer the buffering spinner so quick seeks/microstalls don't flash it.
   private bufferingTimer: ReturnType<typeof setTimeout> | null = null;
+  private bufferingLongTimer: ReturnType<typeof setTimeout> | null = null;
   // true once we've already escalated server 1 -> server 2, so we don't loop
   private escalated = false;
   private pendingResumeTime: number | null = null;
@@ -209,6 +212,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     document.removeEventListener('webkitfullscreenchange', this.onFullscreenChange);
     this.destroyHls();
     if (this.bufferingTimer) clearTimeout(this.bufferingTimer);
+    if (this.bufferingLongTimer) clearTimeout(this.bufferingLongTimer);
     if (this.subtitleNoticeTimer) clearTimeout(this.subtitleNoticeTimer);
     this.cueCache.clear();
     this.cueFetches.clear();
@@ -727,7 +731,10 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     if (this.bufferingTimer || this.buffering()) return;
     this.bufferingTimer = setTimeout(() => {
       this.bufferingTimer = null;
-      if (this.started()) this.buffering.set(true);
+      if (this.started()) {
+        this.buffering.set(true);
+        this.bufferingLongTimer = setTimeout(() => this.bufferingLong.set(true), 3000);
+      }
     }, 350);
   }
 
@@ -736,6 +743,11 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
       clearTimeout(this.bufferingTimer);
       this.bufferingTimer = null;
     }
+    if (this.bufferingLongTimer) {
+      clearTimeout(this.bufferingLongTimer);
+      this.bufferingLongTimer = null;
+    }
+    if (this.bufferingLong()) this.bufferingLong.set(false);
     if (this.buffering()) this.buffering.set(false);
   }
 

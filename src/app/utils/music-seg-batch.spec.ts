@@ -1,4 +1,4 @@
-import { batchCount, batchUrl } from './music-seg-batch';
+import { affordableCount, batchCount, batchUrl, SEG_MAX_BATCH } from './music-seg-batch';
 
 describe('music-seg-batch', () => {
   it('ramps 1 -> 4 -> 8 and never runs past the last segment', () => {
@@ -32,5 +32,23 @@ describe('music-seg-batch', () => {
     }
     expect(requests).toBeLessThanOrEqual(12);
     expect(covered).toEqual(Array.from({ length: 70 }, (_, i) => i + 1));
+  });
+});
+
+describe('affordableCount', () => {
+  it('is the full batch until a speed is known', () => {
+    expect(affordableCount(4, 0, 0)).toBe(SEG_MAX_BATCH);
+  });
+  it('shrinks to what the buffer can cover at the measured speed', () => {
+    // 450 KB segments at 240 KB/s = 1.9 s each; 4 s buffered, 1 s margin -> 1 segment
+    expect(affordableCount(4, 240_000, 450_000)).toBe(1);
+    // 12 s buffered -> (12 - 1) / 1.9 = 5
+    expect(affordableCount(12, 240_000, 450_000)).toBe(5);
+  });
+  it('never asks for less than one segment', () => {
+    expect(affordableCount(0, 100_000, 450_000)).toBe(1);
+  });
+  it('allows big batches on a fast link', () => {
+    expect(affordableCount(4, 6_000_000, 450_000)).toBeGreaterThanOrEqual(SEG_MAX_BATCH);
   });
 });

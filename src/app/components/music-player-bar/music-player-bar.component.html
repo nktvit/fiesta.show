@@ -58,7 +58,7 @@
           </button>
         </div>
         <div class="hidden w-full max-w-2xl sm:flex">
-          <app-music-seek-bar [position]="player.position()" [duration]="player.duration()" [trackId]="t.id" [showWaveform]="settings.waveformSeekbar()" (seekTo)="seek($event)" />
+          <app-music-seek-bar [position]="player.position()" [duration]="player.duration()" [trackId]="t.id" [showWaveform]="settings.waveformSeekbar()" [buffered]="player.buffered()" [busy]="player.loading() || player.seeking()" (seekTo)="seek($event)" />
         </div>
       </div>
 

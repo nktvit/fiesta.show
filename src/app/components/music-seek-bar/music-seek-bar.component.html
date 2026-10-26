@@ -4,6 +4,7 @@
     @if (showWaveform()) {
       <app-music-waveform [trackId]="trackId()" [progress]="progress()" />
     }
+    <app-music-buffer-strip [ranges]="buffered()" [duration]="duration()" [busy]="busy()" />
     @if (tooltip(); as tip) {
       <span class="pointer-events-none absolute bottom-full z-10 mb-1 -translate-x-1/2 rounded bg-black/90 px-1.5 py-0.5 text-[11px] tabular-nums text-white"
         [style.left.px]="tip.left" role="presentation">{{ tip.text }}</span>

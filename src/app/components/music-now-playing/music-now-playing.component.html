@@ -105,8 +105,11 @@
 
             <div class="flex w-full max-w-md items-center gap-2 lg:max-w-lg">
               <span class="w-10 text-right text-xs tabular-nums text-gray-300">{{ time(player.position()) }}</span>
-              <input type="range" min="0" [max]="player.duration()" step="1" [value]="player.position()" (input)="onSeek($event)" aria-label="Seek"
-                class="h-1 flex-1 cursor-pointer accent-indigo-500" />
+              <div class="relative flex h-4 flex-1 items-center">
+                <input type="range" min="0" [max]="player.duration()" step="1" [value]="player.position()" (input)="onSeek($event)" aria-label="Seek"
+                  class="h-1 w-full cursor-pointer accent-indigo-500" />
+                <app-music-buffer-strip [ranges]="player.buffered()" [duration]="player.duration()" [busy]="player.loading() || player.seeking()" />
+              </div>
               <span class="w-10 text-xs tabular-nums text-gray-300">{{ time(player.duration()) }}</span>
             </div>
 

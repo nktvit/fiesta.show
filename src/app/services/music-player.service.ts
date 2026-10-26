@@ -136,6 +136,10 @@ export class MusicPlayerService {
   readonly track = computed(() => this.queue()[this.index()] ?? null);
   readonly playing = signal(false);
   readonly loading = signal(false);
+  /** The element is mid-seek (target not decoded yet). */
+  readonly seeking = signal(false);
+  /** Loaded time ranges of the active deck, for the seek bar. */
+  readonly buffered = signal<readonly (readonly [number, number])[]>([]);
   readonly error = signal<MusicError | null>(null);
   readonly position = signal(0);
   readonly duration = signal(0);
@@ -181,6 +185,8 @@ export class MusicPlayerService {
   private needsLoad = false;
   private failures = 0;
   private retriedLower = false;
+  /** Tier the connection could not keep up above, for the rest of the session (while the quality setting stays the same). */
+  private slowCap: { cap: MusicQuality; forSetting: string } | null = null;
   private crossfading: AbortController | null = null;
   private deckGain = new Map<HTMLAudioElement, number>();
   private fadeGain = 1;
@@ -688,6 +694,7 @@ export class MusicPlayerService {
   ): Promise<{ manifest: MusicManifest; fellBackFrom: string | null }> {
     const wanted = this.wantedQuality();
     let from = QUALITY_LADDER.indexOf(wanted);
+    if (!cap && this.slowCap && this.slowCap.forSetting === this.settings.quality()) cap = this.slowCap.cap;
     if (cap) from = Math.max(from, QUALITY_LADDER.indexOf(cap));
     for (let k = from; k < QUALITY_LADDER.length; k++) {
       const tier = QUALITY_LADDER[k];
@@ -777,6 +784,17 @@ export class MusicPlayerService {
       if (!isActive() || !this.track()) return;
       this.handleFailure(e, this.track()!, this.index());
     };
+    deck.onAppended = () => { if (isActive()) this.syncBuffered(a); };
+    deck.onSlowLink = () => {
+      if (!isActive() || !this.track()) return;
+      const tier = QUALITY_LADDER.indexOf((deck.manifest?.quality ?? '') as MusicQuality);
+      // LOSSLESS -> HIGH (AAC 320 kbps, about a third of the data); never below HIGH on speed alone.
+      if (tier < 0 || QUALITY_LADDER[tier] === 'HIGH' || QUALITY_LADDER[tier] === 'LOW') return;
+      const cap = QUALITY_LADDER[QUALITY_LADDER.indexOf('HIGH')];
+      this.slowCap = { cap, forSetting: this.settings.quality() };
+      this.toast.show({ message: 'Slow connection: switched to AAC to keep the music playing', tone: 'warn' });
+      void this.start(this.index(), { startAt: this.position(), reason: 'resume', tierCap: cap });
+    };
     a.addEventListener('playing', () => {
       if (!isActive()) return;
       this.playing.set(true);
@@ -793,6 +811,10 @@ export class MusicPlayerService {
       this.persist();
     });
     a.addEventListener('waiting', () => { if (isActive() && !a.paused) this.loading.set(true); });
+    a.addEventListener('seeking', () => { if (isActive()) { this.seeking.set(true); this.syncBuffered(a); } });
+    a.addEventListener('seeked', () => { if (isActive()) { this.seeking.set(false); this.syncBuffered(a); } });
+    a.addEventListener('progress', () => { if (isActive()) this.syncBuffered(a); });
+    a.addEventListener('emptied', () => { if (isActive()) { this.seeking.set(false); this.syncBuffered(a); } });
     a.addEventListener('timeupdate', () => { if (isActive()) this.onTime(a); });
     a.addEventListener('durationchange', () => {
       if (isActive() && Number.isFinite(a.duration) && a.duration > 0) this.duration.set(a.duration);
@@ -819,10 +841,20 @@ export class MusicPlayerService {
     });
   }
 
+  private syncBuffered(a: HTMLAudioElement): void {
+    const next: [number, number][] = [];
+    for (let k = 0; k < (a.buffered?.length ?? 0); k++) next.push([a.buffered.start(k), a.buffered.end(k)]);
+    const prev = this.buffered();
+    // Whole seconds are plenty for a 1-2 px strip: skip the signal write when nothing visible moved.
+    if (prev.length === next.length && prev.every((r, k) => Math.round(r[0]) === Math.round(next[k][0]) && Math.round(r[1]) === Math.round(next[k][1]))) return;
+    this.buffered.set(next);
+  }
+
   private onTime(a: HTMLAudioElement): void {
     if (this.needsLoad) return;
     const t = a.currentTime;
     this.position.set(t);
+    this.syncBuffered(a);
     const run = this.run;
     if (run && !a.paused) {
       const delta = t - run.lastTime;
