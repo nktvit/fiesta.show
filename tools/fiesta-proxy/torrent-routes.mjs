@@ -4,8 +4,9 @@
 import { timingSafeEqual } from 'node:crypto';
 import { Readable } from 'node:stream';
 
-const TORRENT_URL = (process.env.TORRENT_URL || 'http://127.0.0.1:8790').replace(/\/$/, '');
-const TORRENT_TOKEN = process.env.TORRENT_TOKEN || '';
+// Read per request: relay.mjs loads .env.local AFTER its imports have run.
+const torrentUrl = () => (process.env.TORRENT_URL || 'http://127.0.0.1:8790').replace(/\/$/, '');
+const torrentToken = () => process.env.TORRENT_TOKEN || '';
 
 // --- torrents: the site adds/queries with the bearer secret, viewers stream with a signed URL ---
 const isOwner = (req, SECRET) => {
@@ -31,14 +32,14 @@ const readBody = async (req, limit = 8 * 1024 * 1024) => {
   return Buffer.concat(chunks);
 };
 const boxFetch = (p, init = {}) =>
-  fetch(TORRENT_URL + p, { ...init, headers: { ...(init.headers || {}), Authorization: 'Bearer ' + TORRENT_TOKEN } });
+  fetch(torrentUrl() + p, { ...init, headers: { ...(init.headers || {}), Authorization: 'Bearer ' + torrentToken() } });
 
 // POST /torrent/add            body: raw .torrent or {"magnet": "..."}     -> {id}
 // GET  /torrent/:id            progress + `stream` (signed URL) once a video file is known
 // DELETE /torrent/:id
 async function handleTorrentApi(req, res, url, { SECRET, PUBLIC_URL, mintToken }) {
   if (!isOwner(req, SECRET)) return sendJson(res, 401, { error: 'unauthorized' });
-  if (!TORRENT_TOKEN) return sendJson(res, 503, { error: 'TORRENT_TOKEN not set on the relay' });
+  if (!torrentToken()) return sendJson(res, 503, { error: 'TORRENT_TOKEN not set on the relay' });
   if (req.method === 'POST' && url.pathname === '/torrent/add') {
     const body = await readBody(req);
     const r = await boxFetch('/api/add', { method: 'POST', body, headers: { 'Content-Type': req.headers['content-type'] || 'application/octet-stream' } });
