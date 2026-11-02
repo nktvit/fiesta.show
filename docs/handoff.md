@@ -2323,5 +2323,11 @@ Goal: drop a .torrent or magnet on the site, get a stream. API only, no torrent 
 - `tools/fiesta-proxy/torrent-routes.mjs` — `/torrent/add|:id` (Bearer secret) and `/torrent/stream/:id?t=` (signed, same token as /hls).
   `install-torrent.sh` ships box + routes to the Mac mini (launchd `show.fiesta.torrent`); **not run yet**, user runs it.
 - `api/torrent.js` — site endpoint, owner-only via `x-admin-key` = `TORRENT_ADMIN_KEY` (secret to be set in Cloudflare). No end-user UI yet.
-- Not done: MKV/DTS/PGS remux to HLS fMP4 (ffmpeg, VideoToolbox), real-time compression research (see session notes), UI in the site, per-user auth.
+- Stage 2 DONE: `tools/torrent-box/hls.mjs` — ffprobe plan, ffmpeg HLS fMP4 into `<HDD>/.fiesta/hls/<id>/`, started on the first
+  `/hls/:id/index.m3u8` request, works on a partial download. H.264/HEVC video is COPIED, AC-3/DTS audio -> AAC stereo, anything else -> h264_videotoolbox 8M.
+  Relay: `/torrent/hls/<token>/<id>/<file>` (token in the path so relative segment URLs work); status has `play: 'direct'|'hls'`, `stream`, `hls`.
+  Verified live on the Mac mini: MKV (H.264+AC-3 5.1) -> playlist in 0.4 s through relay.fiesta.show, segments decode clean.
+  M4 VideoToolbox, Sintel 60 s: h264 ~2 s, hevc 2.5–3.2 s; SSIM equal at the same bitrate (0.988/0.992/0.995 at 0.6/1/2 Mbit) -> H.264 is the default encoder, HEVC only for 4K/10-bit/HDR.
+- `/api/torrent` has no key: open on previews/dev, 404 when DEPLOY_ENV=production. Needs STREAM_RELAY_URL/SECRET on the preview env.
+- Not done: seeking beyond what ffmpeg has produced (second ffmpeg with -ss), text subtitles to WebVTT, 10-bit/HDR path, player UI in the site, per-user auth, hls cache cleanup policy.
 - Branch is based on the old main (79693a1): rebase before merging.

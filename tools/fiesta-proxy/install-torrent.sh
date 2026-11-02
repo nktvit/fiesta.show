@@ -46,7 +46,7 @@ ssh mm "cat > ~/Library/LaunchAgents/$LABEL.plist" <<PLIST
   <key>StandardErrorPath</key><string>$B/box.log</string>
 </dict></plist>
 PLIST
-ssh mm "chmod 600 ~/Library/LaunchAgents/$LABEL.plist; launchctl bootout gui/\$(id -u)/$LABEL 2>/dev/null; launchctl bootstrap gui/\$(id -u) ~/Library/LaunchAgents/$LABEL.plist"
+ssh mm "chmod 600 ~/Library/LaunchAgents/$LABEL.plist; launchctl bootout gui/\$(id -u)/$LABEL 2>/dev/null; sleep 3; launchctl bootstrap gui/\$(id -u) ~/Library/LaunchAgents/$LABEL.plist"
 
 # 4. relay: module + one import + one route line
 scp -q "$HERE/torrent-routes.mjs" "mm:$R/torrent-routes.mjs"
