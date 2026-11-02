@@ -1,0 +1,16 @@
+{
+  "name": "fiesta-torrent-box",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Prototype: add a magnet/.torrent, download it sequentially to an external HDD, stream it while it downloads.",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "parse-torrent": "^11.0.18",
+    "uint8-util": "2.2.6",
+    "webtorrent": "^2.5.0"
+  }
+}
