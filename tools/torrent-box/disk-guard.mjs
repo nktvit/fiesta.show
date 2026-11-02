@@ -30,7 +30,10 @@ export async function assertExternalHdd(dir, { allowAnyDisk = false } = {}) {
   const real = await fs.realpath(dir);
   if (allowAnyDisk) return real;
   if (!real.startsWith('/Volumes/')) throw new Error(`refusing ${real}: not under /Volumes (would be the boot disk)`);
-  const { stdout } = await run('diskutil', ['info', real]);
+  // diskutil wants a mount point or device, not a sub-folder: ask df which volume holds the path.
+  const df = (await run('df', ['-P', real])).stdout.trim().split('\n').pop();
+  const mount = df.slice(df.indexOf('%') + 1).trim() || real;
+  const { stdout } = await run('diskutil', ['info', mount]);
   const info = parseDiskutil(stdout);
   if (!isExternalHdd(info)) {
     throw new Error(`refusing ${real}: volume "${info['Volume Name']}" is ${info['Device Location']}/solid-state=${info['Solid State']}, need an external HDD`);
