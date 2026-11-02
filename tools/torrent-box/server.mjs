@@ -1,13 +1,16 @@
 // Prototype torrent box for the Mac mini.
 //
 //   POST /api/add        {"magnet": "magnet:?xt=..."}  or a raw .torrent body (application/x-bittorrent)
-//   GET  /api/torrents   state of every torrent (progress, speed, peers, files)
-//   DELETE /api/torrents/:id            remove it and delete its files
-//   GET  /stream/:id/:fileIndex         the file, Range-capable, playable WHILE it downloads
-//   GET  /                              a small page to drive all of the above
+//   GET  /api/torrents       state of every torrent (progress, speed, peers, files, `main` = the movie file)
+//   GET  /api/torrents/:id   the same for one torrent
+//   DELETE /api/torrents/:id remove it and delete its files
+//   GET  /stream/:id         the movie (largest video file), Range-capable, playable WHILE it downloads
+//   GET  /stream/:id/:fileIndex   any file of the torrent
+//
+// API only, no UI: the Fiesta Show site drives it.
 //
 // Downloads are sequential (first piece first) and go ONLY to an external HDD (see disk-guard.mjs).
-// Everything except the page itself needs the token. Bound to 127.0.0.1: reach it through an
+// Everything needs the token. Bound to 127.0.0.1: reach it through an
 // SSH tunnel for now; exposing it publicly is a later step.
 import http from 'node:http';
 import fs from 'node:fs/promises';
@@ -94,8 +97,17 @@ async function readBody(req, limit) {
   return Buffer.concat(chunks);
 }
 
+const VIDEO = new Set(['.mp4', '.m4v', '.webm', '.mov', '.mkv', '.avi']);
+/** The movie inside a torrent: its largest video file. */
+const mainIndex = (t) => {
+  let best = -1;
+  t.files.forEach((f, i) => { if (VIDEO.has(ext(f.name)) && (best < 0 || f.length > t.files[best].length)) best = i; });
+  return best < 0 ? null : best;
+};
+
 function describe(t) {
   return {
+    main: mainIndex(t),
     id: t.infoHash,
     name: t.name,
     ready: t.ready,
@@ -160,7 +172,7 @@ async function remove(id, res) {
 
 async function stream(req, res, id, index) {
   const t = await client.get(id);
-  const file = t?.files?.[index];
+  const file = t?.files?.[index ?? mainIndex(t) ?? -1];
   if (!file) return send(res, 404, { error: 'no such file (yet: metadata may still be loading)' });
   const size = file.length;
   const type = MIME[ext(file.name)] || 'application/octet-stream';
@@ -184,19 +196,20 @@ async function stream(req, res, id, index) {
   rs.pipe(res);
 }
 
-const PAGE = await fs.readFile(new URL('./page.html', import.meta.url), 'utf8');
-
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://x');
-    if (req.method === 'GET' && url.pathname === '/') return send(res, 200, PAGE, { 'content-type': 'text/html; charset=utf-8' });
     if (!authorized(req, url)) return send(res, 401, { error: 'token required' });
     if (req.method === 'POST' && url.pathname === '/api/add') return await add(req, res);
     if (req.method === 'GET' && url.pathname === '/api/torrents') return send(res, 200, client.torrents.map(describe));
-    const del = /^\/api\/torrents\/([0-9a-f]{40})$/.exec(url.pathname);
-    if (req.method === 'DELETE' && del) return await remove(del[1], res);
-    const s = /^\/stream\/([0-9a-f]{40})\/(\d+)$/.exec(url.pathname);
-    if ((req.method === 'GET' || req.method === 'HEAD') && s) return await stream(req, res, s[1], +s[2]);
+    const one = /^\/api\/torrents\/([0-9a-f]{40})$/.exec(url.pathname);
+    if (req.method === 'DELETE' && one) return await remove(one[1], res);
+    if (req.method === 'GET' && one) {
+      const t = await client.get(one[1]);
+      return t ? send(res, 200, describe(t)) : send(res, 404, { error: 'unknown torrent' });
+    }
+    const s = /^\/stream\/([0-9a-f]{40})(?:\/(\d+))?$/.exec(url.pathname);
+    if ((req.method === 'GET' || req.method === 'HEAD') && s) return await stream(req, res, s[1], s[2] === undefined ? undefined : +s[2]);
     send(res, 404, { error: 'not found' });
   } catch (e) {
     console.error('[torrent] request failed', e);
