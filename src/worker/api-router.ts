@@ -8,9 +8,10 @@ import stream from '../../api/stream.js';
 import likes from '../../api/likes.js';
 import comments from '../../api/comments.js';
 import music from '../../api/music.js';
+import torrent from '../../api/torrent.js';
 
 const API: Record<string, (req: any, res: any) => unknown> = {
-  movie, omdb, tmdb, subs, suggestions, stream, likes, comments, music,
+  movie, omdb, tmdb, subs, suggestions, stream, likes, comments, music, torrent,
 };
 
 /** GETs whose handler sets a long s-maxage and whose upstream (OMDB) can be very slow: cache at the edge. */

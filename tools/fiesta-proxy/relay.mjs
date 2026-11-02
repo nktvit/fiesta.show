@@ -23,6 +23,7 @@
 //   RELAY_SECRET        bearer secret Vercel presents to /resolve     (required)
 //   RELAY_SIGNING_KEY   HMAC key for playback tokens                  (required)
 //   RELAY_TOKEN_TTL     token lifetime seconds (default 21600 = 6h)
+//   TORRENT_URL / TORRENT_TOKEN  the local torrent box (default http://127.0.0.1:8790) and its token
 //   RELAY_ALLOW_ORIGIN  optional CORS allowlist (comma list). Default: reflect any origin.
 
 import http from 'node:http';
@@ -31,6 +32,7 @@ import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { handleTorrent } from './torrent-routes.mjs';
 import { lookup } from 'node:dns/promises';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -55,6 +57,7 @@ const ALLOW_ORIGIN = (process.env.RELAY_ALLOW_ORIGIN || '')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);
+
 
 if (!SECRET || !SIGNING_KEY) {
   console.error('FATAL: set RELAY_SECRET and RELAY_SIGNING_KEY');
@@ -348,6 +351,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (url.pathname === '/resolve') return await handleResolve(req, res, url);
     if (url.pathname === '/hls') return await handleHls(req, res, url);
+    if (url.pathname.startsWith('/torrent/')) return await handleTorrent(req, res, url, { SECRET, PUBLIC_URL, setCors, mintToken, verifyToken });
     res.statusCode = 404;
     res.end('not found');
   } catch (err) {

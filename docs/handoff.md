@@ -2311,3 +2311,17 @@ session. Current model, in case it needs touching again:
   `scripts/autofix-watchdog.sh`) that can invoke its own headless Claude
   agent to patch `relay.mjs` — check `.autofix/checkpoint`/lock state isn't
   mid-run before editing.
+
+## TORRENT BOX (branch `feat/torrent`, not merged, not installed on the Mac mini yet)
+
+Goal: drop a .torrent or magnet on the site, get a stream. API only, no torrent UI.
+- `tools/torrent-box/` — WebTorrent v2 server (127.0.0.1:8790, token auth). Sequential download, **HDD only**
+  (`disk-guard.mjs` refuses unless `TORRENT_DIR` is on an external non-SSD disk; default `/Volumes/Monster/Torrents`).
+  `/stream/:id` serves the largest video file (works however deep it is nested), Range-capable, **playable while downloading**
+  (verified: mid-file Range at ~4% progress returned the right bytes).
+  Pin gotcha: `uint8-util` must be 2.2.6 (2.3.x breaks webtorrent 2.8.5: `arr2hex(infoHash)` crash).
+- `tools/fiesta-proxy/torrent-routes.mjs` — `/torrent/add|:id` (Bearer secret) and `/torrent/stream/:id?t=` (signed, same token as /hls).
+  `install-torrent.sh` ships box + routes to the Mac mini (launchd `show.fiesta.torrent`); **not run yet**, user runs it.
+- `api/torrent.js` — site endpoint, owner-only via `x-admin-key` = `TORRENT_ADMIN_KEY` (secret to be set in Cloudflare). No end-user UI yet.
+- Not done: MKV/DTS/PGS remux to HLS fMP4 (ffmpeg, VideoToolbox), real-time compression research (see session notes), UI in the site, per-user auth.
+- Branch is based on the old main (79693a1): rebase before merging.
