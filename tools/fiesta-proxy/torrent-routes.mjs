@@ -69,7 +69,7 @@ async function handleTorrentApi(req, res, url, { SECRET, PUBLIC_URL, mintToken }
     file: main && { name: main.name, path: main.path, length: main.length, progress: main.progress, playableInBrowser: main.playableInBrowser },
     stream: main && PUBLIC_URL ? `${PUBLIC_URL}/torrent/stream/${data.id}?t=${mintToken()}` : null,
     // The token sits in the PATH so the playlist's relative segment URLs inherit it.
-    hls: main && PUBLIC_URL ? `${PUBLIC_URL}/torrent/hls/${mintToken()}/${data.id}/index.m3u8` : null,
+    hls: main && PUBLIC_URL ? `${PUBLIC_URL}/torrent/hls/${mintToken()}/${data.id}/master.m3u8` : null,
     play: !main ? null : main.playableInBrowser ? 'direct' : 'hls',
   });
 }
@@ -103,14 +103,14 @@ async function handleTorrentStream(req, res, url, { setCors, verifyToken }) {
   Readable.fromWeb(up.body).on('error', () => res.destroy()).pipe(res);
 }
 
-// GET /torrent/hls/<token>/<id>/<file>  the HLS fMP4 remux (index.m3u8, init.mp4, seg_NNNNN.m4s).
+// GET /torrent/hls/<token>/<id>/<file>  the HLS fMP4 remux (master.m3u8, vN/index.m3u8, vN/init.mp4, vN/seg_NNNNN.m4s).
 async function handleTorrentHls(req, res, url, { setCors, verifyToken }) {
   setCors(req, res);
   if (req.method === 'OPTIONS') {
     res.statusCode = 204;
     return res.end();
   }
-  const m = /^\/torrent\/hls\/([^/]+)\/([0-9a-f]{40})\/(index\.m3u8|init\.mp4|seg_\d{5}\.m4s)$/.exec(url.pathname);
+  const m = /^\/torrent\/hls\/([^/]+)\/([0-9a-f]{40})\/(master\.m3u8|v\d\/(?:index\.m3u8|init(?:_\d)?\.mp4|seg_\d{5}\.m4s))$/.exec(url.pathname);
   if (!m || !verifyToken(m[1])) {
     res.statusCode = 403;
     return res.end('forbidden');

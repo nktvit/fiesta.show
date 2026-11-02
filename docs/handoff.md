@@ -2323,11 +2323,16 @@ Goal: drop a .torrent or magnet on the site, get a stream. API only, no torrent 
 - `tools/fiesta-proxy/torrent-routes.mjs` — `/torrent/add|:id` (Bearer secret) and `/torrent/stream/:id?t=` (signed, same token as /hls).
   `install-torrent.sh` ships box + routes to the Mac mini (launchd `show.fiesta.torrent`); **not run yet**, user runs it.
 - `api/torrent.js` — site endpoint, owner-only via `x-admin-key` = `TORRENT_ADMIN_KEY` (secret to be set in Cloudflare). No end-user UI yet.
-- Stage 2 DONE: `tools/torrent-box/hls.mjs` — ffprobe plan, ffmpeg HLS fMP4 into `<HDD>/.fiesta/hls/<id>/`, started on the first
-  `/hls/:id/index.m3u8` request, works on a partial download. H.264/HEVC video is COPIED, AC-3/DTS audio -> AAC stereo, anything else -> h264_videotoolbox 8M.
-  Relay: `/torrent/hls/<token>/<id>/<file>` (token in the path so relative segment URLs work); status has `play: 'direct'|'hls'`, `stream`, `hls`.
-  Verified live on the Mac mini: MKV (H.264+AC-3 5.1) -> playlist in 0.4 s through relay.fiesta.show, segments decode clean.
-  M4 VideoToolbox, Sintel 60 s: h264 ~2 s, hevc 2.5–3.2 s; SSIM equal at the same bitrate (0.988/0.992/0.995 at 0.6/1/2 Mbit) -> H.264 is the default encoder, HEVC only for 4K/10-bit/HDR.
+- Stage 2+3 DONE (hardware encoder ONLY, no x264/x265 anywhere): `tools/torrent-box/hls.mjs` — ffprobe -> plan -> ffmpeg HLS fMP4 into `<HDD>/.fiesta/hls/<id>/{master.m3u8, v0/, v1/, .done}`,
+  started on the first `/hls/:id/master.m3u8` request, works on a partial download. Light 8-bit H.264 (<= 4.5 Mbit/s) is COPIED; everything else (VP8/VP9/HEVC/AV1/heavy H.264/10-bit)
+  is re-encoded with `h264_videotoolbox -q:v` (constant quality) as 1080p-capped top (q45) + 720p (q40) ladder, 4 s segments with forced keyframes; AC-3/DTS/Opus/Vorbis -> AAC stereo 160k.
+  Relay: `/torrent/hls/<token>/<id>/<file>` (token in the path); status has `play: 'direct'|'hls'`, `stream`, `hls` (master).
+  Measured on the Mac mini with Tears of Steel (VP8 1920x800, 6.0 Mbit/s, 12 min): q45 = 3.2 Mbit/s video (~3.5 with audio, -43%), 720p ~2.4; cold start (probe + first segment) 1.2 s; encode ~7x realtime
+  (both rungs, software VP8 decode is the limit). q50 4.0 / q55 5.7 Mbit/s for +0.3/+0.7 SSIM points -> not worth the traffic. One-minute samples lie: always sample the whole film.
+  HEVC hardware encode on the M4 gives the SAME quality as H.264 at equal bitrate (SSIM equal) and is slower, so it is not used; Safari/Chrome compatibility is also better with H.264.
+  Gotchas: ffmpeg names the init segment `init_N.mp4` inside vN/; `launchctl bootstrap` right after `bootout` races (installer now waits); rsync --delete must not eat box.log.
+  Not done: HDR/10-bit tone mapping (10-bit is converted to 8-bit SDR, colours will be off), seek beyond what ffmpeg has produced (second ffmpeg with -ss), text subtitles -> WebVTT,
+  player UI in the site (hls.js on `hls` when `play==='hls'`), per-user access, cache cleanup policy, maxrate cap for heavy 4K grain (VT ignores -maxrate in -q:v mode).
 - `/api/torrent` has no key: open on previews/dev, 404 when DEPLOY_ENV=production. Needs STREAM_RELAY_URL/SECRET on the preview env.
 - Not done: seeking beyond what ffmpeg has produced (second ffmpeg with -ss), text subtitles to WebVTT, 10-bit/HDR path, player UI in the site, per-user auth, hls cache cleanup policy.
 - Branch is based on the old main (79693a1): rebase before merging.

@@ -15,7 +15,7 @@ LABEL=show.fiesta.torrent
 
 # 1. box files (no node_modules), deps installed on the box
 ssh mm "mkdir -p $B"
-rsync -a --delete --exclude node_modules --exclude .gitignore "$BOX_SRC/" "mm:$B/"
+rsync -a --delete --exclude node_modules --exclude .gitignore --exclude box.log "$BOX_SRC/" "mm:$B/"
 ssh mm "cd $B && PATH=$NODE_DIR:\$PATH npm install --omit=dev --no-audit --no-fund --silent"
 
 # 2. token shared by the box and the relay (generated once)
@@ -46,7 +46,7 @@ ssh mm "cat > ~/Library/LaunchAgents/$LABEL.plist" <<PLIST
   <key>StandardErrorPath</key><string>$B/box.log</string>
 </dict></plist>
 PLIST
-ssh mm "chmod 600 ~/Library/LaunchAgents/$LABEL.plist; launchctl bootout gui/\$(id -u)/$LABEL 2>/dev/null; sleep 3; launchctl bootstrap gui/\$(id -u) ~/Library/LaunchAgents/$LABEL.plist"
+ssh mm "chmod 600 ~/Library/LaunchAgents/$LABEL.plist; U=\$(id -u); launchctl bootout gui/\$U/$LABEL 2>/dev/null; for i in 1 2 3 4 5 6 7 8; do launchctl print gui/\$U/$LABEL >/dev/null 2>&1 || break; sleep 1; done; launchctl bootstrap gui/\$U ~/Library/LaunchAgents/$LABEL.plist || { sleep 3; launchctl bootstrap gui/\$U ~/Library/LaunchAgents/$LABEL.plist; }"
 
 # 4. relay: module + one import + one route line
 scp -q "$HERE/torrent-routes.mjs" "mm:$R/torrent-routes.mjs"

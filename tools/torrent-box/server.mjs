@@ -6,7 +6,7 @@
 //   DELETE /api/torrents/:id remove it and delete its files
 //   GET  /stream/:id         the movie (largest video file), Range-capable, playable WHILE it downloads
 //   GET  /stream/:id/:fileIndex   any file of the torrent
-//   GET  /hls/:id/index.m3u8 (+ init.mp4, seg_NNNNN.m4s)  the movie remuxed to HLS fMP4 for browsers (MKV, AC-3, ...), started on first request
+//   GET  /hls/:id/master.m3u8 (+ vN/index.m3u8, vN/init.mp4, vN/seg_NNNNN.m4s)  the movie remuxed to HLS fMP4 for browsers (MKV, AC-3, ...), started on first request
 //
 // API only, no UI: the Fiesta Show site drives it.
 //
@@ -214,7 +214,7 @@ async function serveHls(res, id, file) {
   const p = path.join(job.dir, file);
   let st;
   try { st = await fs.stat(p); } catch { return send(res, 404, { error: 'not ready' }); }
-  const live = file === 'index.m3u8';
+  const live = file.endsWith('.m3u8');
   res.writeHead(200, {
     'content-type': HLS_MIME[path.extname(file)],
     'content-length': st.size,
@@ -235,7 +235,7 @@ const server = http.createServer(async (req, res) => {
       const t = await client.get(one[1]);
       return t ? send(res, 200, describe(t)) : send(res, 404, { error: 'unknown torrent' });
     }
-    const h = /^\/hls\/([0-9a-f]{40})\/([\w.]+)$/.exec(url.pathname);
+    const h = /^\/hls\/([0-9a-f]{40})\/(.+)$/.exec(url.pathname);
     if (req.method === 'GET' && h && HLS_FILE.test(h[2])) return await serveHls(res, h[1], h[2]);
     const s = /^\/stream\/([0-9a-f]{40})(?:\/(\d+))?$/.exec(url.pathname);
     if ((req.method === 'GET' || req.method === 'HEAD') && s) return await stream(req, res, s[1], s[2] === undefined ? undefined : +s[2]);
