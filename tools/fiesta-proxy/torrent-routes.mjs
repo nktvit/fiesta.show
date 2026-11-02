@@ -68,6 +68,9 @@ async function handleTorrentApi(req, res, url, { SECRET, PUBLIC_URL, mintToken }
     done: data.done,
     file: main && { name: main.name, path: main.path, length: main.length, progress: main.progress, playableInBrowser: main.playableInBrowser },
     stream: main && PUBLIC_URL ? `${PUBLIC_URL}/torrent/stream/${data.id}?t=${mintToken()}` : null,
+    // The token sits in the PATH so the playlist's relative segment URLs inherit it.
+    hls: main && PUBLIC_URL ? `${PUBLIC_URL}/torrent/hls/${mintToken()}/${data.id}/index.m3u8` : null,
+    play: !main ? null : main.playableInBrowser ? 'direct' : 'hls',
   });
 }
 
@@ -100,7 +103,37 @@ async function handleTorrentStream(req, res, url, { setCors, verifyToken }) {
   Readable.fromWeb(up.body).on('error', () => res.destroy()).pipe(res);
 }
 
+// GET /torrent/hls/<token>/<id>/<file>  the HLS fMP4 remux (index.m3u8, init.mp4, seg_NNNNN.m4s).
+async function handleTorrentHls(req, res, url, { setCors, verifyToken }) {
+  setCors(req, res);
+  if (req.method === 'OPTIONS') {
+    res.statusCode = 204;
+    return res.end();
+  }
+  const m = /^\/torrent\/hls\/([^/]+)\/([0-9a-f]{40})\/(index\.m3u8|init\.mp4|seg_\d{5}\.m4s)$/.exec(url.pathname);
+  if (!m || !verifyToken(m[1])) {
+    res.statusCode = 403;
+    return res.end('forbidden');
+  }
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    res.statusCode = 405;
+    return res.end();
+  }
+  const abort = new AbortController();
+  res.on('close', () => abort.abort());
+  const up = await boxFetch(`/hls/${m[2]}/${m[3]}`, { signal: abort.signal });
+  res.statusCode = up.status;
+  for (const h of ['content-type', 'content-length', 'cache-control']) {
+    const v = up.headers.get(h);
+    if (v) res.setHeader(h, v);
+  }
+  if (!up.body || req.method === 'HEAD') return res.end();
+  Readable.fromWeb(up.body).on('error', () => res.destroy()).pipe(res);
+}
+
 /** ctx: { SECRET, PUBLIC_URL, setCors, mintToken, verifyToken } from relay.mjs */
 export function handleTorrent(req, res, url, ctx) {
-  return url.pathname.startsWith('/torrent/stream/') ? handleTorrentStream(req, res, url, ctx) : handleTorrentApi(req, res, url, ctx);
+  if (url.pathname.startsWith('/torrent/stream/')) return handleTorrentStream(req, res, url, ctx);
+  if (url.pathname.startsWith('/torrent/hls/')) return handleTorrentHls(req, res, url, ctx);
+  return handleTorrentApi(req, res, url, ctx);
 }

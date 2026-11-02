@@ -6,6 +6,7 @@
 //   DELETE /api/torrents/:id remove it and delete its files
 //   GET  /stream/:id         the movie (largest video file), Range-capable, playable WHILE it downloads
 //   GET  /stream/:id/:fileIndex   any file of the torrent
+//   GET  /hls/:id/index.m3u8 (+ init.mp4, seg_NNNNN.m4s)  the movie remuxed to HLS fMP4 for browsers (MKV, AC-3, ...), started on first request
 //
 // API only, no UI: the Fiesta Show site drives it.
 //
@@ -13,11 +14,13 @@
 // Everything needs the token. Bound to 127.0.0.1: reach it through an
 // SSH tunnel for now; exposing it publicly is a later step.
 import http from 'node:http';
+import { createReadStream } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import WebTorrent from 'webtorrent';
 import parseTorrent from 'parse-torrent';
+import { createHls, HLS_FILE, HLS_MIME } from './hls.mjs';
 import { assertExternalHdd } from './disk-guard.mjs';
 
 const PORT = +(process.env.PORT || 8790);
@@ -41,6 +44,7 @@ await fs.mkdir(path.join(stateDir, 'torrents'), { recursive: true });
 const registryFile = path.join(stateDir, 'registry.json');
 console.log(`[torrent] downloading to ${root}${ALLOW_ANY_DISK ? ' (ANY-DISK MODE, test only)' : ' (external HDD verified)'}`);
 
+const hls = createHls({ root });
 const client = new WebTorrent({ uploadLimit: UPLOAD_LIMIT });
 client.on('error', (e) => console.error('[torrent] client error', e.message));
 
@@ -162,6 +166,7 @@ async function add(req, res) {
 async function remove(id, res) {
   const t = await client.get(id);
   if (!t) return send(res, 404, { error: 'unknown torrent' });
+  await hls.stop(id);
   await new Promise((resolve) => t.destroy({ destroyStore: true }, resolve));
   const entry = registry[id];
   delete registry[id];
@@ -196,6 +201,28 @@ async function stream(req, res, id, index) {
   rs.pipe(res);
 }
 
+async function serveHls(res, id, file) {
+  const t = await client.get(id);
+  if (!t) return send(res, 404, { error: 'unknown torrent' });
+  let job;
+  try {
+    const input = `http://127.0.0.1:${PORT}/stream/${id}?t=${encodeURIComponent(TOKEN)}`;
+    job = await hls.ensure(id, input);
+  } catch (e) {
+    return send(res, 502, { error: 'remux failed: ' + String(e.message).slice(0, 300) });
+  }
+  const p = path.join(job.dir, file);
+  let st;
+  try { st = await fs.stat(p); } catch { return send(res, 404, { error: 'not ready' }); }
+  const live = file === 'index.m3u8';
+  res.writeHead(200, {
+    'content-type': HLS_MIME[path.extname(file)],
+    'content-length': st.size,
+    'cache-control': live && !job.finished ? 'no-store' : 'public, max-age=31536000, immutable',
+  });
+  createReadStream(p).pipe(res);
+}
+
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://x');
@@ -208,6 +235,8 @@ const server = http.createServer(async (req, res) => {
       const t = await client.get(one[1]);
       return t ? send(res, 200, describe(t)) : send(res, 404, { error: 'unknown torrent' });
     }
+    const h = /^\/hls\/([0-9a-f]{40})\/([\w.]+)$/.exec(url.pathname);
+    if (req.method === 'GET' && h && HLS_FILE.test(h[2])) return await serveHls(res, h[1], h[2]);
     const s = /^\/stream\/([0-9a-f]{40})(?:\/(\d+))?$/.exec(url.pathname);
     if ((req.method === 'GET' || req.method === 'HEAD') && s) return await stream(req, res, s[1], s[2] === undefined ? undefined : +s[2]);
     send(res, 404, { error: 'not found' });
@@ -219,4 +248,4 @@ const server = http.createServer(async (req, res) => {
 });
 server.listen(PORT, HOST, () => console.log(`[torrent] http://${HOST}:${PORT}`));
 
-for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => client.destroy(() => process.exit(0)));
+for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { hls.stopAll(); client.destroy(() => process.exit(0)); });

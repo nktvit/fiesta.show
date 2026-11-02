@@ -38,6 +38,8 @@ ssh mm "cat > ~/Library/LaunchAgents/$LABEL.plist" <<PLIST
     <key>TORRENT_DIR</key><string>/Volumes/Monster/Torrents</string>
     <key>PORT</key><string>8790</string>
     <key>HOST</key><string>127.0.0.1</string>
+    <key>FFMPEG</key><string>/opt/homebrew/bin/ffmpeg</string>
+    <key>FFPROBE</key><string>/opt/homebrew/bin/ffprobe</string>
   </dict>
   <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
   <key>StandardOutPath</key><string>$B/box.log</string>
