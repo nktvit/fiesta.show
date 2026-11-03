@@ -2333,6 +2333,12 @@ Goal: drop a .torrent or magnet on the site, get a stream. API only, no torrent 
   Gotchas: ffmpeg names the init segment `init_N.mp4` inside vN/; `launchctl bootstrap` right after `bootout` races (installer now waits); rsync --delete must not eat box.log.
   Not done: HDR/10-bit tone mapping (10-bit is converted to 8-bit SDR, colours will be off), seek beyond what ffmpeg has produced (second ffmpeg with -ss), text subtitles -> WebVTT,
   player UI in the site (hls.js on `hls` when `play==='hls'`), per-user access, cache cleanup policy, maxrate cap for heavy 4K grain (VT ignores -maxrate in -q:v mode).
+- Scheduler (hls.mjs): 'watch' jobs (a viewer pressed play) start at once, admitted only while the disk can read their sources at 1.5x playback
+  (ENCODE_BUDGET_MBPS=480 default, MAX_WATCH_ENCODES=3) else 503 `busy` + retry-after 15 (the page retries); 'background' jobs (auto-encode of finished
+  downloads) run one at a time and are SIGSTOPped while any viewer job runs, SIGCONTed after. ffmpeg `-progress` feeds `encodeInfo` {state, encodedSeconds, duration, speed, slow}.
+  Downloads: at most MAX_DOWNLOADS=4 unfinished at once (429 otherwise). Locally verified: pause/resume works, viewer job ~10x realtime on a synthetic 1080p/20 Mbit source.
+  Restarting the box kills running encodes and restarts them from zero (and re-verifies every file on the HDD: minutes for 50 GB) - deploy between jobs.
+- `/torrent` page has a library list (GET /api/torrent), per-item open/delete and encode progress.
 - `/api/torrent` has no key: open on previews/dev, 404 when DEPLOY_ENV=production. Needs STREAM_RELAY_URL/SECRET on the preview env.
 - Not done: seeking beyond what ffmpeg has produced (second ffmpeg with -ss), text subtitles to WebVTT, 10-bit/HDR path, player UI in the site, per-user auth, hls cache cleanup policy.
 - Branch is based on the old main (79693a1): rebase before merging.

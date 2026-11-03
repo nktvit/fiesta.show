@@ -130,7 +130,7 @@ export class TorrentComponent implements OnInit, OnDestroy {
   }
 
   /** One line about what the encoder is doing for this movie. */
-  encodeLabel(i: { play: string | null; done: boolean; encode?: EncodeInfo['state']; encodeInfo?: EncodeInfo }) {
+  encodeLabel(i: { play: string | null; done: boolean; encode?: EncodeInfo['state']; encodeInfo?: EncodeInfo; downloadSpeed?: number; numPeers?: number }) {
     if (i.play === 'direct') return 'plays as is';
     const e = i.encodeInfo;
     const min = (sec = 0) => `${Math.floor(sec / 60)}`;
@@ -140,7 +140,7 @@ export class TorrentComponent implements OnInit, OnDestroy {
       case 'queued': return 'queued for encoding';
       case 'paused': return `paused while someone is watching · ${min(e?.encodedSeconds)}/${min(e?.duration)} min`;
       case 'running': return `encoding ${min(e?.encodedSeconds)}/${min(e?.duration)} min${e?.speed ? ` · ${e.speed.toFixed(1)}× playback` : ''}${e?.slow ? ' · SLOWER than playback' : ''}`;
-      default: return i.done ? 'not encoded yet' : 'downloading';
+      default: return i.done ? 'not encoded yet' : !i.numPeers && !i.downloadSpeed ? 'checking files on disk…' : 'downloading';
     }
   }
 
