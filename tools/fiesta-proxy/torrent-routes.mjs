@@ -47,6 +47,19 @@ async function handleTorrentApi(req, res, url, { SECRET, PUBLIC_URL, mintToken }
     res.setHeader('Content-Type', 'application/json');
     return res.end(await r.text());
   }
+  if (req.method === 'GET' && url.pathname === '/torrent/list') {
+    const r = await boxFetch('/api/torrents');
+    const all = await r.json().catch(() => []);
+    if (!r.ok) return sendJson(res, r.status, all);
+    return sendJson(res, 200, all.map((d) => {
+      const main = d.main != null ? d.files[d.main] : null;
+      return {
+        id: d.id, name: d.name, progress: d.progress, downloadSpeed: d.downloadSpeed, numPeers: d.numPeers, done: d.done,
+        encode: d.encode, encodeInfo: d.encodeInfo, play: !main ? null : main.playableInBrowser ? 'direct' : 'hls',
+        file: main && { name: main.name, path: main.path, length: main.length },
+      };
+    }));
+  }
   const m = /^\/torrent\/([0-9a-f]{40})$/.exec(url.pathname);
   if (!m) return sendJson(res, 404, { error: 'not found' });
   if (req.method === 'DELETE') {
@@ -66,6 +79,8 @@ async function handleTorrentApi(req, res, url, { SECRET, PUBLIC_URL, mintToken }
     downloadSpeed: data.downloadSpeed,
     numPeers: data.numPeers,
     done: data.done,
+    encode: data.encode,
+    encodeInfo: data.encodeInfo,
     file: main && { name: main.name, path: main.path, length: main.length, progress: main.progress, playableInBrowser: main.playableInBrowser },
     stream: main && PUBLIC_URL ? `${PUBLIC_URL}/torrent/stream/${data.id}?t=${mintToken()}` : null,
     // The token sits in the PATH so the playlist's relative segment URLs inherit it.

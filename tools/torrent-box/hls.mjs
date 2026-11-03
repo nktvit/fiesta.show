@@ -26,6 +26,7 @@ const qFor = (height) => (height >= 1440 ? 40 : height > 720 ? 45 : 40);
 const bandwidthFor = (w, h) => Math.round(4_000_000 * ((w * h) / (1920 * 1080)) ** 0.75); // declared peak-ish, hls.js adapts anyway
 const MAX_HEIGHT = 2160; // ceiling: 4K
 const RUNGS = [1080, 720];
+const HWDEC = process.env.HWDEC !== '0'; // decode H.264/HEVC on the media engine too (frees the CPU)
 const even = (n) => Math.max(2, Math.round(n / 2) * 2);
 
 /** Pure: ffprobe JSON (-show_streams -show_format) -> what to do. */
@@ -50,6 +51,8 @@ export function planFromProbe(probe) {
     });
   }
   return {
+    duration: +probe?.format?.duration || 0,
+    hwdec: !copy && HWDEC && (video.codec_name === 'h264' || video.codec_name === 'hevc'),
     videoCodec: video.codec_name,
     sourceBps: bps,
     renditions,
@@ -61,7 +64,9 @@ export function planFromProbe(probe) {
 /** Pure: ffmpeg arguments for a plan (input is a URL or path). Writes v<N>/index.m3u8 (+ init.mp4, seg_*.m4s). */
 export function ffmpegArgs(plan, input) {
   const n = plan.renditions.length;
-  const a = ['-hide_banner', '-loglevel', 'warning', '-nostdin', '-probesize', '50M', '-analyzeduration', '20M', '-i', input];
+  const a = ['-hide_banner', '-loglevel', 'warning', '-nostdin', '-progress', 'pipe:1', '-nostats', '-probesize', '50M', '-analyzeduration', '20M'];
+  if (plan.hwdec) a.push('-hwaccel', 'videotoolbox');
+  a.push('-i', input);
   if (plan.renditions[0].copy) {
     a.push('-map', '0:v:0', '-c:v', 'copy');
   } else {
@@ -101,65 +106,168 @@ export const HLS_MIME = { '.m3u8': 'application/vnd.apple.mpegurl', '.mp4': 'vid
 const exists = (p) => fs.access(p).then(() => true, () => false);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// ---- scheduler -------------------------------------------------------------------------------
+// Two kinds of encode job:
+//  - 'watch'      somebody pressed play: starts at once, as many as the disk can feed in real time;
+//  - 'background' a finished download pre-encoded for later: one at a time, and only while nobody is
+//                 watching (it is SIGSTOPped while a watch job runs and continued afterwards).
+// A watch job is admitted only if the disk can read its source at REALTIME x the playback rate on top of
+// the other watch jobs, so encoding never has to run slower than playback because the disk is saturated.
+export const REALTIME = 1.5;
+const BUDGET_BPS = (+process.env.ENCODE_BUDGET_MBPS || 480) * 1e6; // ~60 MB/s sustained from a USB HDD shared with downloads
+const MAX_WATCH = +process.env.MAX_WATCH_ENCODES || 3;
+const UNKNOWN_SOURCE_BPS = 40_000_000;
+
+/** Pure: may another watch job (source bitrate `sourceBps`) start next to the ones already running? */
+export function admit({ runningSourceBps, sourceBps, budget = BUDGET_BPS, maxWatch = MAX_WATCH }) {
+  const cost = (sourceBps || UNKNOWN_SOURCE_BPS) * REALTIME;
+  const used = runningSourceBps.reduce((n, b) => n + (b || UNKNOWN_SOURCE_BPS) * REALTIME, 0);
+  if (runningSourceBps.length >= maxWatch) return { ok: false, reason: `already ${maxWatch} movies being encoded for viewers` };
+  if (used + cost > budget) return { ok: false, reason: 'the disk is busy feeding other movies' };
+  return { ok: true };
+}
+
 export function createHls({ root }) {
   const base = path.join(root, '.fiesta', 'hls');
-  /** id -> { dir, proc, finished, error, ready } */
+  /** id -> job: { dir, proc, plan, priority, paused, finished, error, ready, exited, outSeconds, speed, slow } */
   const jobs = new Map();
+  const inflight = new Map(); // id -> Promise<job> while probing/starting
+  const queue = []; // background requests not started yet: { id, inputUrl }
   const dirOf = (id) => path.join(base, id);
 
-  async function finishedOnDisk(dir) {
-    return exists(path.join(dir, '.done')); // written only after ffmpeg exited cleanly
+  const live = (j) => j.proc && !j.finished && !j.error && !j.killed;
+  const watchers = () => [...jobs.values()].filter((j) => live(j) && j.priority === 'watch');
+
+  const finishedOnDisk = (dir) => exists(path.join(dir, '.done')); // written only after ffmpeg exited cleanly
+
+  /** Pause background encodes while somebody watches; resume them (and start the next queued) afterwards. */
+  function rebalance() {
+    const busy = watchers().length > 0;
+    for (const j of jobs.values()) {
+      if (!live(j) || j.priority !== 'background') continue;
+      if (busy && !j.paused) { j.proc.kill('SIGSTOP'); j.paused = true; console.log(`[hls] ${j.id} paused (a viewer is being served)`); }
+      else if (!busy && j.paused) { j.proc.kill('SIGCONT'); j.paused = false; console.log(`[hls] ${j.id} resumed`); }
+    }
+    if (busy) return;
+    if ([...jobs.values()].some((j) => live(j) && j.priority === 'background')) return; // one background job at a time
+    const next = queue.shift();
+    if (next) start(next.id, next.inputUrl, 'background').catch((e) => { console.error('[hls] background start failed', next.id, String(e.message).slice(0, 200)); rebalance(); });
   }
 
-  /** Start (or reuse) the remux of torrent `id`; resolves when the first segment exists. */
-  async function ensure(id, inputUrl) {
+  async function probe(inputUrl) {
+    const { stdout } = await run(FFPROBE, ['-v', 'error', '-probesize', '50M', '-analyzeduration', '20M', '-print_format', 'json', '-show_streams', '-show_format', inputUrl], { maxBuffer: 8 << 20, timeout: 120_000 });
+    return planFromProbe(JSON.parse(stdout));
+  }
+
+  /** Probe, admit (watch only), then spawn ffmpeg. */
+  async function start(id, inputUrl, priority) {
     const dir = dirOf(id);
+    if (await finishedOnDisk(dir)) {
+      const job = { id, dir, proc: null, priority, finished: true, error: null, ready: Promise.resolve(), exited: Promise.resolve() };
+      jobs.set(id, job);
+      return job;
+    }
+    const plan = await probe(inputUrl);
+    if (priority === 'watch') {
+      const verdict = admit({ runningSourceBps: watchers().map((j) => j.plan.sourceBps), sourceBps: plan.sourceBps });
+      if (!verdict.ok) throw Object.assign(new Error(verdict.reason), { code: 'busy' });
+    }
+    await fs.rm(dir, { recursive: true, force: true }); // a crashed half-run cannot be resumed
+    await Promise.all(plan.renditions.map((_, i) => fs.mkdir(path.join(dir, `v${i}`), { recursive: true })));
+    await fs.writeFile(path.join(dir, 'master.m3u8'), masterPlaylist(plan));
+    const proc = spawn(FFMPEG, ffmpegArgs(plan, inputUrl), { cwd: dir, stdio: ['ignore', 'pipe', 'pipe'] });
+    const job = { id, dir, proc, plan, priority, paused: false, finished: false, error: null, ready: null, outSeconds: 0, speed: 0, slow: false };
+    job.exited = new Promise((resolve) => proc.once('close', resolve));
+    let log = '';
+    let buf = '';
+    let slowTicks = 0;
+    proc.stdout.on('data', (d) => {
+      buf += d;
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const line of lines) {
+        const [k, v] = line.split('=');
+        if (k === 'out_time_us') job.outSeconds = Math.max(0, +v / 1e6) || job.outSeconds;
+        else if (k === 'speed' && parseFloat(v) > 0) {
+          job.speed = parseFloat(v);
+          slowTicks = job.priority === 'watch' && job.speed < 1.1 && !job.paused ? slowTicks + 1 : 0;
+          job.slow = slowTicks >= 3; // below ~real time for three reports in a row
+        }
+      }
+    });
+    proc.stderr.on('data', (d) => { log = (log + d).slice(-2000); });
+    proc.on('close', (code) => {
+      job.finished = code === 0;
+      if (code === 0) fs.writeFile(path.join(dir, '.done'), '').catch(() => {});
+      if (code !== 0 && !job.killed) job.error = `ffmpeg exited ${code}: ${log.replace(/https?:\/\/\S+/g, '<url>').slice(-400)}`;
+      console.log(`[hls] ${id} ffmpeg ${code === 0 ? 'finished' : 'ended with ' + code}`);
+      rebalance();
+    });
+    job.ready = (async () => {
+      for (let i = 0; i < 240; i++) { // up to 60 s for the first segment
+        if (job.error) throw new Error(job.error);
+        if (await exists(path.join(dir, 'v0', 'seg_00000.m4s')) && await exists(path.join(dir, 'v0', 'index.m3u8'))) return;
+        await sleep(250);
+      }
+      throw new Error('timed out waiting for the first segment');
+    })();
+    jobs.set(id, job);
+    console.log(`[hls] ${id} [${priority}] ${plan.videoCodec} ${Math.round(plan.sourceBps / 1000)} kbit/s -> ${plan.renditions.map((r) => (r.copy ? 'copy' : `${r.w}x${r.h} q${r.q}`)).join(' + ')}; audio ${plan.audioCodec ?? 'none'} -> ${plan.audio}${plan.hwdec ? '; hw decode' : ''}`);
+    rebalance();
+    return job;
+  }
+
+  /** A viewer wants this movie: reuse its job (promoting a background one), or start a new one. Throws {code:'busy'} when the disk is full. */
+  async function ensure(id, inputUrl) {
     let job = jobs.get(id);
     if (!job) {
-      if (await finishedOnDisk(dir)) {
-        job = { dir, proc: null, finished: true, error: null, ready: Promise.resolve(), exited: Promise.resolve() };
-      } else {
-        await fs.rm(dir, { recursive: true, force: true }); // a crashed half-run cannot be resumed
-        await fs.mkdir(dir, { recursive: true });
-        const { stdout } = await run(FFPROBE, ['-v', 'error', '-probesize', '50M', '-analyzeduration', '20M', '-print_format', 'json', '-show_streams', '-show_format', inputUrl], { maxBuffer: 8 << 20, timeout: 120_000 });
-        const plan = planFromProbe(JSON.parse(stdout));
-        await Promise.all(plan.renditions.map((_, i) => fs.mkdir(path.join(dir, `v${i}`), { recursive: true })));
-        await fs.writeFile(path.join(dir, 'master.m3u8'), masterPlaylist(plan));
-        const proc = spawn(FFMPEG, ffmpegArgs(plan, inputUrl), { cwd: dir, stdio: ['ignore', 'ignore', 'pipe'] });
-        job = { dir, proc, plan, finished: false, error: null, ready: null };
-        job.exited = new Promise((resolve) => proc.once('close', resolve));
-        let log = '';
-        proc.stderr.on('data', (d) => { log = (log + d).slice(-2000); });
-        proc.on('close', (code) => {
-          job.finished = code === 0;
-          if (code === 0) fs.writeFile(path.join(dir, '.done'), '').catch(() => {});
-          if (code !== 0 && !job.killed) job.error = `ffmpeg exited ${code}: ${log.replace(/https?:\/\/\S+/g, '<url>').slice(-400)}`;
-          console.log(`[hls] ${id} ffmpeg ${code === 0 ? 'finished' : 'ended with ' + code}`);
-        });
-        job.ready = (async () => {
-          for (let i = 0; i < 240; i++) { // up to 60 s for the first segment
-            if (job.error) throw new Error(job.error);
-            if (await exists(path.join(dir, 'v0', 'seg_00000.m4s')) && await exists(path.join(dir, 'v0', 'index.m3u8'))) return;
-            await sleep(250);
-          }
-          throw new Error('timed out waiting for the first segment');
-        })();
-        console.log(`[hls] ${id} ${plan.videoCodec} ${Math.round(plan.sourceBps / 1000)} kbit/s -> ${plan.renditions.map((r) => (r.copy ? 'copy' : `${r.w}x${r.h} q${r.q}`)).join(' + ')}; audio ${plan.audioCodec ?? 'none'} -> ${plan.audio}`);
+      const qi = queue.findIndex((q) => q.id === id);
+      if (qi >= 0) queue.splice(qi, 1); // it was waiting for its turn: a viewer jumps the queue
+      let p = inflight.get(id);
+      if (!p) {
+        p = start(id, inputUrl, 'watch').finally(() => inflight.delete(id));
+        inflight.set(id, p);
       }
-      jobs.set(id, job);
+      job = await p;
+    } else if (live(job) && job.priority === 'background') {
+      const verdict = admit({ runningSourceBps: watchers().map((j) => j.plan.sourceBps), sourceBps: job.plan.sourceBps });
+      if (!verdict.ok) throw Object.assign(new Error(verdict.reason), { code: 'busy' });
+      job.priority = 'watch';
+      rebalance();
     }
     try { await job.ready; } catch (e) { jobs.delete(id); throw e; }
     return job;
   }
 
-  async function stop(id) {
-    const job = jobs.get(id);
-    if (job?.proc && !job.finished) { job.killed = true; job.proc.kill('SIGTERM'); }
-    jobs.delete(id);
-    await fs.rm(dirOf(id), { recursive: true, force: true });
+  /** A download finished: encode it when the encoder is free. */
+  async function enqueue(id, inputUrl) {
+    if (jobs.has(id) || inflight.has(id) || queue.some((q) => q.id === id) || await finishedOnDisk(dirOf(id))) return;
+    queue.push({ id, inputUrl });
+    rebalance();
   }
 
-  const stopAll = () => { for (const j of jobs.values()) j.proc?.kill('SIGTERM'); };
+  async function stop(id) {
+    const job = jobs.get(id);
+    const qi = queue.findIndex((q) => q.id === id);
+    if (qi >= 0) queue.splice(qi, 1);
+    if (job?.proc && !job.finished) { job.killed = true; if (job.paused) job.proc.kill('SIGCONT'); job.proc.kill('SIGTERM'); }
+    jobs.delete(id);
+    await fs.rm(dirOf(id), { recursive: true, force: true });
+    rebalance();
+  }
 
-  return { ensure, stop, stopAll, dirOf };
+  /** For the library list and the player. */
+  async function status(id) {
+    const job = jobs.get(id);
+    if (job) {
+      const state = job.error ? 'failed' : job.finished ? 'done' : job.paused ? 'paused' : 'running';
+      return { state, priority: job.priority, encodedSeconds: Math.round(job.outSeconds || 0), duration: Math.round(job.plan?.duration || 0), speed: job.speed || 0, slow: !!job.slow };
+    }
+    if (queue.some((q) => q.id === id)) return { state: 'queued' };
+    return { state: (await finishedOnDisk(dirOf(id))) ? 'done' : 'none' };
+  }
+
+  const stopAll = () => { for (const j of jobs.values()) { if (j.paused) j.proc?.kill('SIGCONT'); j.proc?.kill('SIGTERM'); } };
+
+  return { ensure, enqueue, stop, stopAll, dirOf, status };
 }

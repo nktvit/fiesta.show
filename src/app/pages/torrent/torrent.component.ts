@@ -15,6 +15,30 @@ interface TorrentStatus {
   stream: string | null;
   hls: string | null;
   play: 'direct' | 'hls' | null;
+  encode?: EncodeInfo['state'];
+  encodeInfo?: EncodeInfo;
+}
+
+interface EncodeInfo {
+  state: 'none' | 'queued' | 'running' | 'paused' | 'done' | 'failed';
+  priority?: 'watch' | 'background';
+  encodedSeconds?: number;
+  duration?: number;
+  speed?: number;
+  slow?: boolean;
+}
+
+interface LibraryItem {
+  id: string;
+  name: string;
+  progress: number;
+  downloadSpeed: number;
+  numPeers: number;
+  done: boolean;
+  encode: EncodeInfo['state'];
+  encodeInfo?: EncodeInfo;
+  play: 'direct' | 'hls' | null;
+  file: { name: string; path: string; length: number } | null;
 }
 
 interface Level { index: number; label: string }
@@ -39,6 +63,8 @@ export class TorrentComponent implements OnInit, OnDestroy {
   readonly error = signal('');
   readonly busy = signal(false);
   readonly unavailable = signal(false);
+  readonly library = signal<LibraryItem[]>([]);
+  readonly currentId = signal('');
   readonly levels = signal<Level[]>([]);
   readonly chosenLevel = signal(-1); // -1 = auto
   readonly live = signal({ level: '', bufferAhead: 0, bandwidthMbps: 0, dropped: 0, state: 'idle' });
@@ -46,6 +72,7 @@ export class TorrentComponent implements OnInit, OnDestroy {
   private id = '';
   private pollTimer: ReturnType<typeof setTimeout> | undefined;
   private statsTimer: ReturnType<typeof setInterval> | undefined;
+  private libTimer: ReturnType<typeof setInterval> | undefined;
   private hls: Hls | null = null;
   private attached = '';
   private destroyed = false;
@@ -60,14 +87,61 @@ export class TorrentComponent implements OnInit, OnDestroy {
       this.id = saved;
       void this.poll();
     }
+    this.currentId.set(this.id);
     this.statsTimer = setInterval(() => this.sampleStats(), 1000);
+    void this.loadLibrary();
+    this.libTimer = setInterval(() => void this.loadLibrary(), 4000);
   }
 
   ngOnDestroy() {
     this.destroyed = true;
     clearTimeout(this.pollTimer);
     clearInterval(this.statsTimer);
+    clearInterval(this.libTimer);
     this.hls?.destroy();
+  }
+
+  async loadLibrary() {
+    try {
+      const r = await fetch('/api/torrent', { cache: 'no-store' });
+      if (r.status === 404 && (await r.json().catch(() => ({}))).error === 'not_found') { this.unavailable.set(true); return; }
+      if (!r.ok) return;
+      const list = (await r.json()) as LibraryItem[];
+      if (Array.isArray(list)) this.library.set(list);
+    } catch { /* the next tick tries again */ }
+  }
+
+  /** Switch the player to a torrent from the library. */
+  open(id: string) {
+    if (id === this.id) return;
+    this.reset();
+    this.id = id;
+    this.currentId.set(id);
+    this.status.set(null);
+    this.error.set('');
+    try { localStorage.setItem(STORAGE_KEY, id); } catch { /* ignore */ }
+    void this.poll();
+  }
+
+  async removeItem(id: string, e: Event) {
+    e.stopPropagation();
+    if (id === this.id) { await this.remove(); } else { await fetch(`/api/torrent?id=${id}`, { method: 'DELETE' }).catch(() => {}); }
+    await this.loadLibrary();
+  }
+
+  /** One line about what the encoder is doing for this movie. */
+  encodeLabel(i: { play: string | null; done: boolean; encode?: EncodeInfo['state']; encodeInfo?: EncodeInfo }) {
+    if (i.play === 'direct') return 'plays as is';
+    const e = i.encodeInfo;
+    const min = (sec = 0) => `${Math.floor(sec / 60)}`;
+    switch (i.encode) {
+      case 'done': return 'encoded';
+      case 'failed': return 'encode failed';
+      case 'queued': return 'queued for encoding';
+      case 'paused': return `paused while someone is watching · ${min(e?.encodedSeconds)}/${min(e?.duration)} min`;
+      case 'running': return `encoding ${min(e?.encodedSeconds)}/${min(e?.duration)} min${e?.speed ? ` · ${e.speed.toFixed(1)}× playback` : ''}${e?.slow ? ' · SLOWER than playback' : ''}`;
+      default: return i.done ? 'not encoded yet' : 'downloading';
+    }
   }
 
   setMagnet(e: Event) { this.magnet.set((e.target as HTMLInputElement).value.trim()); }
@@ -87,6 +161,7 @@ export class TorrentComponent implements OnInit, OnDestroy {
     for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
     await this.add({ torrent: btoa(bin) });
     input.value = '';
+    void this.loadLibrary();
   }
 
   private async add(body: object) {
@@ -99,8 +174,10 @@ export class TorrentComponent implements OnInit, OnDestroy {
       if (!r.ok || !j.id) { this.error.set(j.error || `Could not add it (${r.status})`); return; }
       this.reset();
       this.id = j.id;
+      this.currentId.set(j.id);
       try { localStorage.setItem(STORAGE_KEY, j.id); } catch { /* ignore */ }
       void this.poll();
+      void this.loadLibrary();
     } catch (e) {
       this.error.set(String((e as Error)?.message || e));
     } finally {
@@ -114,6 +191,7 @@ export class TorrentComponent implements OnInit, OnDestroy {
     await fetch(`/api/torrent?id=${id}`, { method: 'DELETE' }).catch(() => {});
     this.reset();
     this.id = '';
+    this.currentId.set('');
     this.status.set(null);
     try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
   }
@@ -174,7 +252,16 @@ export class TorrentComponent implements OnInit, OnDestroy {
     hls.on(HlsCtor.Events.MANIFEST_PARSED, () => {
       this.levels.set(hls.levels.map((l, index) => ({ index, label: `${l.height}p · ${(l.bitrate / 1e6).toFixed(1)} Mbit/s` })));
     });
-    hls.on(HlsCtor.Events.ERROR, (_e, d) => { if (d.fatal) this.error.set(`Playback error: ${d.details}`); });
+    hls.on(HlsCtor.Events.ERROR, (_e, d) => {
+      if (!d.fatal) return;
+      // 503 = the server is already feeding as many movies as its disk allows: wait and ask again.
+      if (d.response?.code === 503 && !this.destroyed) {
+        this.error.set('The server is busy encoding other movies for viewers. Retrying in 15 s…');
+        setTimeout(() => { if (this.hls === hls) { this.error.set(''); hls.loadSource(url); } }, 15000);
+        return;
+      }
+      this.error.set(`Playback error: ${d.details}`);
+    });
     hls.loadSource(url);
     hls.attachMedia(video);
   }
@@ -202,6 +289,8 @@ export class TorrentComponent implements OnInit, OnDestroy {
       state: v.error ? 'error' : v.seeking ? 'seeking' : v.readyState < 3 && !v.paused ? 'buffering' : v.paused ? 'paused' : 'playing',
     });
   }
+
+  gb(bytes: number) { return bytes / 1073741824; }
 
   mb(bytes: number) { return bytes / 1048576; }
 }

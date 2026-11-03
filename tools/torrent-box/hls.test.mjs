@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { planFromProbe, ffmpegArgs, masterPlaylist, HLS_FILE, COPY_MAX_BPS } from './hls.mjs';
+import { planFromProbe, ffmpegArgs, masterPlaylist, admit, HLS_FILE, COPY_MAX_BPS } from './hls.mjs';
 
 const v = (codec, extra = {}) => ({ codec_type: 'video', codec_name: codec, width: 1920, height: 1080, pix_fmt: 'yuv420p', ...extra });
 const au = (codec, extra = {}) => ({ codec_type: 'audio', codec_name: codec, channels: 2, ...extra });
@@ -61,4 +61,21 @@ test('master playlist lists every rendition with BANDWIDTH and RESOLUTION', () =
 test('only our own file names are served', () => {
   for (const ok of ['master.m3u8', 'v0/index.m3u8', 'v1/init_1.mp4', 'v0/init_0.mp4', 'v0/seg_00012.m4s']) assert.ok(HLS_FILE.test(ok), ok);
   for (const bad of ['../x', 'v0/../x', 'seg_1.m4s', 'v0/index.m3u8.tmp', 'a/b', 'v10/index.m3u8']) assert.ok(!HLS_FILE.test(bad), bad);
+});
+
+test('admission: viewers are admitted while the disk can feed them at 1.5x and the count allows', () => {
+  const big = 35_000_000; // a 35 Mbit/s Blu-ray remux costs 52.5 Mbit/s of disk reads at 1.5x
+  assert.ok(admit({ runningSourceBps: [], sourceBps: big, budget: 480e6, maxWatch: 3 }).ok);
+  assert.ok(admit({ runningSourceBps: [big, big], sourceBps: big, budget: 480e6, maxWatch: 3 }).ok);
+  assert.ok(!admit({ runningSourceBps: [big, big, big], sourceBps: big, budget: 480e6, maxWatch: 3 }).ok, 'count cap');
+  assert.ok(!admit({ runningSourceBps: [200e6, 100e6], sourceBps: 100e6, budget: 480e6, maxWatch: 5 }).ok, 'disk budget');
+  assert.ok(admit({ runningSourceBps: [], sourceBps: 0, budget: 480e6, maxWatch: 3 }).ok, 'unknown bitrate is costed as a heavy source, not refused');
+});
+
+test('ffmpeg reports progress and uses the media engine to decode H.264/HEVC', () => {
+  const p = planFromProbe({ streams: [v('hevc', { bit_rate: '30000000' }), au('aac')], format: { duration: '6000' } });
+  const a = ffmpegArgs(p, 'in.mkv').join(' ');
+  assert.equal(p.duration, 6000);
+  assert.ok(a.includes('-progress pipe:1') && a.includes('-hwaccel videotoolbox'));
+  assert.ok(!ffmpegArgs(planFromProbe({ streams: [v('vp9'), au('aac')] }), 'x').includes('-hwaccel'));
 });

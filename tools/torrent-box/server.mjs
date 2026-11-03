@@ -30,6 +30,7 @@ const DIR = process.env.TORRENT_DIR || '/Volumes/Monster/Torrents';
 const ALLOW_ANY_DISK = process.env.ALLOW_ANY_DISK === '1'; // laptop testing only
 /** Seeding shares the home uplink with the audio/video relay: keep it small. */
 const UPLOAD_LIMIT = (+(process.env.UPLOAD_LIMIT_KBPS || 256)) * 1024;
+const MAX_DOWNLOADS = +process.env.MAX_DOWNLOADS || 4; // simultaneous unfinished downloads the disk is asked to take
 const MIN_FREE_BYTES = (+(process.env.MIN_FREE_GB || 50)) * 1e9;
 const MAX_TORRENT_FILE = 5 * 1024 * 1024;
 
@@ -57,20 +58,11 @@ const saveRegistry = () => fs.writeFile(registryFile, JSON.stringify(registry, n
 // Finished downloads are encoded for streaming in the background, one at a time (the M4 has a single
 // encoder engine). AUTO_ENCODE=0 turns it off. Nothing is deleted: the original file stays.
 const AUTO_ENCODE = process.env.AUTO_ENCODE !== '0';
-let encodeChain = Promise.resolve();
 function encodeWhenDone(t) {
   if (!AUTO_ENCODE) return;
   t.once('done', () => {
-    encodeChain = encodeChain.then(async () => {
-      try {
-        if (!(await client.get(t.infoHash))) return; // removed while queued
-        const job = await hls.ensure(t.infoHash, `http://127.0.0.1:${PORT}/stream/${t.infoHash}?t=${encodeURIComponent(TOKEN)}`);
-        console.log(`[hls] ${t.infoHash} auto-encode started`);
-        await job.exited;
-      } catch (e) {
-        console.error('[hls] auto-encode failed', t.infoHash, String(e.message).slice(0, 200));
-      }
-    });
+    const input = `http://127.0.0.1:${PORT}/stream/${t.infoHash}?t=${encodeURIComponent(TOKEN)}`;
+    hls.enqueue(t.infoHash, input).catch((e) => console.error('[hls] enqueue failed', t.infoHash, String(e.message).slice(0, 200)));
   });
 }
 
@@ -124,6 +116,10 @@ async function readBody(req, limit) {
 }
 
 // .m2ts: a Blu-ray folder (BDMV/STREAM) - the largest stream is the feature film.
+const describeFull = async (t) => {
+  const e = await hls.status(t.infoHash);
+  return { ...describe(t), encode: e.state, encodeInfo: e };
+};
 const VIDEO = new Set(['.mp4', '.m4v', '.webm', '.mov', '.mkv', '.avi', '.m2ts', '.ts']);
 /** The movie inside a torrent: its largest video file. */
 const mainIndex = (t) => {
@@ -160,6 +156,7 @@ async function freeBytes() {
 // ── handlers ────────────────────────────────────────────────────────────────
 async function add(req, res) {
   if ((await freeBytes()) < MIN_FREE_BYTES) return send(res, 507, { error: `less than ${MIN_FREE_BYTES / 1e9} GB free on the drive` });
+  if (client.torrents.filter((t) => !t.done).length >= MAX_DOWNLOADS) return send(res, 429, { error: `already downloading ${MAX_DOWNLOADS} torrents; wait for one to finish` }, { 'retry-after': '60' });
   const body = await readBody(req, MAX_TORRENT_FILE);
   let source;
   let entry;
@@ -232,6 +229,7 @@ async function serveHls(res, id, file) {
     const input = `http://127.0.0.1:${PORT}/stream/${id}?t=${encodeURIComponent(TOKEN)}`;
     job = await hls.ensure(id, input);
   } catch (e) {
+    if (e.code === 'busy') return send(res, 503, { error: 'busy', reason: e.message }, { 'retry-after': '15' });
     return send(res, 502, { error: 'remux failed: ' + String(e.message).slice(0, 300) });
   }
   const p = path.join(job.dir, file);
@@ -251,12 +249,12 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x');
     if (!authorized(req, url)) return send(res, 401, { error: 'token required' });
     if (req.method === 'POST' && url.pathname === '/api/add') return await add(req, res);
-    if (req.method === 'GET' && url.pathname === '/api/torrents') return send(res, 200, client.torrents.map(describe));
+    if (req.method === 'GET' && url.pathname === '/api/torrents') return send(res, 200, await Promise.all(client.torrents.map(describeFull)));
     const one = /^\/api\/torrents\/([0-9a-f]{40})$/.exec(url.pathname);
     if (req.method === 'DELETE' && one) return await remove(one[1], res);
     if (req.method === 'GET' && one) {
       const t = await client.get(one[1]);
-      return t ? send(res, 200, describe(t)) : send(res, 404, { error: 'unknown torrent' });
+      return t ? send(res, 200, await describeFull(t)) : send(res, 404, { error: 'unknown torrent' });
     }
     const h = /^\/hls\/([0-9a-f]{40})\/(.+)$/.exec(url.pathname);
     if (req.method === 'GET' && h && HLS_FILE.test(h[2])) return await serveHls(res, h[1], h[2]);
