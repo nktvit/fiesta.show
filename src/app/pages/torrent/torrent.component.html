@@ -23,6 +23,18 @@
       </section>
 
 
+      <section class="mb-6" [hidden]="!status()">
+        @if (source()) {
+          <div class="overflow-hidden rounded-xl border border-gray-800 bg-black" data-testid="player">
+            <app-movie-player [source]="source()" [sourceIsFile]="sourceIsFile()" [progressId]="currentId()" [subtitles]="subtitles()" [autostart]="false"></app-movie-player>
+          </div>
+        } @else {
+          <div class="relative aspect-video w-full overflow-hidden rounded-xl bg-black border border-gray-800">
+            <div class="absolute inset-0 grid place-items-center text-sm text-gray-400">Waiting for the torrent metadata…</div>
+          </div>
+        }
+      </section>
+
       <section class="rounded-xl border border-gray-800 bg-gray-900/60 p-4 mb-6" data-testid="library">
         <h2 class="text-sm font-semibold text-gray-300 mb-3">Library <span class="text-gray-500 font-normal">({{ library().length }})</span></h2>
         @if (!library().length) { <p class="text-sm text-gray-500">Nothing yet. Add a magnet link or a .torrent above.</p> }
@@ -73,17 +85,6 @@
 
       }
 
-      <section class="mb-6" [hidden]="!status()">
-        @if (source()) {
-          <div class="overflow-hidden rounded-xl border border-gray-800 bg-black" data-testid="player">
-            <app-movie-player [source]="source()" [sourceIsFile]="sourceIsFile()" [progressId]="currentId()" [subtitles]="subtitles()" [autostart]="false"></app-movie-player>
-          </div>
-        } @else {
-          <div class="relative aspect-video w-full overflow-hidden rounded-xl bg-black border border-gray-800">
-            <div class="absolute inset-0 grid place-items-center text-sm text-gray-400">Waiting for the torrent metadata…</div>
-          </div>
-        }
-      </section>
     }
   </div>
 </main>

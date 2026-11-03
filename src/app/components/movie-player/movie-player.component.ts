@@ -375,15 +375,19 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
       }
       if (content.querySelector('.fiesta-audio-item')) return;
       const item = document.createElement('div');
-      item.className = 'media-menu-item fiesta-audio-item';
+      item.className = 'media-menu-item media-menu-radio-item fiesta-audio-item';
       item.setAttribute('role', 'menuitem');
       item.setAttribute('tabindex', '0');
       item.style.cursor = 'pointer';
+      const icon =
+        '<svg class="media-menu-trigger-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+        'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4z"/>' +
+        '<path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/></svg>';
       const label = () => {
         const t = hls.audioTracks[hls.audioTrack];
         return 'Audio: ' + (t?.name || t?.lang || `track ${hls.audioTrack + 1}`);
       };
-      const paint = () => { item.textContent = label(); };
+      const paint = () => { item.innerHTML = icon + '<span></span>'; item.querySelector('span')!.textContent = label(); };
       const next = () => { hls.audioTrack = (hls.audioTrack + 1) % hls.audioTracks.length; paint(); };
       item.addEventListener('click', next);
       item.addEventListener('keydown', (e) => { if ((e as KeyboardEvent).key === 'Enter') next(); });
@@ -920,6 +924,12 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     const have = this.subtitleTracks();
     if (have.length === own.length && have.every((t, i) => t.src === own[i].src)) return true;
     const marked = this.markPreferredSubtitle(own.map((t) => ({ ...t, isDefault: false })));
+    if (!marked.some((t) => t.isDefault) && !this.readSubtitlePref()) {
+      // Nothing chosen yet on this device: show the track in the browser's language, if the file has one.
+      const lang = (typeof navigator !== 'undefined' ? navigator.language : '').slice(0, 2).toLowerCase();
+      const i = lang ? marked.findIndex((t) => t.lang.toLowerCase().startsWith(lang)) : -1;
+      if (i >= 0) marked[i] = { ...marked[i], isDefault: true };
+    }
     this.subtitleTracks.set(marked);
     void this.preloadPreferredSubtitle(token, marked);
     return true;
