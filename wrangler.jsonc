@@ -26,6 +26,12 @@
     "preview": {
       "name": "fiesta-show-preview",
       "vars": { "DEPLOY_ENV": "preview" },
+      "ai": { "binding": "AI" },
+      // Own namespaces: the preview must not eat production's per-IP budget.
+      "ratelimits": [
+        { "name": "STREAM_LIMIT", "namespace_id": "1003", "simple": { "limit": 20, "period": 60 } },
+        { "name": "MUSIC_LIMIT", "namespace_id": "1004", "simple": { "limit": 60, "period": 60 } }
+      ],
       "version_metadata": { "binding": "CF_VERSION" },
       "assets": {
         "directory": "dist/movie-streamer/browser",
