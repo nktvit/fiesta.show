@@ -199,7 +199,15 @@ export function createHls({ root }) {
     if (busy) return;
     if ([...jobs.values()].some((j) => live(j) && j.priority === 'background')) return; // one background job at a time
     const next = queue.shift();
-    if (next) start(next.id, next.inputUrl, 'background').catch((e) => { console.error('[hls] background start failed', next.id, String(e.message).slice(0, 200)); rebalance(); });
+    if (next) {
+      start(next.id, next.inputUrl, 'background').catch((e) => {
+        console.error('[hls] background start failed', next.id, String(e.message).slice(0, 200));
+        // Usually the torrent was still being verified and its stream not ready yet: try again a bit later.
+        next.tries = (next.tries || 0) + 1;
+        if (next.tries < 6) setTimeout(() => { if (!jobs.has(next.id) && !queue.some((q) => q.id === next.id)) { queue.push(next); rebalance(); } }, 60_000);
+        rebalance();
+      });
+    }
   }
 
   async function probe(inputUrl) {

@@ -2342,3 +2342,12 @@ Goal: drop a .torrent or magnet on the site, get a stream. API only, no torrent 
 - `/api/torrent` has no key: open on previews/dev, 404 when DEPLOY_ENV=production. Needs STREAM_RELAY_URL/SECRET on the preview env.
 - Not done: seeking beyond what ffmpeg has produced (second ffmpeg with -ss), text subtitles to WebVTT, 10-bit/HDR path, player UI in the site, per-user auth, hls cache cleanup policy.
 - Branch is based on the old main (79693a1): rebase before merging.
+
+### Torrent: quality, audio tracks, subtitles, shared player (2026-11-03, branch `feat/torrent`)
+
+- **Quality was too low**: q45/q40 was tuned on a clean 6 Mbit/s VP8 clip. Measured on the real 31.7 Mbit/s BD remux (6 clips, hardware decode): q50 ~6 Mbit/s, q60 ~13, q70 ~27 (VT constant quality is greedy). Ladder is now 1080p q60 + 1080p q50 + 720p q50 (4K sources: 2160p q55 + 1080p q60 + 720p q50). Measured on a real segment: ~14.6 / 7.0 / 3.6 Mbit/s. A whole film at q60 is roughly 8 GB. `FORMAT_VERSION` (in `.done`) is '3': older encodes are redone automatically.
+- **Audio**: every audio track (max 6) is its own audio-only HLS rendition (`EXT-X-MEDIA`, group `aud`, `v<rungs+i>/`); non-AAC is re-encoded to AAC stereo 160k; the first track is the default. The shared player has an "Audio: ..." row in its settings menu (cycles tracks), only shown with 2+ tracks.
+- **Subtitles**: embedded *text* tracks (subrip/ass/mov_text/webvtt) are extracted by a second cheap ffmpeg pass into `<hls dir>/subs/N.vtt`, served by box `GET /subs/:id/:n.vtt` and relay `/torrent/hls/<tok>/<id>/subs/N.vtt`; status JSON has `subtitles[{lang,title,src}]` (only once ready). Bitmap subs (PGS, as on the BDMV disc) are skipped. In the player: `subtitles` input = the file's own tracks; `/api/subs` by IMDb id stays the fallback (the torrent page has no IMDb id yet, so no fallback there).
+- **Player on /torrent** is `app-movie-player` with new inputs `source`, `sourceIsFile`, `progressId`, `subtitles`; behaviour on the other pages is unchanged. The source URL is set once per torrent (its token changes on every poll).
+- Box: failed background start (probe while the torrent was still verifying) is retried up to 6 times, 60 s apart (code committed; deploy it with `install-torrent.sh` once the running encode is done, a restart kills encodes).
+- Open: BD «И твою маму тоже» has only a PGS subtitle (nothing to extract) and is queued; the second ffmpeg pass reads the whole container (extra disk reads during the encode); Safari still unverified; preview deployed as version c7a91493.
