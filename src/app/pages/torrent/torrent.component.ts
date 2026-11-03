@@ -169,7 +169,7 @@ export class TorrentComponent implements OnInit, OnDestroy {
       this.error.set('This browser cannot play HLS.');
       return;
     }
-    const hls = new HlsCtor({ maxBufferLength: 30, startLevel: -1 });
+    const hls = new HlsCtor({ maxBufferLength: 30, startLevel: -1, startPosition: 0 });
     this.hls = hls;
     hls.on(HlsCtor.Events.MANIFEST_PARSED, () => {
       this.levels.set(hls.levels.map((l, index) => ({ index, label: `${l.height}p · ${(l.bitrate / 1e6).toFixed(1)} Mbit/s` })));
