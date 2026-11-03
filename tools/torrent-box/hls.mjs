@@ -15,14 +15,17 @@ const FFPROBE = process.env.FFPROBE || 'ffprobe';
 // Hardware encoder only (Apple VideoToolbox on the M4): no software x264/x265, ever.
 //  - H.264 8-bit that is already light is COPIED (no loss, no cost);
 //  - everything else (VP8/VP9/HEVC/AV1/heavy H.264/10-bit) is re-encoded to H.264 in constant-quality mode
-//    (-q:v), capped at 1080p, as a small ladder (top + 720p) so the player can adapt to the viewer's link;
+//    (-q:v), capped at 4K (2160p), as a small ladder (top + 1080p + 720p) so the player can adapt to the viewer's link;
 //  - audio: AAC/MP3 copied, anything else (AC-3, DTS, Opus, ...) becomes AAC stereo.
 const AUDIO_COPY = new Set(['aac', 'mp3']);
 export const COPY_MAX_BPS = 4_500_000; // an H.264 file above this is worth re-encoding
 // Measured on Tears of Steel (VP8 1920x800, 6.0 Mbit/s source), 5 clips across the film:
 //   q40 2.55 Mbit/s SSIM .936 | q45 3.19 .940 | q50 3.99 .943 | q55 5.66 .947  -> past q45 traffic grows, quality barely does.
-const Q_TOP = 45;
-const Q_LOW = 40;
+// 4K needs fewer bits per pixel for the same look: a lower q above 1440p (not measured yet, no 4K sample).
+const qFor = (height) => (height >= 1440 ? 40 : height > 720 ? 45 : 40);
+const bandwidthFor = (w, h) => Math.round(4_000_000 * ((w * h) / (1920 * 1080)) ** 0.75); // declared peak-ish, hls.js adapts anyway
+const MAX_HEIGHT = 2160; // ceiling: 4K
+const RUNGS = [1080, 720];
 const even = (n) => Math.max(2, Math.round(n / 2) * 2);
 
 /** Pure: ffprobe JSON (-show_streams -show_format) -> what to do. */
@@ -36,13 +39,15 @@ export function planFromProbe(probe) {
   const total = +probe?.format?.bit_rate || 0;
   const bps = +video.bit_rate || (total ? Math.max(0, total - (+audio?.bit_rate || 192_000)) : 0);
   const eightBit = /^(yuvj?4\d\dp|nv12|yuv4\d\dp)$/.test(video.pix_fmt || 'yuv420p');
-  const copy = video.codec_name === 'h264' && eightBit && h <= 1088 && bps > 0 && bps <= COPY_MAX_BPS;
+  const copy = video.codec_name === 'h264' && eightBit && h <= MAX_HEIGHT && bps > 0 && bps <= COPY_MAX_BPS;
   let renditions;
   if (copy) renditions = [{ w, h, copy: true, bandwidth: bps }];
   else {
-    const topH = Math.min(h, 1080);
-    renditions = [{ w: even((w * topH) / h), h: topH, q: Q_TOP, bandwidth: Math.round(4_000_000 * ((even((w * topH) / h) * topH) / (1920 * 800))) }];
-    if (topH > 720) renditions.push({ w: even((w * 720) / h), h: 720, q: Q_LOW, bandwidth: 2_200_000 });
+    const topH = Math.min(h, MAX_HEIGHT);
+    renditions = [topH, ...RUNGS.filter((x) => x < topH)].map((rh) => {
+      const rw = even((w * rh) / h);
+      return { w: rw, h: rh, q: qFor(rh), bandwidth: bandwidthFor(rw, rh) };
+    });
   }
   return {
     videoCodec: video.codec_name,
@@ -84,7 +89,7 @@ export function ffmpegArgs(plan, input) {
 export function masterPlaylist(plan) {
   const lines = ['#EXTM3U', '#EXT-X-VERSION:7', '#EXT-X-INDEPENDENT-SEGMENTS'];
   plan.renditions.forEach((r, i) => {
-    const codecs = r.copy ? '' : `,CODECS="avc1.${r.h > 720 ? '640028' : '64001f'}${plan.audio === 'none' ? '' : ',mp4a.40.2'}"`;
+    const codecs = r.copy ? '' : `,CODECS="avc1.${r.h > 1440 ? '640033' : r.h > 720 ? '640028' : '64001f'}${plan.audio === 'none' ? '' : ',mp4a.40.2'}"`;
     lines.push(`#EXT-X-STREAM-INF:BANDWIDTH=${r.bandwidth + 160_000},RESOLUTION=${r.w}x${r.h}${codecs}`, `v${i}/index.m3u8`);
   });
   return lines.join('\n') + '\n';
@@ -112,7 +117,7 @@ export function createHls({ root }) {
     let job = jobs.get(id);
     if (!job) {
       if (await finishedOnDisk(dir)) {
-        job = { dir, proc: null, finished: true, error: null, ready: Promise.resolve() };
+        job = { dir, proc: null, finished: true, error: null, ready: Promise.resolve(), exited: Promise.resolve() };
       } else {
         await fs.rm(dir, { recursive: true, force: true }); // a crashed half-run cannot be resumed
         await fs.mkdir(dir, { recursive: true });
@@ -122,6 +127,7 @@ export function createHls({ root }) {
         await fs.writeFile(path.join(dir, 'master.m3u8'), masterPlaylist(plan));
         const proc = spawn(FFMPEG, ffmpegArgs(plan, inputUrl), { cwd: dir, stdio: ['ignore', 'ignore', 'pipe'] });
         job = { dir, proc, plan, finished: false, error: null, ready: null };
+        job.exited = new Promise((resolve) => proc.once('close', resolve));
         let log = '';
         proc.stderr.on('data', (d) => { log = (log + d).slice(-2000); });
         proc.on('close', (code) => {

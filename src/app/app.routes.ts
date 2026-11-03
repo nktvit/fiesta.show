@@ -23,5 +23,7 @@ export const routes: Routes = [
   {path: 'music/mix/:id', loadComponent: () => import('./pages/music-mix/music-mix.component').then(m => m.MusicMixComponent)},
   {path: 'music/playlist/:id', loadComponent: () => import('./pages/music-playlist/music-playlist.component').then(m => m.MusicPlaylistComponent)},
 
+  {path: 'torrent', loadComponent: () => import('./pages/torrent/torrent.component').then(m => m.TorrentComponent)},
+
   {path: '**', redirectTo: '', pathMatch: 'full'},
 ]

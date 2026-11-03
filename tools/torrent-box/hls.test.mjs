@@ -22,12 +22,17 @@ test('a heavy H.264 is re-encoded on the hardware encoder as a 1080p + 720p ladd
   assert.ok(a.includes('split=2') && a.includes('v:0,a:0 v:1,a:1') && a.includes('-c:a copy'));
 });
 
-test('VP8, HEVC, AV1 and 10-bit never get copied; a 4K source is capped at 1080p', () => {
+test('VP8, HEVC, AV1 and 10-bit never get copied; a 4K source keeps 4K on top of a 1080p + 720p ladder', () => {
   for (const [codec, pix] of [['vp8', 'yuv420p'], ['hevc', 'yuv420p'], ['av1', 'yuv420p'], ['h264', 'yuv420p10le']]) {
     const p = planFromProbe({ streams: [v(codec, { bit_rate: '1000000', pix_fmt: pix, width: 3840, height: 2160 }), au('aac')] });
     assert.ok(!p.renditions[0].copy, codec + ' ' + pix);
-    assert.deepEqual([p.renditions[0].w, p.renditions[0].h], [1920, 1080]);
+    assert.deepEqual(p.renditions.map((r) => [r.w, r.h, r.q]), [[3840, 2160, 40], [1920, 1080, 45], [1280, 720, 40]]);
   }
+});
+
+test('anything taller than 4K is capped at 2160p', () => {
+  const p = planFromProbe({ streams: [v('hevc', { width: 7680, height: 4320 }), au('aac')] });
+  assert.deepEqual([p.renditions[0].w, p.renditions[0].h], [3840, 2160]);
 });
 
 test('a source below 720p gets a single rendition at its own size (no upscaling)', () => {

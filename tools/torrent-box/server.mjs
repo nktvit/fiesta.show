@@ -54,9 +54,31 @@ let registry = {};
 try { registry = JSON.parse(await fs.readFile(registryFile, 'utf8')); } catch { /* first run */ }
 const saveRegistry = () => fs.writeFile(registryFile, JSON.stringify(registry, null, 1));
 
+// Finished downloads are encoded for streaming in the background, one at a time (the M4 has a single
+// encoder engine). AUTO_ENCODE=0 turns it off. Nothing is deleted: the original file stays.
+const AUTO_ENCODE = process.env.AUTO_ENCODE !== '0';
+let encodeChain = Promise.resolve();
+function encodeWhenDone(t) {
+  if (!AUTO_ENCODE) return;
+  t.once('done', () => {
+    encodeChain = encodeChain.then(async () => {
+      try {
+        if (!(await client.get(t.infoHash))) return; // removed while queued
+        const job = await hls.ensure(t.infoHash, `http://127.0.0.1:${PORT}/stream/${t.infoHash}?t=${encodeURIComponent(TOKEN)}`);
+        console.log(`[hls] ${t.infoHash} auto-encode started`);
+        await job.exited;
+      } catch (e) {
+        console.error('[hls] auto-encode failed', t.infoHash, String(e.message).slice(0, 200));
+      }
+    });
+  });
+}
+
 function startTorrent(source) {
   // sequential = pieces in order, so the start of the file is what arrives first
-  return client.add(source, { path: root, strategy: 'sequential' });
+  const t = client.add(source, { path: root, strategy: 'sequential' });
+  encodeWhenDone(t);
+  return t;
 }
 
 for (const [id, entry] of Object.entries(registry)) {
@@ -71,7 +93,7 @@ for (const [id, entry] of Object.entries(registry)) {
 // ── helpers ─────────────────────────────────────────────────────────────────
 const MIME = {
   '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime',
-  '.mkv': 'video/x-matroska', '.avi': 'video/x-msvideo', '.mp3': 'audio/mpeg', '.flac': 'audio/flac',
+  '.mkv': 'video/x-matroska', '.m2ts': 'video/mp2t', '.ts': 'video/mp2t', '.avi': 'video/x-msvideo', '.mp3': 'audio/mpeg', '.flac': 'audio/flac',
   '.m4a': 'audio/mp4', '.ogg': 'audio/ogg', '.srt': 'text/plain; charset=utf-8', '.vtt': 'text/vtt; charset=utf-8',
 };
 const BROWSER_PLAYABLE = new Set(['.mp4', '.m4v', '.webm', '.mov', '.mp3', '.m4a', '.ogg', '.flac']);
@@ -101,7 +123,8 @@ async function readBody(req, limit) {
   return Buffer.concat(chunks);
 }
 
-const VIDEO = new Set(['.mp4', '.m4v', '.webm', '.mov', '.mkv', '.avi']);
+// .m2ts: a Blu-ray folder (BDMV/STREAM) - the largest stream is the feature film.
+const VIDEO = new Set(['.mp4', '.m4v', '.webm', '.mov', '.mkv', '.avi', '.m2ts', '.ts']);
 /** The movie inside a torrent: its largest video file. */
 const mainIndex = (t) => {
   let best = -1;
