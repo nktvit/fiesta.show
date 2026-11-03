@@ -72,6 +72,11 @@ async function handleTorrentApi(req, res, url, { SECRET, PUBLIC_URL, mintToken }
   const data = await r.json().catch(() => ({}));
   if (!r.ok) return sendJson(res, r.status, data);
   const main = data.main != null ? data.files[data.main] : null;
+  const hlsBase = PUBLIC_URL ? `${PUBLIC_URL}/torrent/hls/${mintToken()}/${data.id}` : null;
+  // Embedded text subtitles, once the box has pulled them out of the container.
+  const subtitles = hlsBase
+    ? (data.encodeInfo?.subtitles ?? []).filter((x) => x.ready).map((x) => ({ lang: x.lang, title: x.title, src: `${hlsBase}/subs/${x.index}.vtt` }))
+    : [];
   return sendJson(res, 200, {
     id: data.id,
     name: data.name,
@@ -84,7 +89,8 @@ async function handleTorrentApi(req, res, url, { SECRET, PUBLIC_URL, mintToken }
     file: main && { name: main.name, path: main.path, length: main.length, progress: main.progress, playableInBrowser: main.playableInBrowser },
     stream: main && PUBLIC_URL ? `${PUBLIC_URL}/torrent/stream/${data.id}?t=${mintToken()}` : null,
     // The token sits in the PATH so the playlist's relative segment URLs inherit it.
-    hls: main && PUBLIC_URL ? `${PUBLIC_URL}/torrent/hls/${mintToken()}/${data.id}/master.m3u8` : null,
+    hls: main && hlsBase ? `${hlsBase}/master.m3u8` : null,
+    subtitles,
     play: !main ? null : main.playableInBrowser ? 'direct' : 'hls',
   });
 }
@@ -125,7 +131,7 @@ async function handleTorrentHls(req, res, url, { setCors, verifyToken }) {
     res.statusCode = 204;
     return res.end();
   }
-  const m = /^\/torrent\/hls\/([^/]+)\/([0-9a-f]{40})\/(master\.m3u8|v\d\/(?:index\.m3u8|init(?:_\d)?\.mp4|seg_\d{5}\.m4s))$/.exec(url.pathname);
+  const m = /^\/torrent\/hls\/([^/]+)\/([0-9a-f]{40})\/(master\.m3u8|v\d\/(?:index\.m3u8|init(?:_\d)?\.mp4|seg_\d{5}\.m4s)|subs\/\d\.vtt)$/.exec(url.pathname);
   if (!m || !verifyToken(m[1])) {
     res.statusCode = 403;
     return res.end('forbidden');
@@ -136,7 +142,8 @@ async function handleTorrentHls(req, res, url, { setCors, verifyToken }) {
   }
   const abort = new AbortController();
   res.on('close', () => abort.abort());
-  const up = await boxFetch(`/hls/${m[2]}/${m[3]}`, { signal: abort.signal });
+  const sub = /^subs\/(\d)\.vtt$/.exec(m[3]);
+  const up = await boxFetch(sub ? `/subs/${m[2]}/${sub[1]}.vtt` : `/hls/${m[2]}/${m[3]}`, { signal: abort.signal });
   res.statusCode = up.status;
   for (const h of ['content-type', 'content-length', 'cache-control']) {
     const v = up.headers.get(h);

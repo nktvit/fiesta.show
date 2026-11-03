@@ -6,6 +6,7 @@
 //   DELETE /api/torrents/:id remove it and delete its files
 //   GET  /stream/:id         the movie (largest video file), Range-capable, playable WHILE it downloads
 //   GET  /stream/:id/:fileIndex   any file of the torrent
+//   GET  /subs/:id/:n.vtt    an embedded text subtitle track as WebVTT (once extracted)
 //   GET  /hls/:id/master.m3u8 (+ vN/index.m3u8, vN/init.mp4, vN/seg_NNNNN.m4s)  the movie remuxed to HLS fMP4 for browsers (MKV, AC-3, ...), started on first request
 //
 // API only, no UI: the Fiesta Show site drives it.
@@ -258,6 +259,14 @@ const server = http.createServer(async (req, res) => {
     }
     const h = /^\/hls\/([0-9a-f]{40})\/(.+)$/.exec(url.pathname);
     if (req.method === 'GET' && h && HLS_FILE.test(h[2])) return await serveHls(res, h[1], h[2]);
+    const sub = /^\/subs\/([0-9a-f]{40})\/(\d)\.vtt$/.exec(url.pathname);
+    if (req.method === 'GET' && sub) {
+      const f = await hls.subtitleFile(sub[1], +sub[2]);
+      if (!f) return send(res, 404, { error: 'subtitles not ready' });
+      const st = await fs.stat(f);
+      res.writeHead(200, { 'content-type': 'text/vtt; charset=utf-8', 'content-length': st.size, 'cache-control': 'public, max-age=3600' });
+      return createReadStream(f).pipe(res);
+    }
     const s = /^\/stream\/([0-9a-f]{40})(?:\/(\d+))?$/.exec(url.pathname);
     if ((req.method === 'GET' || req.method === 'HEAD') && s) return await stream(req, res, s[1], s[2] === undefined ? undefined : +s[2]);
     send(res, 404, { error: 'not found' });

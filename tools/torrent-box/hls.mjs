@@ -17,15 +17,22 @@ const FFPROBE = process.env.FFPROBE || 'ffprobe';
 //  - everything else (VP8/VP9/HEVC/AV1/heavy H.264/10-bit) is re-encoded to H.264 in constant-quality mode
 //    (-q:v), capped at 4K (2160p), as a small ladder (top + 1080p + 720p) so the player can adapt to the viewer's link;
 //  - audio: AAC/MP3 copied, anything else (AC-3, DTS, Opus, ...) becomes AAC stereo.
-const AUDIO_COPY = new Set(['aac', 'mp3']);
+const AUDIO_COPY = new Set(['aac']); // anything else (AC-3, E-AC-3, DTS, TrueHD, Opus, Vorbis, MP3) becomes AAC
+const MAX_AUDIO_TRACKS = 6;
+const TEXT_SUBS = new Set(['subrip', 'srt', 'ass', 'ssa', 'mov_text', 'webvtt', 'text']); // bitmap subs (PGS, VobSub) cannot be turned into text
 export const COPY_MAX_BPS = 4_500_000; // an H.264 file above this is worth re-encoding
-// Measured on Tears of Steel (VP8 1920x800, 6.0 Mbit/s source), 5 clips across the film:
-//   q40 2.55 Mbit/s SSIM .936 | q45 3.19 .940 | q50 3.99 .943 | q55 5.66 .947  -> past q45 traffic grows, quality barely does.
-// 4K needs fewer bits per pixel for the same look: a lower q above 1440p (not measured yet, no 4K sample).
-const qFor = (height) => (height >= 1440 ? 40 : height > 720 ? 45 : 40);
-const bandwidthFor = (w, h) => Math.round(4_000_000 * ((w * h) / (1920 * 1080)) ** 0.75); // declared peak-ish, hls.js adapts anyway
+/** Bump when the output layout/quality changes: older finished encodes are then redone. */
+export const FORMAT_VERSION = '3';
+// VideoToolbox constant quality is greedy and its SSIM climbs slowly. Measured on a grainy 31.7 Mbit/s Blu-ray remux
+// (1080p, 6 clips across the film, hardware decode): q50 ~6 Mbit/s SSIM .93-.97 | q60 ~13 Mbit/s .94-.98 | q70 ~27 Mbit/s .94-.99.
+// q45 (tuned on a clean 6 Mbit/s VP8 source) looked bad on it. So: q60 on top, q50 as a lighter 1080p rung for slow links.
+const Q_HIGH = 60;
+const Q_MID = 50;
+const Q_4K = 55; // 4K needs fewer bits per pixel for the same look (no 4K sample yet to measure)
+// What a rung is expected to cost at 1080p, used for the declared BANDWIDTH (hls.js measures the real thing).
+const BPS_1080 = { [Q_HIGH]: 12_000_000, [Q_MID]: 6_000_000, [Q_4K]: 8_000_000 };
+const bandwidthFor = (w, h, q) => Math.round((BPS_1080[q] ?? 8_000_000) * ((w * h) / (1920 * 1080)) ** 0.75);
 const MAX_HEIGHT = 2160; // ceiling: 4K
-const RUNGS = [1080, 720];
 const HWDEC = process.env.HWDEC !== '0'; // decode H.264/HEVC on the media engine too (frees the CPU)
 const even = (n) => Math.max(2, Math.round(n / 2) * 2);
 
@@ -33,35 +40,54 @@ const even = (n) => Math.max(2, Math.round(n / 2) * 2);
 export function planFromProbe(probe) {
   const streams = probe?.streams ?? [];
   const video = streams.find((s) => s.codec_type === 'video' && !s.disposition?.attached_pic);
-  const audio = streams.find((s) => s.codec_type === 'audio');
   if (!video) throw new Error('no video stream');
+  const audioStreams = streams.filter((s) => s.codec_type === 'audio');
   const w = +video.width || 1920;
   const h = +video.height || 1080;
   const total = +probe?.format?.bit_rate || 0;
-  const bps = +video.bit_rate || (total ? Math.max(0, total - (+audio?.bit_rate || 192_000)) : 0);
+  const bps = +video.bit_rate || (total ? Math.max(0, total - (audioStreams.reduce((n, s) => n + (+s.bit_rate || 192_000), 0))) : 0);
   const eightBit = /^(yuvj?4\d\dp|nv12|yuv4\d\dp)$/.test(video.pix_fmt || 'yuv420p');
   const copy = video.codec_name === 'h264' && eightBit && h <= MAX_HEIGHT && bps > 0 && bps <= COPY_MAX_BPS;
+
   let renditions;
   if (copy) renditions = [{ w, h, copy: true, bandwidth: bps }];
   else {
     const topH = Math.min(h, MAX_HEIGHT);
-    renditions = [topH, ...RUNGS.filter((x) => x < topH)].map((rh) => {
+    const heights = topH > 1440 ? [[topH, Q_4K], [1080, Q_HIGH], [720, Q_MID]]
+      : topH > 720 && topH >= 1000 ? [[topH, Q_HIGH], [topH, Q_MID], [720, Q_MID]]
+      : topH > 720 ? [[topH, Q_HIGH], [topH, Q_MID]]
+      : [[topH, Q_HIGH]];
+    renditions = heights.map(([rh, q]) => {
       const rw = even((w * rh) / h);
-      return { w: rw, h: rh, q: qFor(rh), bandwidth: bandwidthFor(rw, rh) };
+      return { w: rw, h: rh, q, bandwidth: bandwidthFor(rw, rh, q) };
     });
   }
+
+  const audios = audioStreams.slice(0, MAX_AUDIO_TRACKS).map((s, k) => ({
+    k, codec: s.codec_name, channels: +s.channels || 2, lang: s.tags?.language || 'und', title: s.tags?.title || '', copy: AUDIO_COPY.has(s.codec_name),
+  }));
+  // The first track is the default: releases list the dub they were made for first; the viewer can switch.
+  audios.forEach((x, i) => { x.default = i === 0; });
+
+  // Text subtitles, numbered as ffmpeg's `-map 0:s:N` counts every subtitle stream (bitmap ones included).
+  const subs = [];
+  streams.filter((s) => s.codec_type === 'subtitle').forEach((s, ordinal) => {
+    if (TEXT_SUBS.has(s.codec_name)) subs.push({ index: subs.length, ordinal, lang: s.tags?.language || 'und', title: s.tags?.title || '' });
+  });
+
   return {
     duration: +probe?.format?.duration || 0,
     hwdec: !copy && HWDEC && (video.codec_name === 'h264' || video.codec_name === 'hevc'),
     videoCodec: video.codec_name,
     sourceBps: bps,
     renditions,
-    audio: !audio ? 'none' : AUDIO_COPY.has(audio.codec_name) ? 'copy' : 'aac',
-    audioCodec: audio?.codec_name ?? null,
+    audios,
+    audioCodec: audios[0]?.codec ?? null,
+    subs,
   };
 }
 
-/** Pure: ffmpeg arguments for a plan (input is a URL or path). Writes v<N>/index.m3u8 (+ init.mp4, seg_*.m4s). */
+/** Pure: ffmpeg arguments for a plan (input is a URL or path). Writes v<N>/index.m3u8 (+ init_N.mp4, seg_*.m4s): video rungs first, then one audio-only rendition per track. */
 export function ffmpegArgs(plan, input) {
   const n = plan.renditions.length;
   const a = ['-hide_banner', '-loglevel', 'warning', '-nostdin', '-progress', 'pipe:1', '-nostats', '-probesize', '50M', '-analyzeduration', '20M'];
@@ -77,25 +103,43 @@ export function ffmpegArgs(plan, input) {
     plan.renditions.forEach((r, i) => a.push(`-c:v:${i}`, 'h264_videotoolbox', `-q:v:${i}`, String(r.q)));
     a.push('-profile:v', 'high', '-force_key_frames', 'expr:gte(t,n_forced*4)');
   }
-  if (plan.audio !== 'none') {
-    for (let i = 0; i < n; i++) a.push('-map', '0:a:0');
-    if (plan.audio === 'copy') a.push('-c:a', 'copy');
-    else a.push('-c:a', 'aac', '-ac', '2', '-b:a', '160k');
-  }
+  plan.audios.forEach((x, i) => {
+    a.push('-map', `0:a:${x.k}`);
+    if (x.copy) a.push(`-c:a:${i}`, 'copy');
+    else a.push(`-c:a:${i}`, 'aac', `-ac:a:${i}`, '2', `-b:a:${i}`, '160k');
+  });
+  const map = [
+    ...plan.renditions.map((_, i) => (plan.audios.length ? `v:${i},agroup:aud` : `v:${i}`)),
+    ...plan.audios.map((_, i) => `a:${i},agroup:aud`),
+  ];
   a.push('-sn', '-dn', '-f', 'hls', '-hls_time', '4', '-hls_playlist_type', 'event', '-hls_segment_type', 'fmp4',
     '-hls_segment_filename', 'v%v/seg_%05d.m4s',
     '-hls_flags', 'independent_segments+temp_file',
-    '-var_stream_map', plan.renditions.map((_, i) => (plan.audio === 'none' ? `v:${i}` : `v:${i},a:${i}`)).join(' '),
+    '-var_stream_map', map.join(' '),
     'v%v/index.m3u8');
+  return a;
+}
+
+/** Pure: ffmpeg arguments that pull the text subtitle tracks out as WebVTT (reads the whole container, no decoding). */
+export function subtitleArgs(plan, input) {
+  const a = ['-hide_banner', '-loglevel', 'error', '-nostdin', '-i', input];
+  plan.subs.forEach((s, i) => a.push('-map', `0:s:${s.ordinal}`, '-c:s', 'webvtt', '-f', 'webvtt', `subs/${i}.vtt`));
   return a;
 }
 
 /** Pure: the master playlist we write ourselves (ffmpeg cannot know the bitrate of a CQ encode). */
 export function masterPlaylist(plan) {
   const lines = ['#EXTM3U', '#EXT-X-VERSION:7', '#EXT-X-INDEPENDENT-SEGMENTS'];
+  const nv = plan.renditions.length;
+  const esc = (t) => String(t).replace(/["\r\n]/g, ' ').slice(0, 80);
+  plan.audios.forEach((x, i) => {
+    const name = esc([x.lang !== 'und' ? x.lang : '', x.title, x.channels > 2 ? `${x.channels}ch` : ''].filter(Boolean).join(' ') || `Track ${i + 1}`);
+    lines.push(`#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="${name}",LANGUAGE="${esc(x.lang)}",DEFAULT=${x.default ? 'YES' : 'NO'},AUTOSELECT=YES,CHANNELS="2",URI="v${nv + i}/index.m3u8"`);
+  });
   plan.renditions.forEach((r, i) => {
-    const codecs = r.copy ? '' : `,CODECS="avc1.${r.h > 1440 ? '640033' : r.h > 720 ? '640028' : '64001f'}${plan.audio === 'none' ? '' : ',mp4a.40.2'}"`;
-    lines.push(`#EXT-X-STREAM-INF:BANDWIDTH=${r.bandwidth + 160_000},RESOLUTION=${r.w}x${r.h}${codecs}`, `v${i}/index.m3u8`);
+    const hasAudio = plan.audios.length > 0;
+    const codecs = r.copy ? '' : `,CODECS="avc1.${r.h > 1440 ? '640033' : r.h > 720 ? '640028' : '64001f'}${hasAudio ? ',mp4a.40.2' : ''}"`;
+    lines.push(`#EXT-X-STREAM-INF:BANDWIDTH=${r.bandwidth + 160_000},RESOLUTION=${r.w}x${r.h}${codecs}${hasAudio ? ',AUDIO="aud"' : ''}`, `v${i}/index.m3u8`);
   });
   return lines.join('\n') + '\n';
 }
@@ -138,7 +182,11 @@ export function createHls({ root }) {
   const live = (j) => j.proc && !j.finished && !j.error && !j.killed;
   const watchers = () => [...jobs.values()].filter((j) => live(j) && j.priority === 'watch');
 
-  const finishedOnDisk = (dir) => exists(path.join(dir, '.done')); // written only after ffmpeg exited cleanly
+  // `.done` holds FORMAT_VERSION and is written only after ffmpeg exited cleanly; an older format is redone.
+  const finishedOnDisk = async (dir) => {
+    try { return (await fs.readFile(path.join(dir, '.done'), 'utf8')).trim() === FORMAT_VERSION; } catch { return false; }
+  };
+  const readPlan = async (dir) => { try { return JSON.parse(await fs.readFile(path.join(dir, 'plan.json'), 'utf8')); } catch { return null; } };
 
   /** Pause background encodes while somebody watches; resume them (and start the next queued) afterwards. */
   function rebalance() {
@@ -163,7 +211,8 @@ export function createHls({ root }) {
   async function start(id, inputUrl, priority) {
     const dir = dirOf(id);
     if (await finishedOnDisk(dir)) {
-      const job = { id, dir, proc: null, priority, finished: true, error: null, ready: Promise.resolve(), exited: Promise.resolve() };
+      const job = { id, dir, proc: null, plan: await readPlan(dir), priority, finished: true, error: null, ready: Promise.resolve(), exited: Promise.resolve() };
+      job.subsDone = true;
       jobs.set(id, job);
       return job;
     }
@@ -173,11 +222,25 @@ export function createHls({ root }) {
       if (!verdict.ok) throw Object.assign(new Error(verdict.reason), { code: 'busy' });
     }
     await fs.rm(dir, { recursive: true, force: true }); // a crashed half-run cannot be resumed
-    await Promise.all(plan.renditions.map((_, i) => fs.mkdir(path.join(dir, `v${i}`), { recursive: true })));
+    const nOut = plan.renditions.length + plan.audios.length;
+    await Promise.all(Array.from({ length: nOut }, (_, i) => fs.mkdir(path.join(dir, `v${i}`), { recursive: true })));
+    await fs.mkdir(path.join(dir, 'subs'), { recursive: true });
     await fs.writeFile(path.join(dir, 'master.m3u8'), masterPlaylist(plan));
+    await fs.writeFile(path.join(dir, 'plan.json'), JSON.stringify(plan));
     const proc = spawn(FFMPEG, ffmpegArgs(plan, inputUrl), { cwd: dir, stdio: ['ignore', 'pipe', 'pipe'] });
     const job = { id, dir, proc, plan, priority, paused: false, finished: false, error: null, ready: null, outSeconds: 0, speed: 0, slow: false };
     job.exited = new Promise((resolve) => proc.once('close', resolve));
+    job.subsDone = plan.subs.length === 0;
+    if (plan.subs.length) {
+      // Embedded text subtitles: one cheap pass that reads the container and writes WebVTT, next to the encode.
+      const sp = spawn(FFMPEG, subtitleArgs(plan, inputUrl), { cwd: dir, stdio: ['ignore', 'ignore', 'pipe'] });
+      job.subsProc = sp;
+      sp.stderr.on('data', () => {});
+      sp.on('close', (code) => {
+        if (code === 0) { job.subsDone = true; fs.writeFile(path.join(dir, 'subs', '.done'), '').catch(() => {}); }
+        console.log(`[hls] ${id} subtitles ${code === 0 ? 'extracted (' + plan.subs.length + ')' : 'extraction ended with ' + code}`);
+      });
+    }
     let log = '';
     let buf = '';
     let slowTicks = 0;
@@ -198,7 +261,7 @@ export function createHls({ root }) {
     proc.stderr.on('data', (d) => { log = (log + d).slice(-2000); });
     proc.on('close', (code) => {
       job.finished = code === 0;
-      if (code === 0) fs.writeFile(path.join(dir, '.done'), '').catch(() => {});
+      if (code === 0) fs.writeFile(path.join(dir, '.done'), FORMAT_VERSION).catch(() => {});
       if (code !== 0 && !job.killed) job.error = `ffmpeg exited ${code}: ${log.replace(/https?:\/\/\S+/g, '<url>').slice(-400)}`;
       console.log(`[hls] ${id} ffmpeg ${code === 0 ? 'finished' : 'ended with ' + code}`);
       rebalance();
@@ -212,7 +275,7 @@ export function createHls({ root }) {
       throw new Error('timed out waiting for the first segment');
     })();
     jobs.set(id, job);
-    console.log(`[hls] ${id} [${priority}] ${plan.videoCodec} ${Math.round(plan.sourceBps / 1000)} kbit/s -> ${plan.renditions.map((r) => (r.copy ? 'copy' : `${r.w}x${r.h} q${r.q}`)).join(' + ')}; audio ${plan.audioCodec ?? 'none'} -> ${plan.audio}${plan.hwdec ? '; hw decode' : ''}`);
+    console.log(`[hls] ${id} [${priority}] ${plan.videoCodec} ${Math.round(plan.sourceBps / 1000)} kbit/s -> ${plan.renditions.map((r) => (r.copy ? 'copy' : `${r.w}x${r.h} q${r.q}`)).join(' + ')}; audio ${plan.audios.length ? plan.audios.map((x) => `${x.lang}:${x.codec}${x.copy ? '' : '->aac'}`).join(',') : 'none'}; subs ${plan.subs.length}${plan.hwdec ? '; hw decode' : ''}`);
     rebalance();
     return job;
   }
@@ -251,6 +314,7 @@ export function createHls({ root }) {
     const qi = queue.findIndex((q) => q.id === id);
     if (qi >= 0) queue.splice(qi, 1);
     if (job?.proc && !job.finished) { job.killed = true; if (job.paused) job.proc.kill('SIGCONT'); job.proc.kill('SIGTERM'); }
+    job?.subsProc?.kill('SIGTERM');
     jobs.delete(id);
     await fs.rm(dirOf(id), { recursive: true, force: true });
     rebalance();
@@ -259,15 +323,31 @@ export function createHls({ root }) {
   /** For the library list and the player. */
   async function status(id) {
     const job = jobs.get(id);
+    const plan = job?.plan ?? (job ? null : await readPlan(dirOf(id)));
+    const tracks = plan
+      ? {
+        audios: plan.audios.map((x) => ({ lang: x.lang, title: x.title, channels: x.channels, default: !!x.default })),
+        subtitles: plan.subs.map((x) => ({ index: x.index, lang: x.lang, title: x.title, ready: job ? !!job.subsDone : true })),
+      }
+      : { audios: [], subtitles: [] };
     if (job) {
       const state = job.error ? 'failed' : job.finished ? 'done' : job.paused ? 'paused' : 'running';
-      return { state, priority: job.priority, encodedSeconds: Math.round(job.outSeconds || 0), duration: Math.round(job.plan?.duration || 0), speed: job.speed || 0, slow: !!job.slow };
+      return { state, priority: job.priority, encodedSeconds: Math.round(job.outSeconds || 0), duration: Math.round(job.plan?.duration || 0), speed: job.speed || 0, slow: !!job.slow, ...tracks };
     }
-    if (queue.some((q) => q.id === id)) return { state: 'queued' };
-    return { state: (await finishedOnDisk(dirOf(id))) ? 'done' : 'none' };
+    if (queue.some((q) => q.id === id)) return { state: 'queued', ...tracks };
+    return { state: (await finishedOnDisk(dirOf(id))) ? 'done' : 'none', ...tracks };
   }
 
-  const stopAll = () => { for (const j of jobs.values()) { if (j.paused) j.proc?.kill('SIGCONT'); j.proc?.kill('SIGTERM'); } };
+  const stopAll = () => { for (const j of jobs.values()) { if (j.paused) j.proc?.kill('SIGCONT'); j.proc?.kill('SIGTERM'); j.subsProc?.kill('SIGTERM'); } };
 
-  return { ensure, enqueue, stop, stopAll, dirOf, status };
+  /** Path of a finished WebVTT track, or null while it is still being extracted. */
+  async function subtitleFile(id, n) {
+    const dir = dirOf(id);
+    const job = jobs.get(id);
+    const ready = job ? !!job.subsDone : await exists(path.join(dir, 'subs', '.done'));
+    const p = path.join(dir, 'subs', `${n}.vtt`);
+    return ready && (await exists(p)) ? p : null;
+  }
+
+  return { ensure, enqueue, stop, stopAll, dirOf, status, subtitleFile };
 }

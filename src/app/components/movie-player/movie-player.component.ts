@@ -30,6 +30,20 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 })
 export class MoviePlayerComponent implements OnChanges, OnDestroy {
   readonly imdbId = input<string>('');
+  /**
+   * Play this URL instead of resolving one through /api/stream (the torrent page). An HLS master by
+   * default; with `sourceIsFile` a plain media file. `imdbId` stays optional: it only drives subtitles.
+   */
+  readonly source = input<string>('');
+  readonly sourceIsFile = input<boolean>(false);
+  /** Key for the saved resume position when there is no imdbId (e.g. a torrent id). */
+  readonly progressId = input<string>('');
+  /**
+   * Subtitle tracks that came with the source itself (a remux's own text tracks). When there are any,
+   * /api/subs is not asked; it stays the fallback for when the file brings none. May grow while the
+   * source is still being processed, and that does not restart playback.
+   */
+  readonly subtitles = input<{ lang: string; label: string; src: string }[]>([]);
   readonly type = input<string>('movie');
   readonly season = input<number | null>(null);
   readonly episode = input<number | null>(null);
@@ -202,7 +216,11 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     });
   }
 
-  ngOnChanges(_changes: SimpleChanges) {
+  ngOnChanges(changes: SimpleChanges) {
+    if (Object.keys(changes).every((k) => k === 'subtitles')) {
+      this.adoptOwnSubtitles(this.loadToken);
+      return;
+    }
     void this.loadStream();
   }
 
@@ -341,6 +359,42 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     tryInstall();
   }
 
+  private audioItem: HTMLElement | null = null;
+
+  // A source with several audio tracks (a remux's dubs) gets an "Audio" row in the same Settings
+  // menu. It shows the current track and switches to the next on each click; the other pages'
+  // streams have one track, so the row never appears there.
+  private installAudioItem(video: HTMLVideoElement, hls: Hls) {
+    const deadline = performance.now() + 15_000;
+    const tryInstall = () => {
+      if (this.hls !== hls || hls.audioTracks.length < 2) return;
+      const content = video.closest('video-skin')?.shadowRoot?.querySelector('media-menu > media-menu-content');
+      if (!content) {
+        if (performance.now() < deadline) requestAnimationFrame(tryInstall);
+        return;
+      }
+      if (content.querySelector('.fiesta-audio-item')) return;
+      const item = document.createElement('div');
+      item.className = 'media-menu-item fiesta-audio-item';
+      item.setAttribute('role', 'menuitem');
+      item.setAttribute('tabindex', '0');
+      item.style.cursor = 'pointer';
+      const label = () => {
+        const t = hls.audioTracks[hls.audioTrack];
+        return 'Audio: ' + (t?.name || t?.lang || `track ${hls.audioTrack + 1}`);
+      };
+      const paint = () => { item.textContent = label(); };
+      const next = () => { hls.audioTrack = (hls.audioTrack + 1) % hls.audioTracks.length; paint(); };
+      item.addEventListener('click', next);
+      item.addEventListener('keydown', (e) => { if ((e as KeyboardEvent).key === 'Enter') next(); });
+      hls.on('hlsAudioTrackSwitched' as unknown as Parameters<Hls['on']>[0], paint as never);
+      paint();
+      content.appendChild(item);
+      this.audioItem = item;
+    };
+    tryInstall();
+  }
+
   private static readPlayerUi(): 'custom' | 'native' {
     try {
       return window.localStorage.getItem(MoviePlayerComponent.PLAYER_UI_KEY) === 'native' ? 'native' : 'custom';
@@ -405,7 +459,8 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
 
   private async loadStream(srv?: 1 | 2, keepStarted = false) {
     const id = this.imdbId();
-    if (!id) {
+    const direct = this.source();
+    if (!id && !direct) {
       this.masterUrl.set(null);
       return;
     }
@@ -447,9 +502,16 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
 
     // Subtitles are independent of stream resolution — fetch in parallel,
     // best-effort, and never let a failure here block playback.
-    void this.loadSubtitles(token);
+    if (id) void this.loadSubtitles(token);
 
     try {
+      if (direct) {
+        // A source we were handed: no resolve step and no second server to escalate to.
+        this.escalated = true;
+        this.activeServer.set(1);
+        this.masterUrl.set(direct);
+        return;
+      }
       const type = this.type() === 'tv' ? 'tv' : 'movie';
       const params = new URLSearchParams({ type, id });
       const s = this.season();
@@ -485,6 +547,11 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     this.destroyHls();
     this.wireSubtitlePersistence(video);
 
+    if (this.sourceIsFile()) {
+      this.attachNative(video, master, false); // a plain MP4/WebM: the browser's own decoder
+      return;
+    }
+
     // ?hls=native forces the browser's own HLS (falling back to hls.js once if
     // it errors); otherwise native is only the fallback, below.
     if (this.preferNativeHls(video)) {
@@ -507,6 +574,9 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
       // quality down. The settings below give ABR margin to absorb that variance
       // instead of reacting to it.
       const hls = new Hls({
+        // A handed source can still be growing (event playlist while it is being encoded): start at the
+        // beginning, not at the live edge.
+        ...(this.source() ? { startPosition: 0 } : {}),
         enableWorker: true,
         debug: this.hlsDebug,
         // Desktop Safari 17+ has both MediaSource and ManagedMediaSource, and hls.js
@@ -633,7 +703,10 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
 
       this.subsyncHls = { hls, appendEvent: Hls.Events.BUFFER_APPENDING, video };
       this.startSubsync();
-      if (this.playerUi() === 'custom') this.installSubsyncItem(video);
+      if (this.playerUi() === 'custom') {
+        this.installSubsyncItem(video);
+        hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => this.installAudioItem(video, hls));
+      }
 
       hls.loadSource(master);
       hls.attachMedia(video);
@@ -840,7 +913,21 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     void this.loadStream();
   }
 
+  /** Show the source's own subtitle tracks. Returns false when it has none. */
+  private adoptOwnSubtitles(token: number): boolean {
+    const own = this.subtitles();
+    if (!own.length) return false;
+    const have = this.subtitleTracks();
+    if (have.length === own.length && have.every((t, i) => t.src === own[i].src)) return true;
+    const marked = this.markPreferredSubtitle(own.map((t) => ({ ...t, isDefault: false })));
+    this.subtitleTracks.set(marked);
+    void this.preloadPreferredSubtitle(token, marked);
+    return true;
+  }
+
   private async loadSubtitles(token: number) {
+    if (this.adoptOwnSubtitles(token)) return;
+    if (!this.imdbId()) return;
     try {
       const type = this.type() === 'tv' ? 'tv' : 'movie';
       const params = new URLSearchParams({ type, id: this.imdbId() });
@@ -1463,7 +1550,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   }
 
   private progressKey(): string | null {
-    const id = this.imdbId();
+    const id = this.imdbId() || this.progressId();
     if (!id || typeof window === 'undefined') return null;
 
     const type = this.type() === 'tv' ? 'tv' : 'movie';
@@ -1478,6 +1565,8 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     this.subsyncHls = null;
     this.subsyncItem?.remove();
     this.subsyncItem = null;
+    this.audioItem?.remove();
+    this.audioItem = null;
     if (this.hls) {
       this.hls.destroy();
       this.hls = null;

@@ -74,27 +74,15 @@
       }
 
       <section class="mb-6" [hidden]="!status()">
-        <div class="relative aspect-video w-full overflow-hidden rounded-xl bg-black border border-gray-800">
-          <video #video class="h-full w-full" controls playsinline preload="metadata" data-testid="video"></video>
-          @if (!status()?.play) {
+        @if (source()) {
+          <div class="overflow-hidden rounded-xl border border-gray-800 bg-black" data-testid="player">
+            <app-movie-player [source]="source()" [sourceIsFile]="sourceIsFile()" [progressId]="currentId()" [subtitles]="subtitles()" [autostart]="false"></app-movie-player>
+          </div>
+        } @else {
+          <div class="relative aspect-video w-full overflow-hidden rounded-xl bg-black border border-gray-800">
             <div class="absolute inset-0 grid place-items-center text-sm text-gray-400">Waiting for the torrent metadata…</div>
-          }
-        </div>
-        <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-400" data-testid="live">
-          <span>{{ live().state }}</span>
-          @if (live().level) { <span>{{ live().level }}</span> }
-          <span>buffer {{ live().bufferAhead }} s</span>
-          @if (live().bandwidthMbps) { <span>link {{ live().bandwidthMbps }} Mbit/s</span> }
-          <span>dropped {{ live().dropped }}</span>
-          @if (levels().length > 1) {
-            <label class="ml-auto flex items-center gap-2">Quality
-              <select class="rounded bg-black/40 border border-gray-700 px-2 py-1 text-gray-200" data-testid="quality" [value]="chosenLevel()" (change)="chooseLevel($event)">
-                <option value="-1">Auto</option>
-                @for (l of levels(); track l.index) { <option [value]="l.index">{{ l.label }}</option> }
-              </select>
-            </label>
-          }
-        </div>
+          </div>
+        }
       </section>
     }
   </div>

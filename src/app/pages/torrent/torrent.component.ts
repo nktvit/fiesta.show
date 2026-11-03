@@ -1,8 +1,8 @@
-import { Component, ElementRef, OnDestroy, OnInit, inject, signal, viewChild } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { Title } from '@angular/platform-browser';
 import { DecimalPipe } from '@angular/common';
-import type Hls from 'hls.js';
 import { NavbarComponent } from '../../components/navbar/navbar.component';
+import { MoviePlayerComponent } from '../../components/movie-player/movie-player.component';
 
 interface TorrentStatus {
   id: string;
@@ -17,6 +17,7 @@ interface TorrentStatus {
   play: 'direct' | 'hls' | null;
   encode?: EncodeInfo['state'];
   encodeInfo?: EncodeInfo;
+  subtitles?: { lang: string; title: string; src: string }[];
 }
 
 interface EncodeInfo {
@@ -41,8 +42,6 @@ interface LibraryItem {
   file: { name: string; path: string; length: number } | null;
 }
 
-interface Level { index: number; label: string }
-
 const STORAGE_KEY = 'fiesta.torrent.id';
 
 /**
@@ -51,12 +50,11 @@ const STORAGE_KEY = 'fiesta.torrent.id';
  */
 @Component({
   selector: 'app-torrent',
-  imports: [NavbarComponent, DecimalPipe],
+  imports: [NavbarComponent, DecimalPipe, MoviePlayerComponent],
   templateUrl: './torrent.component.html',
 })
 export class TorrentComponent implements OnInit, OnDestroy {
   private readonly title = inject(Title);
-  readonly videoEl = viewChild<ElementRef<HTMLVideoElement>>('video');
 
   readonly magnet = signal('');
   readonly status = signal<TorrentStatus | null>(null);
@@ -65,16 +63,15 @@ export class TorrentComponent implements OnInit, OnDestroy {
   readonly unavailable = signal(false);
   readonly library = signal<LibraryItem[]>([]);
   readonly currentId = signal('');
-  readonly levels = signal<Level[]>([]);
-  readonly chosenLevel = signal(-1); // -1 = auto
-  readonly live = signal({ level: '', bufferAhead: 0, bandwidthMbps: 0, dropped: 0, state: 'idle' });
+  /** What the shared player plays. Set once per torrent: the URL carries a 6 h token and a new one would restart playback. */
+  readonly source = signal('');
+  readonly sourceIsFile = signal(false);
+  /** The movie's own text subtitle tracks (a remux brings them); the site's subtitle lookup stays the fallback inside the player. */
+  readonly subtitles = computed(() => (this.status()?.subtitles ?? []).map((x) => ({ lang: x.lang, label: x.title || x.lang, src: x.src })));
 
   private id = '';
   private pollTimer: ReturnType<typeof setTimeout> | undefined;
-  private statsTimer: ReturnType<typeof setInterval> | undefined;
   private libTimer: ReturnType<typeof setInterval> | undefined;
-  private hls: Hls | null = null;
-  private attached = '';
   private destroyed = false;
   /** Bumped on every add/remove so a poll that was in flight for the previous torrent is ignored. */
   private gen = 0;
@@ -88,7 +85,6 @@ export class TorrentComponent implements OnInit, OnDestroy {
       void this.poll();
     }
     this.currentId.set(this.id);
-    this.statsTimer = setInterval(() => this.sampleStats(), 1000);
     void this.loadLibrary();
     this.libTimer = setInterval(() => void this.loadLibrary(), 4000);
   }
@@ -96,9 +92,7 @@ export class TorrentComponent implements OnInit, OnDestroy {
   ngOnDestroy() {
     this.destroyed = true;
     clearTimeout(this.pollTimer);
-    clearInterval(this.statsTimer);
     clearInterval(this.libTimer);
-    this.hls?.destroy();
   }
 
   async loadLibrary() {
@@ -199,13 +193,7 @@ export class TorrentComponent implements OnInit, OnDestroy {
   private reset() {
     this.gen++;
     clearTimeout(this.pollTimer);
-    this.hls?.destroy();
-    this.hls = null;
-    this.attached = '';
-    this.levels.set([]);
-    this.chosenLevel.set(-1);
-    const v = this.videoEl()?.nativeElement;
-    if (v) { v.removeAttribute('src'); v.load(); }
+    this.source.set('');
   }
 
   private async poll() {
@@ -225,7 +213,7 @@ export class TorrentComponent implements OnInit, OnDestroy {
       if (!r.ok) throw new Error(j.error || `status ${r.status}`);
       this.status.set(j as TorrentStatus);
       this.error.set('');
-      void this.attach(j as TorrentStatus);
+      this.pickSource(j as TorrentStatus);
     } catch (e) {
       this.error.set(String((e as Error)?.message || e));
     }
@@ -234,60 +222,12 @@ export class TorrentComponent implements OnInit, OnDestroy {
     this.pollTimer = setTimeout(() => void this.poll(), s?.done ? 5000 : 1500);
   }
 
-  private async attach(s: TorrentStatus) {
+  private pickSource(s: TorrentStatus) {
+    if (this.source()) return;
     const url = s.play === 'hls' ? s.hls : s.play === 'direct' ? s.stream : null;
-    const video = this.videoEl()?.nativeElement;
-    if (!url || !video || this.attached) return; // attach once: the URL carries a 6 h token
-    this.attached = url;
-    if (s.play === 'direct') { video.src = url; return; }
-    const { default: HlsCtor } = await import('hls.js');
-    if (!HlsCtor.isSupported()) {
-      // iPhone Safari without MSE: its native HLS player takes over.
-      if (video.canPlayType('application/vnd.apple.mpegurl')) { video.src = url; return; }
-      this.error.set('This browser cannot play HLS.');
-      return;
-    }
-    const hls = new HlsCtor({ maxBufferLength: 30, startLevel: -1, startPosition: 0 });
-    this.hls = hls;
-    hls.on(HlsCtor.Events.MANIFEST_PARSED, () => {
-      this.levels.set(hls.levels.map((l, index) => ({ index, label: `${l.height}p · ${(l.bitrate / 1e6).toFixed(1)} Mbit/s` })));
-    });
-    hls.on(HlsCtor.Events.ERROR, (_e, d) => {
-      if (!d.fatal) return;
-      // 503 = the server is already feeding as many movies as its disk allows: wait and ask again.
-      if (d.response?.code === 503 && !this.destroyed) {
-        this.error.set('The server is busy encoding other movies for viewers. Retrying in 15 s…');
-        setTimeout(() => { if (this.hls === hls) { this.error.set(''); hls.loadSource(url); } }, 15000);
-        return;
-      }
-      this.error.set(`Playback error: ${d.details}`);
-    });
-    hls.loadSource(url);
-    hls.attachMedia(video);
-  }
-
-  chooseLevel(e: Event) {
-    const i = +(e.target as HTMLSelectElement).value;
-    this.chosenLevel.set(i);
-    if (this.hls) this.hls.currentLevel = i; // -1 = auto
-  }
-
-  private sampleStats() {
-    const v = this.videoEl()?.nativeElement;
-    if (!v) return;
-    let ahead = 0;
-    for (let i = 0; i < v.buffered.length; i++) {
-      if (v.currentTime >= v.buffered.start(i) && v.currentTime <= v.buffered.end(i)) ahead = v.buffered.end(i) - v.currentTime;
-    }
-    const lvl = this.hls?.levels[this.hls.currentLevel];
-    const q = (v as HTMLVideoElement).getVideoPlaybackQuality?.();
-    this.live.set({
-      level: lvl ? `${lvl.height}p` : v.videoHeight ? `${v.videoHeight}p` : '',
-      bufferAhead: Math.round(ahead * 10) / 10,
-      bandwidthMbps: this.hls ? Math.round((this.hls.bandwidthEstimate / 1e6) * 10) / 10 : 0,
-      dropped: q?.droppedVideoFrames ?? 0,
-      state: v.error ? 'error' : v.seeking ? 'seeking' : v.readyState < 3 && !v.paused ? 'buffering' : v.paused ? 'paused' : 'playing',
-    });
+    if (!url) return;
+    this.sourceIsFile.set(s.play === 'direct');
+    this.source.set(url);
   }
 
   gb(bytes: number) { return bytes / 1073741824; }

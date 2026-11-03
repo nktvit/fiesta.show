@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { planFromProbe, ffmpegArgs, masterPlaylist, admit, HLS_FILE, COPY_MAX_BPS } from './hls.mjs';
+import { planFromProbe, ffmpegArgs, subtitleArgs, masterPlaylist, admit, HLS_FILE, COPY_MAX_BPS } from './hls.mjs';
 
 const v = (codec, extra = {}) => ({ codec_type: 'video', codec_name: codec, width: 1920, height: 1080, pix_fmt: 'yuv420p', ...extra });
 const au = (codec, extra = {}) => ({ codec_type: 'audio', codec_name: codec, channels: 2, ...extra });
@@ -9,24 +9,25 @@ test('a light 8-bit H.264 is copied as one rendition; AC-3 audio becomes AAC', (
   const p = planFromProbe({ streams: [v('h264', { bit_rate: '3000000' }), au('ac3', { channels: 6 })] });
   assert.equal(p.renditions.length, 1);
   assert.ok(p.renditions[0].copy);
-  assert.equal(p.audio, 'aac');
+  assert.equal(p.audios.length, 1);
+  assert.ok(!p.audios[0].copy);
   const a = ffmpegArgs(p, 'in.mkv').join(' ');
-  assert.ok(a.includes('-c:v copy') && a.includes('-c:a aac -ac 2') && a.includes('v:0,a:0'));
+  assert.ok(a.includes('-c:v copy') && a.includes('-c:a:0 aac') && a.includes('-ac:a:0 2') && a.includes('v:0,agroup:aud a:0,agroup:aud'));
 });
 
-test('a heavy H.264 is re-encoded on the hardware encoder as a 1080p + 720p ladder', () => {
+test('a heavy H.264 is re-encoded on the hardware encoder as a q60 + q50 1080p and a 720p ladder', () => {
   const p = planFromProbe({ streams: [v('h264', { bit_rate: String(COPY_MAX_BPS + 1) }), au('aac')] });
-  assert.deepEqual(p.renditions.map((r) => [r.w, r.h, r.q]), [[1920, 1080, 45], [1280, 720, 40]]);
+  assert.deepEqual(p.renditions.map((r) => [r.w, r.h, r.q]), [[1920, 1080, 60], [1920, 1080, 50], [1280, 720, 50]]);
   const a = ffmpegArgs(p, 'in.mkv').join(' ');
   assert.ok(a.includes('h264_videotoolbox') && !a.includes('libx26'));
-  assert.ok(a.includes('split=2') && a.includes('v:0,a:0 v:1,a:1') && a.includes('-c:a copy'));
+  assert.ok(a.includes('split=3') && a.includes('-c:a:0 copy'));
 });
 
 test('VP8, HEVC, AV1 and 10-bit never get copied; a 4K source keeps 4K on top of a 1080p + 720p ladder', () => {
   for (const [codec, pix] of [['vp8', 'yuv420p'], ['hevc', 'yuv420p'], ['av1', 'yuv420p'], ['h264', 'yuv420p10le']]) {
     const p = planFromProbe({ streams: [v(codec, { bit_rate: '1000000', pix_fmt: pix, width: 3840, height: 2160 }), au('aac')] });
     assert.ok(!p.renditions[0].copy, codec + ' ' + pix);
-    assert.deepEqual(p.renditions.map((r) => [r.w, r.h, r.q]), [[3840, 2160, 40], [1920, 1080, 45], [1280, 720, 40]]);
+    assert.deepEqual(p.renditions.map((r) => [r.w, r.h, r.q]), [[3840, 2160, 55], [1920, 1080, 60], [1280, 720, 50]]);
   }
 });
 
@@ -47,15 +48,34 @@ test('unknown bitrate is not copied; the container bitrate is used when the stre
 
 test('no audio, cover art, no video', () => {
   const p = planFromProbe({ streams: [{ ...v('mjpeg'), disposition: { attached_pic: 1 } }, v('vc1')] });
-  assert.equal(p.audio, 'none');
+  assert.equal(p.audios.length, 0);
   assert.ok(!ffmpegArgs(p, 'x').includes('0:a:0'));
   assert.throws(() => planFromProbe({ streams: [au('aac')] }), /no video/);
 });
 
 test('master playlist lists every rendition with BANDWIDTH and RESOLUTION', () => {
   const m = masterPlaylist(planFromProbe({ streams: [v('vp9'), au('opus')] }));
-  assert.match(m, /BANDWIDTH=\d+,RESOLUTION=1920x1080,CODECS="avc1\.640028,mp4a\.40\.2"\nv0\/index\.m3u8/);
-  assert.match(m, /RESOLUTION=1280x720[^\n]*\nv1\/index\.m3u8/);
+  assert.match(m, /BANDWIDTH=\d+,RESOLUTION=1920x1080,CODECS="avc1\.640028,mp4a\.40\.2",AUDIO="aud"\nv0\/index\.m3u8/);
+  assert.match(m, /RESOLUTION=1280x720[^\n]*\nv2\/index\.m3u8/);
+  assert.match(m, /EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud"[^\n]*DEFAULT=YES[^\n]*URI="v3\/index\.m3u8"/);
+});
+
+test('every audio track becomes its own rendition; the first one is the default; bitmap subtitles are skipped', () => {
+  const p = planFromProbe({ streams: [v('h264', { bit_rate: '30000000' }),
+    au('eac3', { channels: 6, tags: { language: 'rus', title: 'MVO' } }),
+    au('dts', { channels: 6, tags: { language: 'kor', title: 'Original' } }),
+    { codec_type: 'subtitle', codec_name: 'subrip', tags: { language: 'eng' } },
+    { codec_type: 'subtitle', codec_name: 'hdmv_pgs_subtitle', tags: { language: 'kor' } },
+    { codec_type: 'subtitle', codec_name: 'ass', tags: { language: 'rus' } }] });
+  assert.deepEqual(p.audios.map((x) => x.default), [true, false]);
+  assert.deepEqual(p.subs.map((x) => [x.index, x.ordinal, x.lang]), [[0, 0, 'eng'], [1, 2, 'rus']]);
+  const a = ffmpegArgs(p, 'in.mkv').join(' ');
+  assert.ok(a.includes('-map 0:a:0') && a.includes('-map 0:a:1') && a.includes('a:1,agroup:aud'));
+  const m = masterPlaylist(p);
+  assert.match(m, /LANGUAGE="rus",DEFAULT=YES/);
+  assert.match(m, /LANGUAGE="kor",DEFAULT=NO/);
+  const sa = subtitleArgs(p, 'in.mkv').join(' ');
+  assert.ok(sa.includes('-map 0:s:0') && sa.includes('-map 0:s:2') && sa.includes('subs/1.vtt'));
 });
 
 test('only our own file names are served', () => {
