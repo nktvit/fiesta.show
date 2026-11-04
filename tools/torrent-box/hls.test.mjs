@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   planFromProbe, runArgs, initArgs, subtitleArgs, masterPlaylist, mediaPlaylist, segmentGrid, segmentCount, alignStart,
-  videoStartFrame, audioStartFrame, patchTfdt, mdhdTimescale, startTicks, admit, HLS_FILE,
+  defaultAudioIndex, hdrOf, videoStartFrame, audioStartFrame, patchTfdt, mdhdTimescale, startTicks, admit, HLS_FILE,
 } from './hls.mjs';
 
 const v = (codec, extra = {}) => ({ codec_type: 'video', codec_name: codec, width: 1920, height: 1080, pix_fmt: 'yuv420p', r_frame_rate: '24000/1001', ...extra });
@@ -137,4 +137,38 @@ test('admission: another movie is admitted while the disk can feed it at 1.5x an
   assert.ok(!admit({ runningSourceBps: [big, big, big], sourceBps: big, budget: 480e6, maxWatch: 3 }).ok, 'count cap');
   assert.ok(!admit({ runningSourceBps: [200e6, 100e6], sourceBps: 100e6, budget: 480e6, maxWatch: 5 }).ok, 'disk budget');
   assert.ok(admit({ runningSourceBps: [], sourceBps: 0, budget: 480e6, maxWatch: 3 }).ok, 'unknown bitrate is costed as a heavy source');
+});
+
+test('English is the default audio track, but never a commentary; with no English the first track stays', () => {
+  const a = (lang, title = '') => ({ lang, title });
+  assert.equal(defaultAudioIndex([a('rus', 'MVO'), a('rus'), a('eng', 'Director commentary'), a('eng', 'Original'), a('kor')]), 3);
+  assert.equal(defaultAudioIndex([a('rus'), a('kor')]), 0);
+  assert.equal(defaultAudioIndex([a('eng', 'Commentary'), a('rus')]), 1, 'only a commentary in English: take the first normal one');
+  assert.equal(defaultAudioIndex([a('en'), a('rus')]), 0, 'two-letter codes too');
+  const p = planFromProbe({ streams: [v('h264'), au('ac3', { tags: { language: 'rus' } }), au('eac3', { tags: { language: 'eng' } })] });
+  assert.deepEqual(p.audios.map((x) => x.default), [false, true]);
+  assert.match(masterPlaylist(p), /LANGUAGE="eng",DEFAULT=YES[^\n]*URI="v4\/index\.m3u8"/);
+  assert.match(masterPlaylist(p), /LANGUAGE="rus",DEFAULT=NO/);
+  // a plan saved before this rule (first track flagged) still gets English from the playlist
+  const old = { ...p, audios: p.audios.map((x, i) => ({ ...x, default: i === 0 })) };
+  assert.match(masterPlaylist(old), /LANGUAGE="eng",DEFAULT=YES/);
+});
+
+test('HDR (PQ/HLG, 10 bit) is kept as it is: HEVC Main10, tags passed on, VIDEO-RANGE in the master playlist', () => {
+  const hdr = { pix_fmt: 'yuv420p10le', color_transfer: 'smpte2084', color_primaries: 'bt2020', color_space: 'bt2020nc', bits_per_raw_sample: '10' };
+  const p = planFromProbe({ streams: [v('hevc', { ...hdr, width: 3840, height: 2160, bit_rate: '60000000' }), au('eac3')], format: { duration: '100' } });
+  assert.deepEqual(p.hdr, { trc: 'smpte2084', primaries: 'bt2020', space: 'bt2020nc', range: 'PQ' });
+  const a = runArgs(p, 'in.mkv', 0, 0).join(' ');
+  assert.ok(a.includes('hevc_videotoolbox') && a.includes('-profile:v main10') && a.includes('-tag:v hvc1') && a.includes('format=p010le'));
+  assert.ok(a.includes('-color_trc smpte2084') && a.includes('-color_primaries bt2020') && a.includes('-colorspace bt2020nc'));
+  assert.ok(!a.includes('h264_videotoolbox') && !a.includes('libx26'));
+  const i = initArgs(p, 'in.mkv').join(' ');
+  assert.ok(i.includes('-c:v:0 hevc_videotoolbox') && i.includes('format=p010le'));
+  const m = masterPlaylist(p);
+  assert.match(m, /CODECS="hvc1\.2\.4\.L153\.B0,mp4a\.40\.2",VIDEO-RANGE=PQ/);
+  assert.equal(hdrOf({ color_transfer: 'arib-std-b67', pix_fmt: 'yuv420p10le' }).range, 'HLG');
+  assert.equal(hdrOf({ color_transfer: 'smpte2084', pix_fmt: 'yuv420p' }), null, '8 bit cannot be HDR10');
+  assert.equal(hdrOf({ color_transfer: 'bt709', pix_fmt: 'yuv420p10le' }), null, '10-bit SDR stays on the H.264 path');
+  const sdr = runArgs(movie(), 'in.mkv', 0, 0).join(' ');
+  assert.ok(sdr.includes('h264_videotoolbox') && sdr.includes('-profile:v high') && sdr.includes('format=yuv420p') && !sdr.includes('-color_trc'));
 });

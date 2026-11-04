@@ -12,7 +12,8 @@
 // Layout: <root>/.fiesta/hls/<id>/{plan.json, subs/N.vtt, v<i>/{init.mp4, seg_00000.m4s, ...}, run-*/ (scratch)}.
 //
 // Hardware encoder only (Apple VideoToolbox on the M4): no software x264/x265, ever. Video is always re-encoded
-// to H.264 8-bit SDR (constant quality, -q:v), capped at 4K; every audio track becomes AAC stereo 48 kHz.
+// (constant quality, -q:v), capped at 4K: SDR as H.264 8-bit, HDR (PQ / HLG) as HEVC Main10 with its colour tags kept
+// as they are; every audio track becomes AAC stereo 48 kHz.
 import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import fs from 'node:fs/promises';
@@ -38,6 +39,22 @@ const bandwidthFor = (w, h, q) => Math.round((BPS_1080[q] ?? 8_000_000) * ((w * 
 const MAX_HEIGHT = 2160; // ceiling: 4K
 const HWDEC = process.env.HWDEC !== '0'; // decode H.264/HEVC on the media engine too (frees the CPU)
 const even = (n) => Math.max(2, Math.round(n / 2) * 2);
+
+/** English by default (the original soundtrack of most films); a commentary / description track is never the default. */
+const SIDE_TRACK = /commentary|коммент|description|descriptive|audio desc|описани|тифло/i;
+export function defaultAudioIndex(audios) {
+  const ok = (x) => !SIDE_TRACK.test(x.title || '');
+  const i = audios.findIndex((x) => /^en/i.test(x.lang) && ok(x));
+  return i >= 0 ? i : Math.max(0, audios.findIndex(ok));
+}
+
+/** HDR as it is: PQ (HDR10) or HLG at 10 bit or more stays HEVC Main10 with its colour tags. Null for SDR. */
+export function hdrOf(video) {
+  const trc = video.color_transfer;
+  const bits = +video.bits_per_raw_sample || (/10|12/.test(video.pix_fmt || '') ? 10 : 8);
+  if ((trc !== 'smpte2084' && trc !== 'arib-std-b67') || bits < 10) return null;
+  return { trc, primaries: video.color_primaries || 'bt2020', space: video.color_space || 'bt2020nc', range: trc === 'smpte2084' ? 'PQ' : 'HLG' };
+}
 
 export const SEG_SECONDS = 4;
 const AAC_FRAME = 1024;
@@ -68,8 +85,8 @@ export function planFromProbe(probe) {
   const audios = audioStreams.slice(0, MAX_AUDIO_TRACKS).map((s, k) => ({
     k, codec: s.codec_name, channels: +s.channels || 2, lang: s.tags?.language || 'und', title: s.tags?.title || '',
   }));
-  // The first track is the default: releases list the dub they were made for first; the viewer can switch.
-  audios.forEach((x, i) => { x.default = i === 0; });
+  const def = defaultAudioIndex(audios);
+  audios.forEach((x, i) => { x.default = i === def; });
 
   // Text subtitles, numbered as ffmpeg's `-map 0:s:N` counts every subtitle stream (bitmap ones included).
   const subs = [];
@@ -86,6 +103,7 @@ export function planFromProbe(probe) {
     fps,
     hwdec: HWDEC && (video.codec_name === 'h264' || video.codec_name === 'hevc'),
     videoCodec: video.codec_name,
+    hdr: hdrOf(video),
     sourceBps: bps,
     renditions,
     audios,
@@ -126,6 +144,13 @@ export function mediaPlaylist(plan, i) {
   return lines.join('\n') + '\n';
 }
 
+/** Encoder arguments shared by every rung of this plan (the per-stream part -c:v/-q:v is added by the caller). */
+const encoderName = (plan) => (plan.hdr ? 'hevc_videotoolbox' : 'h264_videotoolbox');
+const pixFmt = (plan) => (plan.hdr ? 'p010le' : 'yuv420p');
+const colourArgs = (plan) => (plan.hdr
+  ? ['-profile:v', 'main10', '-tag:v', 'hvc1', '-color_primaries', plan.hdr.primaries, '-color_trc', plan.hdr.trc, '-colorspace', plan.hdr.space, '-color_range', 'tv']
+  : ['-profile:v', 'high']);
+
 const outCount = (plan) => plan.renditions.length + plan.audios.length;
 const isAudioOut = (plan, i) => i >= plan.renditions.length;
 export const segmentCount = (plan, i) => segmentGrid(plan, isAudioOut(plan, i) ? 'audio' : 'video').length;
@@ -148,8 +173,8 @@ export function runArgs(plan, input, outIndex, startSeg) {
     // sit on the same absolute 4 s grid as in a run that began at 0.
     if (startSeg > 0) a.push('-ss', (videoStart(plan, startSeg) - 0.002).toFixed(6));
     a.push('-copyts', '-start_at_zero', '-i', input,
-      '-filter_complex', `[0:v:0]scale=${r.w}:${r.h}:flags=bicubic,format=yuv420p[o]`, '-map', '[o]',
-      '-c:v', 'h264_videotoolbox', '-q:v', String(r.q), '-profile:v', 'high',
+      '-filter_complex', `[0:v:0]scale=${r.w}:${r.h}:flags=bicubic,format=${pixFmt(plan)}[o]`, '-map', '[o]',
+      '-c:v', encoderName(plan), '-q:v', String(r.q), ...colourArgs(plan),
       '-force_key_frames', `expr:gte(t,(n_forced+${startSeg})*${SEG_SECONDS})`, '-an', '-sn', '-dn',
       ...hlsOut(startSeg, 'run_init.mp4'), '-hls_segment_filename', 'seg_%05d.m4s', 'index.m3u8');
   } else {
@@ -169,11 +194,11 @@ export function initArgs(plan, input) {
   const n = plan.renditions.length;
   const a = baseArgs(plan, input);
   a.push('-copyts', '-start_at_zero', '-t', '3', '-i', input);
-  const chains = plan.renditions.map((r, i) => `[s${i}]scale=${r.w}:${r.h}:flags=bicubic,format=yuv420p[o${i}]`);
+  const chains = plan.renditions.map((r, i) => `[s${i}]scale=${r.w}:${r.h}:flags=bicubic,format=${pixFmt(plan)}[o${i}]`);
   a.push('-filter_complex', [`[0:v:0]split=${n}${plan.renditions.map((_, i) => `[s${i}]`).join('')}`, ...chains].join(';'));
   plan.renditions.forEach((_, i) => a.push('-map', `[o${i}]`));
-  plan.renditions.forEach((r, i) => a.push(`-c:v:${i}`, 'h264_videotoolbox', `-q:v:${i}`, String(r.q)));
-  a.push('-profile:v', 'high', '-force_key_frames', `expr:gte(t,n_forced*${SEG_SECONDS})`);
+  plan.renditions.forEach((r, i) => a.push(`-c:v:${i}`, encoderName(plan), `-q:v:${i}`, String(r.q)));
+  a.push(...colourArgs(plan), '-force_key_frames', `expr:gte(t,n_forced*${SEG_SECONDS})`);
   plan.audios.forEach((x, i) => a.push('-map', `0:a:${x.k}`, `-c:a:${i}`, 'aac', `-ac:a:${i}`, '2', `-ar:a:${i}`, String(AUDIO_RATE), `-b:a:${i}`, '160k'));
   a.push('-sn', '-dn', ...hlsOut(0, 'init_%v.mp4'), '-hls_segment_filename', 'v%v/seg_%05d.m4s',
     '-var_stream_map', Array.from({ length: outCount(plan) }, (_, i) => (i < n ? `v:${i}` : `a:${i - n}`)).join(' '), 'v%v/index.m3u8');
@@ -191,14 +216,16 @@ export function subtitleArgs(plan, input) {
 export function masterPlaylist(plan) {
   const lines = ['#EXTM3U', '#EXT-X-VERSION:7', '#EXT-X-INDEPENDENT-SEGMENTS'];
   const nv = plan.renditions.length;
+  const def = defaultAudioIndex(plan.audios);
   const esc = (t) => String(t).replace(/["\r\n]/g, ' ').slice(0, 80);
   plan.audios.forEach((x, i) => {
     const name = esc([x.lang !== 'und' ? x.lang : '', x.title, x.channels > 2 ? `${x.channels}ch` : ''].filter(Boolean).join(' ') || `Track ${i + 1}`);
-    lines.push(`#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="${name}",LANGUAGE="${esc(x.lang)}",DEFAULT=${x.default ? 'YES' : 'NO'},AUTOSELECT=YES,CHANNELS="2",URI="v${nv + i}/index.m3u8"`);
+    lines.push(`#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="${name}",LANGUAGE="${esc(x.lang)}",DEFAULT=${i === def ? 'YES' : 'NO'},AUTOSELECT=YES,CHANNELS="2",URI="v${nv + i}/index.m3u8"`);
   });
   plan.renditions.forEach((r, i) => {
     const hasAudio = plan.audios.length > 0;
-    const codecs = `,CODECS="avc1.${r.h > 1440 ? '640033' : r.h > 720 ? '640028' : '64001f'}${hasAudio ? ',mp4a.40.2' : ''}"`;
+    const video = plan.hdr ? `hvc1.2.4.L${r.h > 1440 ? 153 : r.h > 720 ? 123 : 120}.B0` : `avc1.${r.h > 1440 ? '640033' : r.h > 720 ? '640028' : '64001f'}`;
+    const codecs = `,CODECS="${video}${hasAudio ? ',mp4a.40.2' : ''}"${plan.hdr ? `,VIDEO-RANGE=${plan.hdr.range}` : ''}`;
     lines.push(`#EXT-X-STREAM-INF:BANDWIDTH=${r.bandwidth + 160_000},RESOLUTION=${r.w}x${r.h}${codecs}${hasAudio ? ',AUDIO="aud"' : ''}`, `v${i}/index.m3u8`);
   });
   return lines.join('\n') + '\n';
@@ -520,7 +547,7 @@ export function createHls({ root }) {
     return {
       state: running ? 'running' : runs.length ? 'paused' : have >= total && total > 0 ? 'done' : have > 0 ? 'paused' : 'none',
       encodedSeconds: Math.round(have * SEG_SECONDS), duration: Math.round(plan.duration), speed, slow: running && speed > 0 && speed < 1.1,
-      audios: plan.audios.map((x) => ({ lang: x.lang, title: x.title, channels: x.channels, default: !!x.default })),
+      audios: plan.audios.map((x, i) => ({ lang: x.lang, title: x.title, channels: x.channels, default: i === defaultAudioIndex(plan.audios) })),
       subtitles: plan.subs.map((x) => ({ index: x.index, lang: x.lang, title: x.title, ready: subsDone })),
     };
   }
