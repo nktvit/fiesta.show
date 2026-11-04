@@ -26,7 +26,7 @@ const FFPROBE = process.env.FFPROBE || 'ffprobe';
 const MAX_AUDIO_TRACKS = 6;
 const TEXT_SUBS = new Set(['subrip', 'srt', 'ass', 'ssa', 'mov_text', 'webvtt', 'text']); // bitmap subs (PGS, VobSub) cannot be turned into text
 /** Bump when the output layout/quality changes: a directory of another layout is wiped and redone on demand. */
-export const FORMAT_VERSION = '5';
+export const FORMAT_VERSION = '6';
 // VideoToolbox constant quality is greedy and its SSIM climbs slowly. Measured on a grainy 31.7 Mbit/s Blu-ray remux
 // (1080p, hardware decode): q50 ~6 Mbit/s | q60 ~13 | q70 ~27. q60 on top, q50 as a lighter 1080p rung for slow links.
 const Q_HIGH = 60;
@@ -34,8 +34,15 @@ const Q_MID = 50;
 const Q_MAX = 70; // a heavy source (Blu-ray remux) also gets a near-source rung, for viewers whose link can carry it
 const MAX_RUNG_SOURCE_BPS = 20_000_000;
 const Q_4K = 55; // 4K needs fewer bits per pixel for the same look (no 4K sample yet to measure)
-const BPS_1080 = { [Q_MAX]: 25_000_000, [Q_HIGH]: 12_000_000, [Q_MID]: 6_000_000, [Q_4K]: 8_000_000 }; // declared BANDWIDTH only; hls.js measures the real thing
-const bandwidthFor = (w, h, q) => Math.round((BPS_1080[q] ?? 8_000_000) * ((w * h) / (1920 * 1080)) ** 0.75);
+// Declared BANDWIDTH (what hls.js plans with) and the ceiling handed to the encoder, per quality at 1080p.
+// Constant quality alone has NO ceiling: on a grainy 31 Mbit/s remux q70 averaged 29 Mbit/s with 4 s peaks of 70 (the
+// hardware encoder is far less efficient than the x264 the disc was made with) and stalled viewers. VideoToolbox does honour
+// -maxrate/-bufsize next to -q:v, and stays at the same SSIM (measured: q70 peak 36 -> 17 Mbit/s, SSIM .9377 -> .9364).
+const BPS_1080 = { [Q_MAX]: 18_000_000, [Q_HIGH]: 11_000_000, [Q_MID]: 6_000_000, [Q_4K]: 9_000_000 };
+const MAXRATE_1080 = { [Q_MAX]: 32_000_000, [Q_HIGH]: 20_000_000, [Q_MID]: 12_000_000, [Q_4K]: 14_000_000 };
+const scaleFor = (w, h) => ((w * h) / (1920 * 1080)) ** 0.75;
+const maxrateFor = (w, h, q) => Math.round((MAXRATE_1080[q] ?? 20_000_000) * scaleFor(w, h));
+const bandwidthFor = (w, h, q) => Math.round((BPS_1080[q] ?? 8_000_000) * scaleFor(w, h));
 const MAX_HEIGHT = 2160; // ceiling: 4K
 const HWDEC = process.env.HWDEC !== '0'; // decode H.264/HEVC on the media engine too (frees the CPU)
 const even = (n) => Math.max(2, Math.round(n / 2) * 2);
@@ -79,7 +86,7 @@ export function planFromProbe(probe) {
     : [[topH, Q_HIGH]];
   const renditions = heights.map(([rh, q]) => {
     const rw = even((w * rh) / h);
-    return { w: rw, h: rh, q, bandwidth: bandwidthFor(rw, rh, q) };
+    return { w: rw, h: rh, q, bandwidth: bandwidthFor(rw, rh, q), maxrate: maxrateFor(rw, rh, q) };
   });
 
   const audios = audioStreams.slice(0, MAX_AUDIO_TRACKS).map((s, k) => ({
@@ -174,7 +181,7 @@ export function runArgs(plan, input, outIndex, startSeg) {
     if (startSeg > 0) a.push('-ss', (videoStart(plan, startSeg) - 0.002).toFixed(6));
     a.push('-copyts', '-start_at_zero', '-i', input,
       '-filter_complex', `[0:v:0]scale=${r.w}:${r.h}:flags=bicubic,format=${pixFmt(plan)}[o]`, '-map', '[o]',
-      '-c:v', encoderName(plan), '-q:v', String(r.q), ...colourArgs(plan),
+      '-c:v', encoderName(plan), '-q:v', String(r.q), '-maxrate', String(r.maxrate), '-bufsize', String(r.maxrate * 2), ...colourArgs(plan),
       '-force_key_frames', `expr:gte(t,(n_forced+${startSeg})*${SEG_SECONDS})`, '-an', '-sn', '-dn',
       ...hlsOut(startSeg, 'run_init.mp4'), '-hls_segment_filename', 'seg_%05d.m4s', 'index.m3u8');
   } else {
@@ -197,7 +204,7 @@ export function initArgs(plan, input) {
   const chains = plan.renditions.map((r, i) => `[s${i}]scale=${r.w}:${r.h}:flags=bicubic,format=${pixFmt(plan)}[o${i}]`);
   a.push('-filter_complex', [`[0:v:0]split=${n}${plan.renditions.map((_, i) => `[s${i}]`).join('')}`, ...chains].join(';'));
   plan.renditions.forEach((_, i) => a.push('-map', `[o${i}]`));
-  plan.renditions.forEach((r, i) => a.push(`-c:v:${i}`, encoderName(plan), `-q:v:${i}`, String(r.q)));
+  plan.renditions.forEach((r, i) => a.push(`-c:v:${i}`, encoderName(plan), `-q:v:${i}`, String(r.q), `-maxrate:v:${i}`, String(r.maxrate), `-bufsize:v:${i}`, String(r.maxrate * 2)));
   a.push(...colourArgs(plan), '-force_key_frames', `expr:gte(t,n_forced*${SEG_SECONDS})`);
   plan.audios.forEach((x, i) => a.push('-map', `0:a:${x.k}`, `-c:a:${i}`, 'aac', `-ac:a:${i}`, '2', `-ar:a:${i}`, String(AUDIO_RATE), `-b:a:${i}`, '160k'));
   a.push('-sn', '-dn', ...hlsOut(0, 'init_%v.mp4'), '-hls_segment_filename', 'v%v/seg_%05d.m4s',

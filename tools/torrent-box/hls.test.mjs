@@ -62,6 +62,15 @@ test('the media playlist is the complete VOD list: every segment, real durations
   assert.equal((mediaPlaylist(p, 3).match(/#EXTINF/g) || []).length, segmentCount(p, 3), 'audio tracks too');
 });
 
+test('every rung has a bitrate ceiling (constant quality alone has none: it overshot the source on a grainy remux)', () => {
+  const p = planFromProbe({ streams: [v('h264', { bit_rate: '31000000' }), au('aac')], format: { duration: '60' } });
+  p.renditions.forEach((r) => assert.ok(r.maxrate > r.bandwidth && r.maxrate <= 40_000_000, `${r.h}p q${r.q}`));
+  const a = runArgs(p, 'in.mkv', 0, 0).join(' ');
+  assert.ok(a.includes(`-maxrate ${p.renditions[0].maxrate} -bufsize ${p.renditions[0].maxrate * 2}`));
+  assert.ok(initArgs(p, 'in.mkv').join(' ').includes('-maxrate:v:3'));
+  assert.ok(p.renditions[0].bandwidth < 31_000_000, 'the top rung never claims more than the source');
+});
+
 test('a run starts at the requested segment, on the movie clock, with the keyframe grid anchored there', () => {
   const p = movie();
   const a = runArgs(p, 'in.mkv', 1, 501).join(' ');
