@@ -44,6 +44,10 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
    * source is still being processed, and that does not restart playback.
    */
   readonly subtitles = input<{ lang: string; label: string; src: string }[]>([]);
+  /** Video codecs the source can be had in (HEVC / H.264): with two or more, the Settings menu gets a "Codec" row. */
+  readonly codecChoices = input<{ value: string; label: string }[]>([]);
+  readonly codec = input<string>('');
+  readonly codecPick = output<string>();
   readonly type = input<string>('movie');
   readonly season = input<number | null>(null);
   readonly episode = input<number | null>(null);
@@ -217,7 +221,8 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   }
 
   ngOnChanges(changes: SimpleChanges) {
-    if (Object.keys(changes).every((k) => k === 'subtitles')) {
+    if (Object.keys(changes).every((k) => k === 'subtitles' || k === 'codecChoices' || k === 'codec')) {
+      if (changes['codec'] || changes['codecChoices']) this.codecItem?.querySelector('span') && this.paintCodecItem();
       this.adoptOwnSubtitles(this.loadToken);
       return;
     }
@@ -377,6 +382,50 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   }
 
   private audioItem: HTMLElement | null = null;
+  private codecItem: HTMLElement | null = null;
+
+  private paintCodecItem() {
+    const item = this.codecItem;
+    if (!item) return;
+    const icon =
+      '<svg class="media-menu-trigger-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+      'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg>';
+    const cur = this.codecChoices().find((c) => c.value === this.codec());
+    item.innerHTML = icon + '<span></span>';
+    item.querySelector('span')!.textContent = 'Codec: ' + (cur?.label ?? '');
+  }
+
+  // Two ways to get the same movie (HEVC lighter, H.264 plays everywhere): a "Codec" row in the Settings menu
+  // switches between them; the page owns the choice and hands back another source.
+  private installCodecItem(video: HTMLVideoElement, hls: Hls) {
+    if (this.codecChoices().length < 2) return;
+    const deadline = performance.now() + 15_000;
+    const tryInstall = () => {
+      if (this.hls !== hls) return;
+      const content = video.closest('video-skin')?.shadowRoot?.querySelector('media-menu > media-menu-content');
+      if (!content) {
+        if (performance.now() < deadline) requestAnimationFrame(tryInstall);
+        return;
+      }
+      if (content.querySelector('.fiesta-codec-item')) return;
+      const item = document.createElement('div');
+      item.className = 'media-menu-item media-menu-radio-item fiesta-codec-item';
+      item.setAttribute('role', 'menuitem');
+      item.setAttribute('tabindex', '0');
+      item.style.cursor = 'pointer';
+      const next = () => {
+        const list = this.codecChoices();
+        const i = list.findIndex((c) => c.value === this.codec());
+        this.codecPick.emit(list[(i + 1) % list.length].value);
+      };
+      item.addEventListener('click', next);
+      item.addEventListener('keydown', (e) => { if ((e as KeyboardEvent).key === 'Enter') next(); });
+      content.appendChild(item);
+      this.codecItem = item;
+      this.paintCodecItem();
+    };
+    tryInstall();
+  }
 
   // A source with several audio tracks (a remux's dubs) gets an "Audio" row in the same Settings
   // menu. It shows the current track and switches to the next on each click; the other pages'
@@ -740,6 +789,7 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
       this.startSubsync();
       if (this.playerUi() === 'custom') {
         this.installSubsyncItem(video);
+        this.installCodecItem(video, hls);
         hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => this.installAudioItem(video, hls));
       }
 
@@ -1608,6 +1658,8 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     this.subsyncItem = null;
     this.audioItem?.remove();
     this.audioItem = null;
+    this.codecItem?.remove();
+    this.codecItem = null;
     if (this.hls) {
       this.hls.destroy();
       this.hls = null;

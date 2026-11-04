@@ -76,6 +76,20 @@ export class TorrentComponent implements OnInit, OnDestroy {
   readonly currentId = signal('');
   /** What the shared player plays. Set once per torrent: the URL carries a 6 h token and a new one would restart playback. */
   readonly source = signal('');
+  /** The codec asked for: 'hevc' where the browser can play it (and the viewer has not switched it off), else 'h264'. */
+  readonly codec = signal<'hevc' | 'h264'>('h264');
+  readonly hevcOk = canPlayHevc();
+  readonly codecChoices = this.hevcOk ? [{ value: 'hevc', label: 'HEVC' }, { value: 'h264', label: 'H.264' }] : [];
+  private hlsUrl = '';
+  setCodec(c: string) {
+    const v = c === 'h264' ? 'h264' : 'hevc';
+    try { localStorage.setItem('fiesta-torrent-codec', v); } catch { /* ignore */ }
+    this.codec.set(v);
+    this.source.set(this.codedUrl());
+  }
+  private codedUrl() {
+    return this.codec() === 'hevc' ? this.hlsUrl.replace(/\/master\.m3u8$/, '/hevc/master.m3u8') : this.hlsUrl;
+  }
   readonly sourceIsFile = signal(false);
   /** The movie's own text subtitle tracks (a remux brings them); the site's subtitle lookup stays the fallback inside the player. */
   readonly subtitles = computed(() => (this.status()?.subtitles ?? []).map((x) => ({ lang: x.lang, label: x.title || x.lang, src: x.src })));
@@ -237,8 +251,12 @@ export class TorrentComponent implements OnInit, OnDestroy {
     const url = s.play === 'hls' ? s.hls : s.play === 'direct' ? s.stream : null;
     if (!url) return;
     this.sourceIsFile.set(s.play === 'direct');
-    // HEVC is about a third lighter at the same picture; ask for it wherever the browser can play it, H.264 elsewhere.
-    this.source.set(s.play === 'hls' && canPlayHevc() ? url.replace(/\/master\.m3u8$/, '/hevc/master.m3u8') : url);
+    this.hlsUrl = url;
+    if (s.play !== 'hls') return this.source.set(url);
+    let saved = '';
+    try { saved = localStorage.getItem('fiesta-torrent-codec') || ''; } catch { /* ignore */ }
+    this.codec.set(this.hevcOk && saved !== 'h264' ? 'hevc' : 'h264');
+    this.source.set(this.codedUrl());
   }
 
   gb(bytes: number) { return bytes / 1073741824; }
