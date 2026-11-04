@@ -425,7 +425,7 @@ export function createHls({ root }) {
       if (!r.killed) await harvest(s, r).catch(() => {});
       if (code !== 0 && !r.killed) r.error = `ffmpeg exited ${code}: ${r.log.replace(/https?:\/\/\S+/g, '<url>').slice(-300)}`;
       fs.rm(scratch, { recursive: true, force: true }).catch(() => {});
-      console.log(`[hls] ${s.id} out ${i} from segment ${startSeg}: ffmpeg ${code === 0 ? 'finished' : r.killed ? 'stopped' : 'ended with ' + code}`);
+      console.log(`[hls] ${s.id} out ${i} from segment ${startSeg}: ffmpeg ${code === 0 ? 'finished' : r.killed ? 'stopped' : 'ended with ' + code + ': ' + r.log.replace(/https?:\/\/\S+/g, '<url>').slice(-200).replace(/\s+/g, ' ')}`);
     });
     console.log(`[hls] ${s.id} out ${i} ${i < s.plan.renditions.length ? `${s.plan.renditions[i].h}p q${s.plan.renditions[i].q}` : 'audio'} started at segment ${startSeg} (${Math.round(videoStart(s.plan, startSeg))} s)`);
     return r;
@@ -488,7 +488,12 @@ export function createHls({ root }) {
     }
     if (!liveRuns(s).length) {
       // The first process of a movie: is there disk to feed it next to the other movies being watched?
-      const others = [...sessions.values()].filter((o) => o !== s && liveRuns(o).length);
+      // Nobody watches both codecs of a movie at once: the other variant of this movie lets go first (a viewer who
+      // switched the codec would otherwise be refused, by their own old runs).
+      for (const o of sessions.values()) {
+        if (o !== s && baseId(o.id) === baseId(s.id)) for (const r of liveRuns(o)) stopRun(r);
+      }
+      const others = [...sessions.values()].filter((o) => o !== s && baseId(o.id) !== baseId(s.id) && liveRuns(o).length);
       const verdict = admit({ runningSourceBps: others.map((o) => o.plan.sourceBps), sourceBps: s.plan.sourceBps });
       if (!verdict.ok) throw Object.assign(new Error(verdict.reason), { code: 'busy' });
     }
