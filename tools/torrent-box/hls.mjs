@@ -26,7 +26,7 @@ const FFPROBE = process.env.FFPROBE || 'ffprobe';
 const MAX_AUDIO_TRACKS = 6;
 const TEXT_SUBS = new Set(['subrip', 'srt', 'ass', 'ssa', 'mov_text', 'webvtt', 'text']); // bitmap subs (PGS, VobSub) cannot be turned into text
 /** Bump when the output layout/quality changes: a directory of another layout is wiped and redone on demand. */
-export const FORMAT_VERSION = '6';
+export const FORMAT_VERSION = '7';
 // VideoToolbox constant quality is greedy and its SSIM climbs slowly. Measured on a grainy 31.7 Mbit/s Blu-ray remux
 // (1080p, hardware decode): q50 ~6 Mbit/s | q60 ~13 | q70 ~27. q60 on top, q50 as a lighter 1080p rung for slow links.
 const Q_HIGH = 60;
@@ -68,7 +68,7 @@ const AAC_FRAME = 1024;
 const AUDIO_RATE = 48000;
 
 /** Pure: ffprobe JSON (-show_streams -show_format) -> what to do. */
-export function planFromProbe(probe) {
+export function planFromProbe(probe, { hevc = false } = {}) {
   const streams = probe?.streams ?? [];
   const video = streams.find((s) => s.codec_type === 'video' && !s.disposition?.attached_pic);
   if (!video) throw new Error('no video stream');
@@ -84,9 +84,13 @@ export function planFromProbe(probe) {
     : topH >= 1000 ? [...(heavy ? [[topH, Q_MAX]] : []), [topH, Q_HIGH], [topH, Q_MID], [720, Q_MID]]
     : topH > 720 ? [[topH, Q_HIGH], [topH, Q_MID]]
     : [[topH, Q_HIGH]];
-  const renditions = heights.map(([rh, q]) => {
+  // hevc_videotoolbox's -q:v runs hotter than the H.264 one for the same SSIM (q75 = 16 Mbit/s, q60 = 7, same picture):
+  // HEVC rungs sit 6 below the H.264 numbers and need no ceiling that way.
+  const isHevc = hevc || !!hdrOf(video);
+  const renditions = heights.map(([rh, q0]) => {
     const rw = even((w * rh) / h);
-    return { w: rw, h: rh, q, bandwidth: bandwidthFor(rw, rh, q), maxrate: maxrateFor(rw, rh, q) };
+    const q = isHevc ? q0 - 6 : q0;
+    return { w: rw, h: rh, q, bandwidth: Math.round(bandwidthFor(rw, rh, q0) * (isHevc ? 0.65 : 1)), maxrate: maxrateFor(rw, rh, q0) };
   });
 
   const audios = audioStreams.slice(0, MAX_AUDIO_TRACKS).map((s, k) => ({
@@ -111,6 +115,7 @@ export function planFromProbe(probe) {
     hwdec: HWDEC && (video.codec_name === 'h264' || video.codec_name === 'hevc'),
     videoCodec: video.codec_name,
     hdr: hdrOf(video),
+    codec: hevc || hdrOf(video) ? 'hevc' : 'h264',
     sourceBps: bps,
     renditions,
     audios,
@@ -152,11 +157,14 @@ export function mediaPlaylist(plan, i) {
 }
 
 /** Encoder arguments shared by every rung of this plan (the per-stream part -c:v/-q:v is added by the caller). */
-const encoderName = (plan) => (plan.hdr ? 'hevc_videotoolbox' : 'h264_videotoolbox');
+const encoderName = (plan) => (plan.codec === 'hevc' ? 'hevc_videotoolbox' : 'h264_videotoolbox');
 const pixFmt = (plan) => (plan.hdr ? 'p010le' : 'yuv420p');
 const colourArgs = (plan) => (plan.hdr
   ? ['-profile:v', 'main10', '-tag:v', 'hvc1', '-color_primaries', plan.hdr.primaries, '-color_trc', plan.hdr.trc, '-colorspace', plan.hdr.space, '-color_range', 'tv']
-  : ['-profile:v', 'high']);
+  : plan.codec === 'hevc' ? ['-profile:v', 'main', '-tag:v', 'hvc1'] : ['-profile:v', 'high']);
+// H.264 gets a bitrate ceiling next to -q:v. hevc_videotoolbox does not: with -maxrate it drops constant quality and
+// aims at the rate (every -q:v gave the same 13 Mbit/s), so HEVC runs on -q:v alone (q60 peaks at ~11 Mbit/s).
+const ceilingArgs = (plan, r, suffix = '') => (plan.codec === 'hevc' ? [] : [`-maxrate${suffix}`, String(r.maxrate), `-bufsize${suffix}`, String(r.maxrate * 2)]);
 
 const outCount = (plan) => plan.renditions.length + plan.audios.length;
 const isAudioOut = (plan, i) => i >= plan.renditions.length;
@@ -181,7 +189,7 @@ export function runArgs(plan, input, outIndex, startSeg) {
     if (startSeg > 0) a.push('-ss', (videoStart(plan, startSeg) - 0.002).toFixed(6));
     a.push('-copyts', '-start_at_zero', '-i', input,
       '-filter_complex', `[0:v:0]scale=${r.w}:${r.h}:flags=bicubic,format=${pixFmt(plan)}[o]`, '-map', '[o]',
-      '-c:v', encoderName(plan), '-q:v', String(r.q), '-maxrate', String(r.maxrate), '-bufsize', String(r.maxrate * 2), ...colourArgs(plan),
+      '-c:v', encoderName(plan), '-q:v', String(r.q), ...ceilingArgs(plan, r), ...colourArgs(plan),
       '-force_key_frames', `expr:gte(t,(n_forced+${startSeg})*${SEG_SECONDS})`, '-an', '-sn', '-dn',
       ...hlsOut(startSeg, 'run_init.mp4'), '-hls_segment_filename', 'seg_%05d.m4s', 'index.m3u8');
   } else {
@@ -204,7 +212,7 @@ export function initArgs(plan, input) {
   const chains = plan.renditions.map((r, i) => `[s${i}]scale=${r.w}:${r.h}:flags=bicubic,format=${pixFmt(plan)}[o${i}]`);
   a.push('-filter_complex', [`[0:v:0]split=${n}${plan.renditions.map((_, i) => `[s${i}]`).join('')}`, ...chains].join(';'));
   plan.renditions.forEach((_, i) => a.push('-map', `[o${i}]`));
-  plan.renditions.forEach((r, i) => a.push(`-c:v:${i}`, encoderName(plan), `-q:v:${i}`, String(r.q), `-maxrate:v:${i}`, String(r.maxrate), `-bufsize:v:${i}`, String(r.maxrate * 2)));
+  plan.renditions.forEach((r, i) => a.push(`-c:v:${i}`, encoderName(plan), `-q:v:${i}`, String(r.q), ...ceilingArgs(plan, r, `:v:${i}`)));
   a.push(...colourArgs(plan), '-force_key_frames', `expr:gte(t,n_forced*${SEG_SECONDS})`);
   plan.audios.forEach((x, i) => a.push('-map', `0:a:${x.k}`, `-c:a:${i}`, 'aac', `-ac:a:${i}`, '2', `-ar:a:${i}`, String(AUDIO_RATE), `-b:a:${i}`, '160k'));
   a.push('-sn', '-dn', ...hlsOut(0, 'init_%v.mp4'), '-hls_segment_filename', 'v%v/seg_%05d.m4s',
@@ -231,7 +239,8 @@ export function masterPlaylist(plan) {
   });
   plan.renditions.forEach((r, i) => {
     const hasAudio = plan.audios.length > 0;
-    const video = plan.hdr ? `hvc1.2.4.L${r.h > 1440 ? 153 : r.h > 720 ? 123 : 120}.B0` : `avc1.${r.h > 1440 ? '640033' : r.h > 720 ? '640028' : '64001f'}`;
+    const lvl = r.h > 1440 ? 153 : r.h > 720 ? 123 : 120;
+    const video = plan.hdr ? `hvc1.2.4.L${lvl}.B0` : plan.codec === 'hevc' ? `hvc1.1.6.L${lvl}.B0` : `avc1.${r.h > 1440 ? '640033' : r.h > 720 ? '640028' : '64001f'}`;
     const codecs = `,CODECS="${video}${hasAudio ? ',mp4a.40.2' : ''}"${plan.hdr ? `,VIDEO-RANGE=${plan.hdr.range}` : ''}`;
     lines.push(`#EXT-X-STREAM-INF:BANDWIDTH=${r.bandwidth + 160_000},RESOLUTION=${r.w}x${r.h}${codecs}${hasAudio ? ',AUDIO="aud"' : ''}`, `v${i}/index.m3u8`);
   });
@@ -305,16 +314,18 @@ export function createHls({ root }) {
   const dirOf = (id) => path.join(base, id);
   // Once a download is complete ffmpeg reads the file itself from the disk: no detour through the box's HTTP stream.
   const files = new Map();
-  const inputOf = (s) => files.get(s.id) || s.input;
+  // The HEVC variant of a movie is its own session and folder: '<id>.hevc' next to '<id>'.
+  const baseId = (id) => id.replace(/\.hevc$/, '');
+  const inputOf = (s) => files.get(baseId(s.id)) || s.input;
   const useFile = (id, p) => { if (p) files.set(id, p); };
   const finalPath = (s, i, name) => path.join(s.dir, `v${i}`, name);
 
   const liveRun = (r) => r && !r.exited;
   const liveRuns = (s) => [...s.runs.values()].filter(liveRun);
 
-  async function probe(inputUrl) {
+  async function probe(inputUrl, hevc = false) {
     const { stdout } = await run(FFPROBE, ['-v', 'error', '-probesize', '50M', '-analyzeduration', '20M', '-print_format', 'json', '-show_streams', '-show_format', inputUrl], { maxBuffer: 8 << 20, timeout: 120_000 });
-    return planFromProbe(JSON.parse(stdout));
+    return planFromProbe(JSON.parse(stdout), { hevc });
   }
   const readPlan = async (dir) => { try { return JSON.parse(await fs.readFile(path.join(dir, 'plan.json'), 'utf8')); } catch { return null; } };
 
@@ -329,12 +340,12 @@ export function createHls({ root }) {
         let plan = await readPlan(dir);
         if (!plan || plan.layout !== FORMAT_VERSION) {
           await fs.rm(dir, { recursive: true, force: true }); // another layout (or a crashed half-prepare): start clean
-          plan = await probe(input);
+          plan = await probe(input, id.endsWith('.hevc'));
           await fs.mkdir(path.join(dir, 'subs'), { recursive: true });
           await Promise.all(Array.from({ length: outCount(plan) }, (_, i) => fs.mkdir(path.join(dir, `v${i}`), { recursive: true })));
           await fs.writeFile(path.join(dir, 'plan.json'), JSON.stringify(plan));
         }
-        const sess = { id, dir, plan, input, runs: new Map(), last: new Map(), lastAt: Date.now(), subsDone: plan.subs.length === 0 || (await exists(path.join(dir, 'subs', '.done'))), subsProc: null };
+        const sess = { id, dir, plan, input, runs: new Map(), last: new Map(), lastAt: Date.now(), subsDone: id.endsWith('.hevc') || plan.subs.length === 0 || (await exists(path.join(dir, 'subs', '.done'))), subsProc: null };
         await writeInits(sess);
         sessions.set(id, sess);
         console.log(`[hls] ${id} planned: ${plan.videoCodec} ${Math.round(plan.sourceBps / 1000)} kbit/s ${plan.fps.join('/')} fps, ${plan.renditions.map((r) => `${r.w}x${r.h} q${r.q}`).join(' + ')}; audio ${plan.audios.length ? plan.audios.map((x) => `${x.lang}:${x.codec}`).join(',') : 'none'}; subs ${plan.subs.length}; ${Math.round(plan.duration / 60)} min`);

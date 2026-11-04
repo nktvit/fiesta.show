@@ -181,3 +181,17 @@ test('HDR (PQ/HLG, 10 bit) is kept as it is: HEVC Main10, tags passed on, VIDEO-
   const sdr = runArgs(movie(), 'in.mkv', 0, 0).join(' ');
   assert.ok(sdr.includes('h264_videotoolbox') && sdr.includes('-profile:v high') && sdr.includes('format=yuv420p') && !sdr.includes('-color_trc'));
 });
+
+test('the HEVC variant: Main 8-bit, hvc1, q alone (hevc_videotoolbox drops -q:v when given -maxrate), lighter declared bandwidth', () => {
+  const probe = { streams: [v('h264', { bit_rate: '31000000' }), au('aac')], format: { duration: '60' } };
+  const h = planFromProbe(probe, { hevc: true }), a = planFromProbe(probe);
+  assert.equal(h.codec, 'hevc'); assert.equal(a.codec, 'h264');
+  const r = runArgs(h, 'in.mkv', 0, 0).join(' ');
+  assert.ok(r.includes('hevc_videotoolbox') && r.includes('-profile:v main') && r.includes('-tag:v hvc1') && r.includes('format=yuv420p'));
+  assert.ok(!r.includes('-maxrate') && !r.includes('main10'));
+  assert.ok(!initArgs(h, 'in.mkv').join(' ').includes('-maxrate'));
+  assert.ok(runArgs(a, 'in.mkv', 0, 0).join(' ').includes('-maxrate'));
+  assert.ok(h.renditions[0].bandwidth < a.renditions[0].bandwidth);
+  assert.match(masterPlaylist(h), /CODECS="hvc1\.1\.6\.L123\.B0,mp4a\.40\.2"/);
+  assert.ok(!/VIDEO-RANGE/.test(masterPlaylist(h)));
+});

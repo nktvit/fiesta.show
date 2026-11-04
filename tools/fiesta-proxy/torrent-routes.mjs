@@ -131,7 +131,7 @@ async function handleTorrentHls(req, res, url, { setCors, verifyToken }) {
     res.statusCode = 204;
     return res.end();
   }
-  const m = /^\/torrent\/hls\/([^/]+)\/([0-9a-f]{40})\/(master\.m3u8|v\d\/(?:index\.m3u8|init(?:_\d)?\.mp4|seg_\d{5}\.m4s)|subs\/\d\.vtt)$/.exec(url.pathname);
+  const m = /^\/torrent\/hls\/([^/]+)\/([0-9a-f]{40})\/(hevc\/)?(master\.m3u8|v\d\/(?:index\.m3u8|init(?:_\d)?\.mp4|seg_\d{5}\.m4s)|subs\/\d\.vtt)$/.exec(url.pathname);
   if (!m || !verifyToken(m[1])) {
     res.statusCode = 403;
     return res.end('forbidden');
@@ -142,8 +142,8 @@ async function handleTorrentHls(req, res, url, { setCors, verifyToken }) {
   }
   const abort = new AbortController();
   res.on('close', () => abort.abort());
-  const sub = /^subs\/(\d)\.vtt$/.exec(m[3]);
-  const up = await boxFetch(sub ? `/subs/${m[2]}/${sub[1]}.vtt` : `/hls/${m[2]}/${m[3]}`, { signal: abort.signal });
+  const sub = /^subs\/(\d)\.vtt$/.exec(m[4]);
+  const up = await boxFetch(sub ? `/subs/${m[2]}/${sub[1]}.vtt` : `/hls/${m[2]}${m[3] ? '.hevc' : ''}/${m[4]}`, { signal: abort.signal });
   res.statusCode = up.status;
   for (const h of ['content-type', 'content-length', 'cache-control']) {
     const v = up.headers.get(h);

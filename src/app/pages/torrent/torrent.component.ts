@@ -48,6 +48,17 @@ const STORAGE_KEY = 'fiesta.torrent.id';
  * Test page for the torrent pipeline (preview / local only: /api/torrent answers 404 on production).
  * Drop a magnet link or a .torrent, watch it download on the Mac mini and play it while it is still arriving.
  */
+/** Can this browser play HEVC (8-bit Main) in MSE or natively? Firefox, and Chromium without a hardware decoder, say no. */
+function canPlayHevc(): boolean {
+  try {
+    const type = 'video/mp4; codecs="hvc1.1.6.L123.B0"';
+    const mse = (window as any).ManagedMediaSource ?? (window as any).MediaSource;
+    return !!mse?.isTypeSupported?.(type);
+  } catch {
+    return false;
+  }
+}
+
 @Component({
   selector: 'app-torrent',
   imports: [NavbarComponent, DecimalPipe, MoviePlayerComponent],
@@ -226,7 +237,8 @@ export class TorrentComponent implements OnInit, OnDestroy {
     const url = s.play === 'hls' ? s.hls : s.play === 'direct' ? s.stream : null;
     if (!url) return;
     this.sourceIsFile.set(s.play === 'direct');
-    this.source.set(url);
+    // HEVC is about a third lighter at the same picture; ask for it wherever the browser can play it, H.264 elsewhere.
+    this.source.set(s.play === 'hls' && canPlayHevc() ? url.replace(/\/master\.m3u8$/, '/hevc/master.m3u8') : url);
   }
 
   gb(bytes: number) { return bytes / 1073741824; }

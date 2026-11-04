@@ -223,7 +223,8 @@ async function stream(req, res, id, index) {
   rs.pipe(res);
 }
 
-async function serveHls(req, res, id, file) {
+async function serveHls(req, res, key, file) {
+  const id = key.replace(/\.hevc$/, ''); // '<id>.hevc' is the HEVC variant of the same movie
   const t = await client.get(id);
   if (!t) return send(res, 404, { error: 'unknown torrent' });
   const input = `http://127.0.0.1:${PORT}/stream/${id}?t=${encodeURIComponent(TOKEN)}`;
@@ -232,7 +233,7 @@ async function serveHls(req, res, id, file) {
     const seg = /^v(\d)\/seg_(\d{5})\.m4s$/.exec(file);
     if (seg) {
       // Produced on demand: this waits (up to a minute) for the segment, starting an encode at that point if nobody is on it.
-      const p = await hls.segment(id, input, +seg[1], +seg[2]);
+      const p = await hls.segment(key, input, +seg[1], +seg[2]);
       if (!p) return send(res, 404, { error: 'no such segment' });
       const st = await fs.stat(p);
       res.writeHead(200, { 'content-type': HLS_MIME['.m4s'], 'content-length': st.size, 'cache-control': 'public, max-age=31536000, immutable' });
@@ -240,7 +241,7 @@ async function serveHls(req, res, id, file) {
       res.on('close', () => rs.destroy());
       return rs.pipe(res);
     }
-    const f = await hls.file(id, input, file);
+    const f = await hls.file(key, input, file);
     if (!f) return send(res, 404, { error: 'not found' });
     if (f.body !== undefined) {
       res.writeHead(200, { 'content-type': HLS_MIME[f.type], 'content-length': Buffer.byteLength(f.body), 'cache-control': 'public, max-age=60' });
@@ -267,8 +268,8 @@ const server = http.createServer(async (req, res) => {
       const t = await client.get(one[1]);
       return t ? send(res, 200, await describeFull(t)) : send(res, 404, { error: 'unknown torrent' });
     }
-    const h = /^\/hls\/([0-9a-f]{40})\/(.+)$/.exec(url.pathname);
-    if (req.method === 'GET' && h && HLS_FILE.test(h[2])) return await serveHls(req, res, h[1], h[2]);
+    const h = /^\/hls\/([0-9a-f]{40})(\.hevc)?\/(.+)$/.exec(url.pathname);
+    if (req.method === 'GET' && h && HLS_FILE.test(h[3])) return await serveHls(req, res, h[1] + (h[2] || ''), h[3]);
     const sub = /^\/subs\/([0-9a-f]{40})\/(\d)\.vtt$/.exec(url.pathname);
     if (req.method === 'GET' && sub) {
       const f = await hls.subtitleFile(sub[1], +sub[2]);
