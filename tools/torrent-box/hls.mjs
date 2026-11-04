@@ -438,6 +438,26 @@ export function createHls({ root }) {
     r.proc.kill('SIGTERM');
   }
 
+  /**
+   * The hardware encoder now and then writes a segment whose first (IDR) frame has a broken macroblock: it is complete
+   * (96 frames) but the decoder flags "corrupt decoded frame" and the picture is wrecked until the next keyframe. Decode
+   * every video segment once before it goes into place; a bad one is dropped and encoded again.
+   */
+  async function decodesClean(initPath, data) {
+    let init;
+    try { init = await fs.readFile(initPath); } catch { return true; } // no init to check against: let it through
+    return await new Promise((resolve) => {
+      const p = spawn(FFMPEG, ['-v', 'error', '-nostdin', '-threads', '2', '-i', 'pipe:0', '-f', 'null', '-'], { stdio: ['pipe', 'ignore', 'pipe'] });
+      let err = '';
+      p.stderr.on('data', (d) => { err += d; });
+      const timer = setTimeout(() => { p.kill('SIGKILL'); resolve(true); }, 30_000);
+      p.on('close', () => { clearTimeout(timer); resolve(!err.trim()); });
+      p.on('error', () => { clearTimeout(timer); resolve(true); });
+      p.stdin.on('error', () => {});
+      p.stdin.end(Buffer.concat([init, data]));
+    });
+  }
+
   /** Move the segments ffmpeg has finished from the scratch dir into place, with the clock fixed. */
   async function harvest(s, r) {
     let names;
@@ -448,6 +468,17 @@ export function createHls({ root }) {
       const dst = finalPath(s, r.i, n);
       if (await exists(dst)) { r.next = k + 1; await fs.rm(path.join(r.scratch, n), { force: true }); continue; } // never overwrite a good segment
       const data = patchTfdt(await fs.readFile(path.join(r.scratch, n)), r.offset);
+      if (r.i < s.plan.renditions.length) {
+        const key = `${r.i}:${k}`;
+        s.rejected ??= new Map();
+        if (!(await decodesClean(finalPath(s, r.i, 'init.mp4'), data)) && (s.rejected.get(key) ?? 0) < 3) {
+          s.rejected.set(key, (s.rejected.get(key) ?? 0) + 1);
+          console.log(`[hls] ${s.id} out ${r.i} segment ${k}: the encoder wrote a corrupt picture, encoding it again (${s.rejected.get(key)})`);
+          await fs.rm(path.join(r.scratch, n), { force: true });
+          stopRun(r); // the next request for this segment starts a fresh run at it
+          return;
+        }
+      }
       await fs.writeFile(dst + '.tmp', data);
       await fs.rename(dst + '.tmp', dst);
       await fs.rm(path.join(r.scratch, n), { force: true });
