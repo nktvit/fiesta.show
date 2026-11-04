@@ -21,7 +21,7 @@ interface TorrentStatus {
 }
 
 interface EncodeInfo {
-  state: 'none' | 'queued' | 'running' | 'paused' | 'done' | 'failed';
+  state: 'none' | 'running' | 'paused' | 'done' | 'failed';
   priority?: 'watch' | 'background';
   encodedSeconds?: number;
   duration?: number;
@@ -123,18 +123,17 @@ export class TorrentComponent implements OnInit, OnDestroy {
     await this.loadLibrary();
   }
 
-  /** One line about what the encoder is doing for this movie. */
+  /** One line about what the encoder is doing for this movie (video is encoded when somebody plays or seeks). */
   encodeLabel(i: { play: string | null; done: boolean; encode?: EncodeInfo['state']; encodeInfo?: EncodeInfo; downloadSpeed?: number; numPeers?: number }) {
     if (i.play === 'direct') return 'plays as is';
     const e = i.encodeInfo;
     const min = (sec = 0) => `${Math.floor(sec / 60)}`;
     switch (i.encode) {
-      case 'done': return 'encoded';
+      case 'done': return 'all of it is encoded';
       case 'failed': return 'encode failed';
-      case 'queued': return 'queued for encoding';
-      case 'paused': return `paused while someone is watching · ${min(e?.encodedSeconds)}/${min(e?.duration)} min`;
-      case 'running': return `encoding ${min(e?.encodedSeconds)}/${min(e?.duration)} min${e?.speed ? ` · ${e.speed.toFixed(1)}× playback` : ''}${e?.slow ? ' · SLOWER than playback' : ''}`;
-      default: return i.done ? 'not encoded yet' : !i.numPeers && !i.downloadSpeed ? 'checking files on disk…' : 'downloading';
+      case 'paused': return `${min(e?.encodedSeconds)} of ${min(e?.duration)} min encoded so far · waiting for playback`;
+      case 'running': return `encoding for playback · ${min(e?.encodedSeconds)} of ${min(e?.duration)} min ready${e?.speed ? ` · ${e.speed.toFixed(1)}× playback` : ''}${e?.slow ? ' · SLOWER than playback' : ''}`;
+      default: return !i.done ? (!i.numPeers && !i.downloadSpeed ? 'checking files on disk…' : 'downloading') : 'encodes when you press play';
     }
   }
 

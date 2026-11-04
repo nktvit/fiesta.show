@@ -593,7 +593,21 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
       const hls = new Hls({
         // A handed source can still be growing (event playlist while it is being encoded): start at the
         // beginning, not at the live edge.
-        ...(this.source() ? { startPosition: 0 } : {}),
+        ...(this.source()
+          ? {
+              startPosition: 0,
+              // Segments of a handed source are encoded when asked for: the first one after a seek can take several
+              // seconds, so wait for it instead of treating the silence as a dead server.
+              fragLoadPolicy: {
+                default: {
+                  maxTimeToFirstByteMs: 70_000,
+                  maxLoadTimeMs: 180_000,
+                  timeoutRetry: { maxNumRetry: 2, retryDelayMs: 0, maxRetryDelayMs: 0 },
+                  errorRetry: { maxNumRetry: 4, retryDelayMs: 1000, maxRetryDelayMs: 8000 },
+                },
+              },
+            }
+          : {}),
         enableWorker: true,
         debug: this.hlsDebug,
         // Desktop Safari 17+ has both MediaSource and ManagedMediaSource, and hls.js

@@ -1,101 +1,140 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { planFromProbe, ffmpegArgs, subtitleArgs, masterPlaylist, admit, HLS_FILE, COPY_MAX_BPS } from './hls.mjs';
+import {
+  planFromProbe, runArgs, initArgs, subtitleArgs, masterPlaylist, mediaPlaylist, segmentGrid, segmentCount, alignStart,
+  videoStartFrame, audioStartFrame, patchTfdt, mdhdTimescale, startTicks, admit, HLS_FILE,
+} from './hls.mjs';
 
-const v = (codec, extra = {}) => ({ codec_type: 'video', codec_name: codec, width: 1920, height: 1080, pix_fmt: 'yuv420p', ...extra });
+const v = (codec, extra = {}) => ({ codec_type: 'video', codec_name: codec, width: 1920, height: 1080, pix_fmt: 'yuv420p', r_frame_rate: '24000/1001', ...extra });
 const au = (codec, extra = {}) => ({ codec_type: 'audio', codec_name: codec, channels: 2, ...extra });
+const movie = (extra = {}) => planFromProbe({ streams: [v('h264', { bit_rate: '15000000' }), au('ac3', { channels: 6, tags: { language: 'rus', title: 'MVO' } }), au('dts', { tags: { language: 'kor' } })], format: { duration: '6300' }, ...extra });
 
-test('a light 8-bit H.264 is copied as one rendition; AC-3 audio becomes AAC', () => {
-  const p = planFromProbe({ streams: [v('h264', { bit_rate: '3000000' }), au('ac3', { channels: 6 })] });
-  assert.equal(p.renditions.length, 1);
-  assert.ok(p.renditions[0].copy);
-  assert.equal(p.audios.length, 1);
-  assert.ok(!p.audios[0].copy);
-  const a = ffmpegArgs(p, 'in.mkv').join(' ');
-  assert.ok(a.includes('-c:v copy') && a.includes('-c:a:0 aac') && a.includes('-ac:a:0 2') && a.includes('v:0,agroup:aud a:0,agroup:aud'));
-});
-
-test('a heavy H.264 is re-encoded on the hardware encoder as a q60 + q50 1080p and a 720p ladder', () => {
-  const p = planFromProbe({ streams: [v('h264', { bit_rate: String(COPY_MAX_BPS + 1) }), au('aac')] });
-  assert.deepEqual(p.renditions.map((r) => [r.w, r.h, r.q]), [[1920, 1080, 60], [1920, 1080, 50], [1280, 720, 50]]);
-  const a = ffmpegArgs(p, 'in.mkv').join(' ');
-  assert.ok(a.includes('h264_videotoolbox') && !a.includes('libx26'));
-  assert.ok(a.includes('split=3') && a.includes('-c:a:0 copy'));
-});
-
-test('VP8, HEVC, AV1 and 10-bit never get copied; a 4K source keeps 4K on top of a 1080p + 720p ladder', () => {
-  for (const [codec, pix] of [['vp8', 'yuv420p'], ['hevc', 'yuv420p'], ['av1', 'yuv420p'], ['h264', 'yuv420p10le']]) {
-    const p = planFromProbe({ streams: [v(codec, { bit_rate: '1000000', pix_fmt: pix, width: 3840, height: 2160 }), au('aac')] });
-    assert.ok(!p.renditions[0].copy, codec + ' ' + pix);
-    assert.deepEqual(p.renditions.map((r) => [r.w, r.h, r.q]), [[3840, 2160, 55], [1920, 1080, 60], [1280, 720, 50]]);
+test('a 1080p source gets a q60 + q50 1080p and a 720p rung, all hardware H.264 (never copied); a heavy one also a q70 near-source rung', () => {
+  for (const codec of ['h264', 'vp8', 'hevc']) {
+    const p = planFromProbe({ streams: [v(codec, { bit_rate: '1000000' }), au('aac')], format: { duration: '60' } });
+    assert.deepEqual(p.renditions.map((r) => [r.w, r.h, r.q]), [[1920, 1080, 60], [1920, 1080, 50], [1280, 720, 50]]);
   }
+  const heavy = planFromProbe({ streams: [v('h264', { bit_rate: '31000000' }), au('aac')], format: { duration: '60' } });
+  assert.deepEqual(heavy.renditions.map((r) => r.q), [70, 60, 50, 50]);
+  const a = runArgs(movie(), 'in.mkv', 0, 0).join(' ');
+  assert.ok(a.includes('h264_videotoolbox') && !a.includes('libx26') && !a.includes('-c:v copy'));
 });
 
-test('anything taller than 4K is capped at 2160p', () => {
-  const p = planFromProbe({ streams: [v('hevc', { width: 7680, height: 4320 }), au('aac')] });
-  assert.deepEqual([p.renditions[0].w, p.renditions[0].h], [3840, 2160]);
+test('a 4K source keeps 4K on top (q55) over 1080p and 720p; anything taller is capped at 2160p', () => {
+  const p = planFromProbe({ streams: [v('hevc', { width: 3840, height: 2160, pix_fmt: 'yuv420p10le' }), au('aac')] });
+  assert.deepEqual(p.renditions.map((r) => [r.w, r.h, r.q]), [[3840, 2160, 55], [1920, 1080, 60], [1280, 720, 50]]);
+  assert.deepEqual(planFromProbe({ streams: [v('hevc', { width: 7680, height: 4320 }), au('aac')] }).renditions[0].h, 2160);
 });
 
-test('a source below 720p gets a single rendition at its own size (no upscaling)', () => {
+test('a source below 720p gets one rendition at its own size (no upscaling)', () => {
   const p = planFromProbe({ streams: [v('vp9', { width: 854, height: 480 }), au('opus')] });
   assert.deepEqual(p.renditions.map((r) => [r.w, r.h]), [[854, 480]]);
 });
 
-test('unknown bitrate is not copied; the container bitrate is used when the stream has none', () => {
-  assert.ok(!planFromProbe({ streams: [v('h264'), au('aac')] }).renditions[0].copy);
-  assert.ok(planFromProbe({ streams: [v('h264'), au('aac', { bit_rate: '128000' })], format: { bit_rate: '3128000' } }).renditions[0].copy);
+test('the segment grid never drifts: 96 frames, sometimes 95, at 23.976 fps (matches what a full ffmpeg run wrote)', () => {
+  const p = movie();
+  assert.equal(videoStartFrame(p, 1), 96);
+  assert.equal(videoStartFrame(p, 2), 192);
+  const g = segmentGrid(p, 'video');
+  const d = new Set(g.slice(0, -1).map((s) => s.duration.toFixed(3)));
+  assert.deepEqual([...d].sort(), ['3.962', '4.004']);
+  // every boundary is within one frame of k*4 s
+  g.forEach((s, k) => assert.ok(Math.abs(s.start - k * 4) < 0.0418, `segment ${k}`));
+  assert.ok(Math.abs(g.at(-1).start + g.at(-1).duration - 6300) < 1e-6, 'ends at the movie end');
 });
 
-test('no audio, cover art, no video', () => {
-  const p = planFromProbe({ streams: [{ ...v('mjpeg'), disposition: { attached_pic: 1 } }, v('vc1')] });
-  assert.equal(p.audios.length, 0);
-  assert.ok(!ffmpegArgs(p, 'x').includes('0:a:0'));
-  assert.throws(() => planFromProbe({ streams: [au('aac')] }), /no video/);
+test('the audio grid alternates 188 and 187 AAC frames and is whole-numbered at even segments', () => {
+  assert.deepEqual([1, 2, 3, 4].map(audioStartFrame), [188, 375, 563, 750]);
+  const g = segmentGrid(movie(), 'audio');
+  assert.deepEqual([g[0].duration.toFixed(6), g[1].duration.toFixed(6)], ['4.010667', '3.989333']);
+  assert.equal(alignStart(movie(), 3, 7), 6, 'audio runs start on an even segment');
+  assert.equal(alignStart(movie(), 0, 7), 7, 'video runs start anywhere');
 });
 
-test('master playlist lists every rendition with BANDWIDTH and RESOLUTION', () => {
-  const m = masterPlaylist(planFromProbe({ streams: [v('vp9'), au('opus')] }));
+test('the media playlist is the complete VOD list: every segment, real durations, ENDLIST', () => {
+  const p = movie();
+  const m = mediaPlaylist(p, 0);
+  assert.match(m, /#EXT-X-PLAYLIST-TYPE:VOD/);
+  assert.match(m, /#EXT-X-MAP:URI="init\.mp4"/);
+  assert.equal((m.match(/#EXTINF/g) || []).length, segmentCount(p, 0));
+  assert.match(m, /#EXTINF:4\.004000,\nseg_00000\.m4s/);
+  assert.ok(m.trimEnd().endsWith('#EXT-X-ENDLIST'));
+  assert.equal((mediaPlaylist(p, 3).match(/#EXTINF/g) || []).length, segmentCount(p, 3), 'audio tracks too');
+});
+
+test('a run starts at the requested segment, on the movie clock, with the keyframe grid anchored there', () => {
+  const p = movie();
+  const a = runArgs(p, 'in.mkv', 1, 501).join(' ');
+  assert.match(a, /-ss 2004\.0\d+/);
+  assert.ok(a.includes('-copyts -start_at_zero'));
+  assert.ok(a.includes('-start_number 501') && a.includes('expr:gte(t,(n_forced+501)*4)'));
+  assert.ok(a.includes('-q:v 50') && a.includes('scale=1920:1080'));
+  assert.ok(a.includes('-hwaccel videotoolbox'));
+  const first = runArgs(p, 'in.mkv', 0, 0).join(' ');
+  assert.ok(!first.includes('-ss ') && first.includes('-start_number 0'));
+  const au1 = runArgs(p, 'in.mkv', 4, 500).join(' ');
+  assert.ok(au1.includes('-map 0:a:1') && au1.includes('-ar 48000') && au1.includes('-vn') && au1.includes('-ss 2000'));
+});
+
+test('the init pass writes every rendition once, from the first seconds', () => {
+  const a = initArgs(movie(), 'in.mkv').join(' ');
+  assert.ok(a.includes('-t 3') && a.includes('split=3') && a.includes('v:0 v:1 v:2 a:0 a:1'));
+  assert.ok(a.includes('use_editlist=0'));
+});
+
+test('a run\'s clock is fixed by adding its start to every tfdt; version 0 and 1 boxes both work', () => {
+  const box = (ver, t) => { const b = Buffer.alloc(ver ? 20 : 16); b.write('tfdt', 0); b[4] = ver; if (ver) b.writeBigUInt64BE(BigInt(t), 8); else b.writeUInt32BE(t, 8); return b; };
+  const seg0 = Buffer.concat([Buffer.from('xxmoof'), box(0, 1001), Buffer.from('yy'), box(0, 5005)]);
+  patchTfdt(seg0, 48096048 - 0);
+  assert.equal(seg0.readUInt32BE(seg0.indexOf('tfdt') + 8), 1001 + 48096048);
+  assert.equal(seg0.readUInt32BE(seg0.lastIndexOf('tfdt') + 8), 5005 + 48096048);
+  const seg1 = Buffer.concat([Buffer.from('zz'), box(1, 7)]);
+  patchTfdt(seg1, 3);
+  assert.equal(seg1.readBigUInt64BE(seg1.indexOf('tfdt') + 8), 10n);
+  assert.equal(patchTfdt(Buffer.from('tfdt'), 0).length, 4, 'nothing to add: untouched');
+  const p = movie();
+  assert.equal(startTicks(p, 0, 501, 24000), 48048 * 1001, 'video: the first frame of segment 501 in 1/24000 s');
+  assert.equal(startTicks(p, 3, 502, 48000), 187.5 * 502 * 1024, 'audio: whole AAC frames at an even segment');
+  assert.equal(startTicks(p, 0, 0, 24000), 0);
+  const mdhd = Buffer.alloc(40); mdhd.write('mdhd', 4); mdhd.writeUInt32BE(24000, 4 + 4 + 4 + 8);
+  assert.equal(mdhdTimescale(mdhd), 24000);
+});
+
+test('master playlist lists every rung and every audio track (default first)', () => {
+  const m = masterPlaylist(movie());
   assert.match(m, /BANDWIDTH=\d+,RESOLUTION=1920x1080,CODECS="avc1\.640028,mp4a\.40\.2",AUDIO="aud"\nv0\/index\.m3u8/);
   assert.match(m, /RESOLUTION=1280x720[^\n]*\nv2\/index\.m3u8/);
-  assert.match(m, /EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud"[^\n]*DEFAULT=YES[^\n]*URI="v3\/index\.m3u8"/);
+  assert.match(m, /LANGUAGE="rus",DEFAULT=YES[^\n]*URI="v3\/index\.m3u8"/);
+  assert.match(m, /LANGUAGE="kor",DEFAULT=NO[^\n]*URI="v4\/index\.m3u8"/);
 });
 
-test('every audio track becomes its own rendition; the first one is the default; bitmap subtitles are skipped', () => {
-  const p = planFromProbe({ streams: [v('h264', { bit_rate: '30000000' }),
-    au('eac3', { channels: 6, tags: { language: 'rus', title: 'MVO' } }),
-    au('dts', { channels: 6, tags: { language: 'kor', title: 'Original' } }),
+test('bitmap subtitles are skipped, text ones are numbered by ffmpeg\'s subtitle ordinal', () => {
+  const p = planFromProbe({ streams: [v('h264'), au('aac'),
     { codec_type: 'subtitle', codec_name: 'subrip', tags: { language: 'eng' } },
     { codec_type: 'subtitle', codec_name: 'hdmv_pgs_subtitle', tags: { language: 'kor' } },
     { codec_type: 'subtitle', codec_name: 'ass', tags: { language: 'rus' } }] });
-  assert.deepEqual(p.audios.map((x) => x.default), [true, false]);
   assert.deepEqual(p.subs.map((x) => [x.index, x.ordinal, x.lang]), [[0, 0, 'eng'], [1, 2, 'rus']]);
-  const a = ffmpegArgs(p, 'in.mkv').join(' ');
-  assert.ok(a.includes('-map 0:a:0') && a.includes('-map 0:a:1') && a.includes('a:1,agroup:aud'));
-  const m = masterPlaylist(p);
-  assert.match(m, /LANGUAGE="rus",DEFAULT=YES/);
-  assert.match(m, /LANGUAGE="kor",DEFAULT=NO/);
   const sa = subtitleArgs(p, 'in.mkv').join(' ');
   assert.ok(sa.includes('-map 0:s:0') && sa.includes('-map 0:s:2') && sa.includes('subs/1.vtt'));
 });
 
-test('only our own file names are served', () => {
-  for (const ok of ['master.m3u8', 'v0/index.m3u8', 'v1/init_1.mp4', 'v0/init_0.mp4', 'v0/seg_00012.m4s']) assert.ok(HLS_FILE.test(ok), ok);
-  for (const bad of ['../x', 'v0/../x', 'seg_1.m4s', 'v0/index.m3u8.tmp', 'a/b', 'v10/index.m3u8']) assert.ok(!HLS_FILE.test(bad), bad);
+test('no video is an error; no audio is fine', () => {
+  assert.throws(() => planFromProbe({ streams: [au('aac')] }), /no video/);
+  const p = planFromProbe({ streams: [{ ...v('mjpeg'), disposition: { attached_pic: 1 } }, v('vc1')] });
+  assert.equal(p.audios.length, 0);
+  assert.ok(!masterPlaylist(p).includes('EXT-X-MEDIA'));
 });
 
-test('admission: viewers are admitted while the disk can feed them at 1.5x and the count allows', () => {
-  const big = 35_000_000; // a 35 Mbit/s Blu-ray remux costs 52.5 Mbit/s of disk reads at 1.5x
+test('only our own file names are served', () => {
+  for (const ok of ['master.m3u8', 'v0/index.m3u8', 'v1/init.mp4', 'v0/seg_00012.m4s']) assert.ok(HLS_FILE.test(ok), ok);
+  for (const bad of ['../x', 'v0/../x', 'seg_1.m4s', 'v0/index.m3u8.tmp', 'a/b', 'v10/index.m3u8', 'v0/init_0.mp4']) assert.ok(!HLS_FILE.test(bad), bad);
+});
+
+test('admission: another movie is admitted while the disk can feed it at 1.5x and the count allows', () => {
+  const big = 35_000_000;
   assert.ok(admit({ runningSourceBps: [], sourceBps: big, budget: 480e6, maxWatch: 3 }).ok);
   assert.ok(admit({ runningSourceBps: [big, big], sourceBps: big, budget: 480e6, maxWatch: 3 }).ok);
   assert.ok(!admit({ runningSourceBps: [big, big, big], sourceBps: big, budget: 480e6, maxWatch: 3 }).ok, 'count cap');
   assert.ok(!admit({ runningSourceBps: [200e6, 100e6], sourceBps: 100e6, budget: 480e6, maxWatch: 5 }).ok, 'disk budget');
-  assert.ok(admit({ runningSourceBps: [], sourceBps: 0, budget: 480e6, maxWatch: 3 }).ok, 'unknown bitrate is costed as a heavy source, not refused');
-});
-
-test('ffmpeg reports progress and uses the media engine to decode H.264/HEVC', () => {
-  const p = planFromProbe({ streams: [v('hevc', { bit_rate: '30000000' }), au('aac')], format: { duration: '6000' } });
-  const a = ffmpegArgs(p, 'in.mkv').join(' ');
-  assert.equal(p.duration, 6000);
-  assert.ok(a.includes('-progress pipe:1') && a.includes('-hwaccel videotoolbox'));
-  assert.ok(!ffmpegArgs(planFromProbe({ streams: [v('vp9'), au('aac')] }), 'x').includes('-hwaccel'));
+  assert.ok(admit({ runningSourceBps: [], sourceBps: 0, budget: 480e6, maxWatch: 3 }).ok, 'unknown bitrate is costed as a heavy source');
 });
