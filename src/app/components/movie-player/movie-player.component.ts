@@ -266,6 +266,10 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
     if (target?.closest?.('[role="radiogroup"]')) return;
     const video = this.videoEl()?.nativeElement;
     if (!video) return;
+    // After a click on a control (the settings gear...) it keeps focus, and the first arrow key turns on the
+    // browser's keyboard-focus ring around it. The arrows are a seek here, so let go of the control.
+    const skin = video.closest('video-skin') as HTMLElement | null;
+    (skin?.shadowRoot?.activeElement as HTMLElement | null | undefined)?.blur?.();
     event.preventDefault();
     this.pendingSeek += event.key === 'ArrowLeft' ? -MoviePlayerComponent.SEEK_STEP : MoviePlayerComponent.SEEK_STEP;
     if (this.seekTimer) return;
