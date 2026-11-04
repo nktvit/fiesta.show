@@ -244,6 +244,19 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
   // the Video.js skin's arrow hotkeys, which skip defaultPrevented events — so
   // a press seeks once, not twice.
   onDocumentKeydown = (event: KeyboardEvent) => {
+    // Space with the Settings menu open would press the focused menu row (cycling quality, speed...).
+    // The viewer means play/pause, as everywhere else in the player.
+    if ((event.key === ' ' || event.code === 'Space') && !event.metaKey && !event.ctrlKey && !event.altKey && this.started()) {
+      const inMenu = event.composedPath().some((n) => n instanceof HTMLElement && /^media-menu/i.test(n.tagName));
+      const video = this.videoEl()?.nativeElement;
+      if (inMenu && video) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (video.paused) void video.play().catch(() => {});
+        else video.pause();
+        return;
+      }
+    }
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
     if (event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented) return;
     if (!this.started() || !this.masterUrl()) return;
