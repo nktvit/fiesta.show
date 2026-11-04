@@ -26,7 +26,7 @@ const FFPROBE = process.env.FFPROBE || 'ffprobe';
 const MAX_AUDIO_TRACKS = 6;
 const TEXT_SUBS = new Set(['subrip', 'srt', 'ass', 'ssa', 'mov_text', 'webvtt', 'text']); // bitmap subs (PGS, VobSub) cannot be turned into text
 /** Bump when the output layout/quality changes: a directory of another layout is wiped and redone on demand. */
-export const FORMAT_VERSION = '7';
+export const FORMAT_VERSION = '8';
 // VideoToolbox constant quality is greedy and its SSIM climbs slowly. Measured on a grainy 31.7 Mbit/s Blu-ray remux
 // (1080p, hardware decode): q50 ~6 Mbit/s | q60 ~13 | q70 ~27. q60 on top, q50 as a lighter 1080p rung for slow links.
 const Q_HIGH = 60;
@@ -84,12 +84,10 @@ export function planFromProbe(probe, { hevc = false } = {}) {
     : topH >= 1000 ? [...(heavy ? [[topH, Q_MAX]] : []), [topH, Q_HIGH], [topH, Q_MID], [720, Q_MID]]
     : topH > 720 ? [[topH, Q_HIGH], [topH, Q_MID]]
     : [[topH, Q_HIGH]];
-  // hevc_videotoolbox's -q:v runs hotter than the H.264 one for the same SSIM (q75 = 16 Mbit/s, q60 = 7, same picture):
-  // HEVC rungs sit 6 below the H.264 numbers and need no ceiling that way.
   const isHevc = hevc || !!hdrOf(video);
   const renditions = heights.map(([rh, q0]) => {
     const rw = even((w * rh) / h);
-    const q = isHevc ? q0 - 6 : q0;
+    const q = q0; // same numbers as H.264: lowering HEVC by 6 saved bits but the picture looked softer to the eye
     return { w: rw, h: rh, q, bandwidth: Math.round(bandwidthFor(rw, rh, q0) * (isHevc ? 0.65 : 1)), maxrate: maxrateFor(rw, rh, q0) };
   });
 
