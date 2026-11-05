@@ -645,10 +645,14 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
       // instead of reacting to it.
       const hls = new Hls({
         // A handed source can still be growing (event playlist while it is being encoded): start at the
-        // beginning, not at the live edge.
+        // beginning, not at the live edge. With a saved position start THERE: starting at 0 and jumping once the
+        // metadata is in meant two cold encodes (the first one thrown away) and the video playing from the start for
+        // a moment.
         ...(this.source()
           ? {
-              startPosition: 0,
+              startPosition: (this.resumeTime() ?? this.pendingResumeTime ?? 0) >= 5 ? (this.resumeTime() ?? this.pendingResumeTime ?? 0) : 0,
+              // Absorb the odd slow encode: keep a minute ahead, not the default half.
+              maxBufferLength: 60,
               // Segments of a handed source are encoded when asked for: the first one after a seek can take several
               // seconds, so wait for it instead of treating the silence as a dead server.
               fragLoadPolicy: {
@@ -744,6 +748,14 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
       hls.on(Hls.Events.MEDIA_ATTACHED, reassert);
       hls.on(Hls.Events.MANIFEST_LOADING, reassert);
       hls.on(Hls.Events.MANIFEST_PARSED, reassert);
+      if (this.source()) {
+        // Every rung is encoded when somebody plays it. With a near-source ("Max") rung on top, Auto stays below it:
+        // reaching for it means one more hardware encode starting cold on a box that is busy already. It stays
+        // selectable by hand.
+        hls.on(Hls.Events.MANIFEST_PARSED, (_e, d) => {
+          if (d.levels.length >= 4) hls.autoLevelCapping = d.levels.length - 2;
+        });
+      }
       hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, reassert);
       hls.on(Hls.Events.SUBTITLE_TRACK_SWITCH, reassert);
 
