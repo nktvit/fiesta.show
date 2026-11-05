@@ -495,7 +495,9 @@ export function createHls({ root }) {
         const asked = s.last.get(r.i) ?? 0;
         if (now - s.lastAt > IDLE_KILL_MS) { stopRun(r); continue; }
         // Reached a segment that is already there (another run made it): nothing more to do.
-        if (await exists(finalPath(s, r.i, segName(r.next)))) { stopRun(r); continue; }
+        // (Not before it has produced anything: an audio run starts on an even segment, which may already be cached while
+        // the odd one the viewer asked for is not; stopping it at once made it restart in a loop.)
+        if (r.next > r.startSeg && await exists(finalPath(s, r.i, segName(r.next)))) { stopRun(r); continue; }
         if (r.next >= segmentCount(s.plan, r.i)) { stopRun(r); continue; }
         const tooFar = r.next - asked > AHEAD_SEGMENTS;
         if (tooFar && !r.paused) { r.proc.kill('SIGSTOP'); r.paused = true; }
