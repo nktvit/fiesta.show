@@ -460,6 +460,14 @@ export function createHls({ root }) {
 
   /** Move the segments ffmpeg has finished from the scratch dir into place, with the clock fixed. */
   async function harvest(s, r) {
+    // One harvest per run at a time: tick fires every 200 ms and a segment check takes longer, so without this every tick
+    // started another check of the same segment (138 ffmpeg at once).
+    if (r.harvesting) return;
+    r.harvesting = true;
+    try { await harvestOnce(s, r); } finally { r.harvesting = false; }
+  }
+
+  async function harvestOnce(s, r) {
     let names;
     try { names = (await fs.readdir(r.scratch)).filter((n) => /^seg_\d{5}\.m4s$/.test(n)).sort(); } catch { return; }
     for (const n of names) {
@@ -505,7 +513,8 @@ export function createHls({ root }) {
       }
     }
   }
-  const timer = setInterval(() => void tick(), 200);
+  let ticking = false; // a slow tick (disk, load) must not be overlapped by the next one
+  const timer = setInterval(() => { if (ticking) return; ticking = true; tick().catch(() => {}).finally(() => { ticking = false; }); }, 200);
   timer.unref?.();
 
   /** Make sure something is producing segment k of output i (or about to). */
