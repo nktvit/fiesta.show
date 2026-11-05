@@ -195,3 +195,10 @@ test('the HEVC variant: Main 8-bit, hvc1, q alone (hevc_videotoolbox drops -q:v 
   assert.match(masterPlaylist(h), /CODECS="hvc1\.1\.6\.L123\.B0,mp4a\.40\.2"/);
   assert.ok(!/VIDEO-RANGE/.test(masterPlaylist(h)));
 });
+
+test('subtitle extraction overwrites leftovers (-y) and writes .part files for the caller to check and rename', () => {
+  const p = planFromProbe({ streams: [v('h264'), { codec_type: 'subtitle', codec_name: 'subrip', tags: { language: 'eng' } }], format: { duration: '60' } });
+  const a = subtitleArgs(p, 'in.mkv');
+  assert.ok(a.includes('-y'));
+  assert.ok(a.includes('subs/0.vtt.part'));
+});

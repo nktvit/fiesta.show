@@ -220,8 +220,10 @@ export function initArgs(plan, input) {
 
 /** Pure: ffmpeg arguments that pull the text subtitle tracks out as WebVTT (reads the whole container, no decoding). */
 export function subtitleArgs(plan, input) {
-  const a = ['-hide_banner', '-loglevel', 'error', '-nostdin', '-i', input];
-  plan.subs.forEach((s, i) => a.push('-map', `0:s:${s.ordinal}`, '-c:s', 'webvtt', '-f', 'webvtt', `subs/${i}.vtt`));
+  // -y: an interrupted earlier run leaves empty files behind and ffmpeg would otherwise refuse to touch them (and still
+  // exit 0). Written as .part, renamed by the caller once every track came out non-empty.
+  const a = ['-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-i', input];
+  plan.subs.forEach((s, i) => a.push('-map', `0:s:${s.ordinal}`, '-c:s', 'webvtt', '-f', 'webvtt', `subs/${i}.vtt.part`));
   return a;
 }
 
@@ -325,6 +327,15 @@ export function createHls({ root }) {
     const { stdout } = await run(FFPROBE, ['-v', 'error', '-probesize', '50M', '-analyzeduration', '20M', '-print_format', 'json', '-show_streams', '-show_format', inputUrl], { maxBuffer: 8 << 20, timeout: 120_000 });
     return planFromProbe(JSON.parse(stdout), { hevc });
   }
+  /** The marker alone is not trusted: every track file has to be there and not empty. */
+  const subsIntact = async (dir, plan) => {
+    if (!(await exists(path.join(dir, 'subs', '.done')))) return false;
+    for (let i = 0; i < plan.subs.length; i++) {
+      const st = await fs.stat(path.join(dir, 'subs', `${i}.vtt`)).catch(() => null);
+      if (!st || st.size === 0) { await fs.rm(path.join(dir, 'subs', '.done'), { force: true }); return false; }
+    }
+    return true;
+  };
   const readPlan = async (dir) => { try { return JSON.parse(await fs.readFile(path.join(dir, 'plan.json'), 'utf8')); } catch { return null; } };
 
   /** Probe once, write the init segments and pull the subtitles; no video is encoded here. */
@@ -343,7 +354,7 @@ export function createHls({ root }) {
           await Promise.all(Array.from({ length: outCount(plan) }, (_, i) => fs.mkdir(path.join(dir, `v${i}`), { recursive: true })));
           await fs.writeFile(path.join(dir, 'plan.json'), JSON.stringify(plan));
         }
-        const sess = { id, dir, plan, input, runs: new Map(), last: new Map(), lastAt: Date.now(), subsDone: id.endsWith('.hevc') || plan.subs.length === 0 || (await exists(path.join(dir, 'subs', '.done'))), subsProc: null };
+        const sess = { id, dir, plan, input, runs: new Map(), last: new Map(), lastAt: Date.now(), subsDone: id.endsWith('.hevc') || plan.subs.length === 0 || (await subsIntact(dir, plan)), subsProc: null };
         await writeInits(sess);
         sessions.set(id, sess);
         console.log(`[hls] ${id} planned: ${plan.videoCodec} ${Math.round(plan.sourceBps / 1000)} kbit/s ${plan.fps.join('/')} fps, ${plan.renditions.map((r) => `${r.w}x${r.h} q${r.q}`).join(' + ')}; audio ${plan.audios.length ? plan.audios.map((x) => `${x.lang}:${x.codec}`).join(',') : 'none'}; subs ${plan.subs.length}; ${Math.round(plan.duration / 60)} min`);
@@ -385,8 +396,24 @@ export function createHls({ root }) {
     sp.stderr.on('data', () => {});
     sp.on('close', (code) => {
       s.subsProc = null;
-      if (code === 0) { s.subsDone = true; fs.writeFile(path.join(s.dir, 'subs', '.done'), '').catch(() => {}); }
-      console.log(`[hls] ${s.id} subtitles ${code === 0 ? 'extracted (' + s.plan.subs.length + ')' : 'extraction ended with ' + code}`);
+      (async () => {
+        let ok = code === 0;
+        const dir = path.join(s.dir, 'subs');
+        if (ok) {
+          for (let i = 0; i < s.plan.subs.length; i++) {
+            const st = await fs.stat(path.join(dir, `${i}.vtt.part`)).catch(() => null);
+            if (!st || st.size === 0) ok = false;
+          }
+        }
+        if (ok) {
+          for (let i = 0; i < s.plan.subs.length; i++) await fs.rename(path.join(dir, `${i}.vtt.part`), path.join(dir, `${i}.vtt`));
+          s.subsDone = true;
+          await fs.writeFile(path.join(dir, '.done'), '');
+        } else {
+          for (let i = 0; i < s.plan.subs.length; i++) await fs.rm(path.join(dir, `${i}.vtt.part`), { force: true });
+        }
+        console.log(`[hls] ${s.id} subtitles ${ok ? 'extracted (' + s.plan.subs.length + ')' : 'extraction failed (exit ' + code + ', or an empty track)'}`);
+      })().catch(() => {});
     });
   }
 
@@ -623,7 +650,8 @@ export function createHls({ root }) {
     const s = sessions.get(id);
     const ready = s ? s.subsDone : await exists(path.join(dir, 'subs', '.done'));
     const p = path.join(dir, 'subs', `${n}.vtt`);
-    return ready && (await exists(p)) ? p : null;
+    const st = ready ? await fs.stat(p).catch(() => null) : null;
+    return st && st.size > 0 ? p : null;
   }
 
   return { segment, file, enqueue, useFile, stop, stopAll, dirOf, status, subtitleFile };
