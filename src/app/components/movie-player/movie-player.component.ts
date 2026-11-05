@@ -651,8 +651,15 @@ export class MoviePlayerComponent implements OnChanges, OnDestroy {
         ...(this.source()
           ? {
               startPosition: (this.resumeTime() ?? this.pendingResumeTime ?? 0) >= 5 ? (this.resumeTime() ?? this.pendingResumeTime ?? 0) : 0,
-              // Absorb the odd slow encode: keep a minute ahead, not the default half.
+              // Absorb the odd slow encode and a thin line: keep a minute ahead, not the default half. The default byte
+              // cap (60 MB) would stop the buffer at ~25 s on a 1080p stream, so raise it too.
               maxBufferLength: 60,
+              maxMaxBufferLength: 90,
+              maxBufferSize: 250 * 1000 * 1000,
+              // Be careful with bandwidth: switch up only with room to spare (the viewer's line, not the box, is the
+              // limit here: a 1080p rung is 10-13 Mbit/s with 20 Mbit/s peaks).
+              abrBandWidthFactor: 0.8,
+              abrBandWidthUpFactor: 0.5,
               // Segments of a handed source are encoded when asked for: the first one after a seek can take several
               // seconds, so wait for it instead of treating the silence as a dead server.
               fragLoadPolicy: {
