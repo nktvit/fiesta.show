@@ -1,4 +1,5 @@
 import { runHandler } from './node-compat';
+import { isBotUserAgent } from '../../lib/page-meta.mjs';
 import movie from '../../api/movie.js';
 import omdb from '../../api/omdb.js';
 import tmdb from '../../api/tmdb.js';
@@ -15,6 +16,15 @@ const API: Record<string, (req: any, res: any) => unknown> = {
 
 /** GETs whose handler sets a long s-maxage and whose upstream (OMDB) can be very slow: cache at the edge. */
 const EDGE_CACHED = new Set(['movie']);
+
+/**
+ * Crawlers (Reflectionbot, Applebot, Bytespider...) render the SPA like a browser, so every page they open also asks for its
+ * likes and comments. Those are the only calls that touch Redis (and each one also spends Redis commands on the per-IP rate
+ * limit), and at crawler volume they ate the Upstash daily quota. For bots only, a GET is answered from the Cache API for a
+ * few minutes: the same count for everybody, no X-Client-Id (so `liked` is false), no Redis on a hit. People are unaffected.
+ */
+const BOT_CACHED = new Set(['likes', 'comments']);
+const BOT_CACHE_TTL = 300;
 
 /**
  * Call an /api/<name> handler in-process (no subrequest to ourselves). Workers do not honour a
@@ -40,7 +50,37 @@ export async function callApi(request: Request, ctx?: ExecutionContext): Promise
       /* best-effort */
     }
   }
-  const res = await runHandler(handler, request);
+  const botCache =
+    !cache && request.method === 'GET' && BOT_CACHED.has(name) && isBotUserAgent(request.headers.get('user-agent') || '')
+      ? ((globalThis as any).caches?.default as Cache | undefined)
+      : undefined;
+  const botKey = botCache ? new Request(url.origin + '/__botcache' + url.pathname + url.search) : null;
+  if (botCache && botKey) {
+    try {
+      const hit = await botCache.match(botKey);
+      if (hit) {
+        const out = new Response(hit.body, hit);
+        out.headers.set('cache-control', 'public, max-age=60');
+        return out;
+      }
+    } catch {
+      /* best-effort */
+    }
+  }
+  let toRun = request;
+  if (botCache && botKey) {
+    const headers = new Headers(request.headers);
+    headers.delete('x-client-id'); // the stored answer must not depend on who asked first
+    toRun = new Request(request, { headers });
+  }
+  const res = await runHandler(handler, toRun);
+  if (botCache && botKey && res.status === 200) {
+    const copy = new Response(res.clone().body, res);
+    copy.headers.set('cache-control', `public, max-age=${BOT_CACHE_TTL}`);
+    const put = botCache.put(botKey, copy).catch(() => {});
+    if (ctx) ctx.waitUntil(put);
+    else await put;
+  }
   if (cache && key && res.status === 200) {
     const ttl = Number(/s-maxage=(\d+)/.exec(res.headers.get('cache-control') || '')?.[1] || 0);
     if (ttl > 0) {
