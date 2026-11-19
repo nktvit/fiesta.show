@@ -1,5 +1,5 @@
 import { callApi } from './api-router';
-import { handleSitePage } from './pages';
+import { handleSitePage, stripAppScripts } from './pages';
 import { sitemapResponse } from './sitemap';
 import { isBotUserAgent } from '../../lib/page-meta.mjs';
 
@@ -35,7 +35,14 @@ export default {
     } catch (e) {
       console.error('page handler error:', e);
     }
-    return env.ASSETS.fetch(request);
+    const assetRes = await env.ASSETS.fetch(request);
+    // Crawlers get the home page's HTML without the app (it would fire ~15 billed API calls per visit).
+    if (url.pathname === '/' && request.method === 'GET' && isBotUserAgent(request.headers.get('user-agent') || '') && (assetRes.headers.get('content-type') || '').includes('text/html')) {
+      const headers = new Headers(assetRes.headers);
+      headers.delete('content-length');
+      return new Response(stripAppScripts(await assetRes.text()), { status: assetRes.status, headers });
+    }
+    return assetRes;
   },
 } satisfies ExportedHandler<Env>;
 

@@ -11,6 +11,17 @@ import type { Env } from './index';
 
 const META_TTL_SECONDS = 3600;
 
+/**
+ * Crawlers run the Angular app like a browser and each page fires 10-15 /api/* calls, every one a billed Worker invocation
+ * (that is what exhausted the daily quota). For them the HTML keeps its title/description/OG tags but loses the app's
+ * external scripts and preloads, so a visit costs one request. Only ever applied to bot user agents.
+ */
+export function stripAppScripts(html: string): string {
+  return html
+    .replace(/<script\b[^>]*\bsrc=[^>]*>\s*<\/script>/gi, '')
+    .replace(/<link\b[^>]*\brel=["']?(?:modulepreload|preload)["']?[^>]*>/gi, '');
+}
+
 export async function handleSitePage(request: Request, env: Env, ctx: ExecutionContext): Promise<Response | null> {
   const ua = request.headers.get('user-agent') || '';
   const url = new URL(request.url);
@@ -61,7 +72,7 @@ export async function handleSitePage(request: Request, env: Env, ctx: ExecutionC
   const html = await renderPageMeta(mctx, url, () => fetchMeta!(mctx));
   if (!html) return null;
 
-  const response = new Response(html, {
+  const response = new Response(bot ? stripAppScripts(html) : html, {
     status: 200,
     headers: {
       'content-type': 'text/html; charset=utf-8',
