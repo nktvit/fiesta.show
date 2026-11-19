@@ -2311,3 +2311,13 @@ session. Current model, in case it needs touching again:
   `scripts/autofix-watchdog.sh`) that can invoke its own headless Claude
   agent to patch `relay.mjs` — check `.autofix/checkpoint`/lock state isn't
   mid-run before editing.
+
+## 2026-11-19 — crawler quota fixes and relay playlist change
+
+- Worker (`fix/bot-cache`, deployed as version `e15bd694`, not merged to main): bot UAs get cached likes/comments GETs (300 s, `X-Client-Id`
+  stripped) and meta/home HTML without app `<script>`/preload tags (`stripAppScripts` in `src/worker/pages.ts`), cutting billed Worker
+  invocations ~2.7x (1.38 -> 0.50 req/s measured). Googlebot/Applebot no longer see JS-rendered content.
+- Relay (deployed only on the Mac mini, NOT in git; backups `relay.mjs.bak-plain-20261119`, `relay.mjs.bak-token-20261119`): the provider now
+  serves playlists as `text/plain` at `/pl/<id>` (no `.m3u8`) and only the master URL carries `?token=`. Fixes: sniff `#EXTM3U` in
+  text/plain bodies, and `rewritePlaylist` copies the parent `token` to same-origin children. Verified master -> variant -> segment 200 for
+  tt0111161 and tt0068646.
