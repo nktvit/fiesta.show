@@ -2321,3 +2321,18 @@ session. Current model, in case it needs touching again:
   serves playlists as `text/plain` at `/pl/<id>` (no `.m3u8`) and only the master URL carries `?token=`. Fixes: sniff `#EXTM3U` in
   text/plain bodies, and `rewritePlaylist` copies the parent `token` to same-origin children. Verified master -> variant -> segment 200 for
   tt0111161 and tt0068646.
+
+## 2026-11-19 — passive playback monitor + watchdog fixes (Mac mini only, not in git)
+
+- Why the autofix agent did not fire on the playlist/token break: the watchdog only read `[resolve]` error lines; that break returned 200
+  with no error line at all. Now `relay.mjs` gives every real `/hls` request a verdict (`noteHealth`): upstream non-200/fetch failure, a
+  playlist without `#EXTM3U` or without rewritten `/hls?u=` lines, a "segment" whose first bytes are HTML/JSON/playlist text. 3 failures in a
+  row of one kind (playlist|segment) across >= 2 movies, no success of that kind in between, write `[health] TRIGGER ...` (10 min re-trigger).
+  `scripts/autofix-watchdog.sh` fires the agent on that line with a playback-specific prompt (backup before edit, restore if not fixed).
+  Env overrides: `RELAY_HEALTH_FAILS` (3), `RELAY_HEALTH_MIN_KEYS` (2).
+- Found while testing: the 2026-11-13 watchdog patch had an apostrophe inside the awk program ('never fired'), so awk died whenever there
+  were candidates (the "normalised grouping" fix never worked live). Fixed in this deploy.
+- Tested on a copy of the relay on :18799 (healthy chain: no failures; 3 fails/3 movies -> 1 TRIGGER; 4 fails/1 movie -> none; success
+  resets) and a dry-run of the watchdog with a stub agent (fail lines alone: no run; TRIGGER: run; cooldown holds; old `[resolve]` path runs).
+  Not tested: a real agent run, and the segment text-sniff on live traffic. Backups: `relay.mjs.bak-health-20261119`,
+  `scripts/autofix-watchdog.sh.bak-health-20261119`.
