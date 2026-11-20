@@ -176,6 +176,93 @@ export function fragmentDecodeTime(seg: Uint8Array): number | null {
   return dv.getUint8(box[0]) === 1 ? Number(dv.getBigUint64(box[0] + 4)) : dv.getUint32(box[0] + 4);
 }
 
+// AAC frames of one fMP4 audio fragment, wrapped as ADTS. WebKit's decodeAudioData rejects the fMP4 that hls.js remuxes from
+// the provider's MPEG-TS ("EncodingError: Decoding failed": init + fragment, whatever the tfdt) but decodes the very same AAC
+// as ADTS, so Safari/iOS fall back to this. null if the init/fragment is not plain AAC in the layout hls.js writes.
+export function fmp4ToAdts(init: Uint8Array, seg: Uint8Array): Uint8Array | null {
+  // AudioSpecificConfig from the esds box: ES_Descriptor(3) > DecoderConfig(4) > DecoderSpecificInfo(5)
+  const tag = [0x65, 0x73, 0x64, 0x73]; // 'esds'
+  let at = -1;
+  for (let i = 4; i + 4 <= init.length && at < 0; i++) if (tag.every((b, k) => init[i + k] === b)) at = i + 4 + 4; // skip type + version/flags
+  if (at < 0) return null;
+  const len = () => {
+    let n = 0;
+    for (let k = 0; k < 4; k++) {
+      const b = init[at++];
+      n = (n << 7) | (b & 0x7f);
+      if (!(b & 0x80)) break;
+    }
+    return n;
+  };
+  if (init[at++] !== 0x03) return null;
+  len();
+  at += 3; // ES_ID + flags
+  if (init[at++] !== 0x04) return null;
+  len();
+  at += 13; // objectType, streamType, bufferSize, max/avg bitrate
+  if (init[at++] !== 0x05) return null;
+  len();
+  const aot = init[at] >> 3;
+  const freq = ((init[at] & 7) << 1) | (init[at + 1] >> 7);
+  const chan = (init[at + 1] >> 3) & 15;
+  if (aot < 1 || aot > 4 || freq > 12 || chan < 1 || chan > 7) return null;
+
+  const moof = findBox(seg, ['moof']);
+  const traf = findBox(seg, ['moof', 'traf']);
+  const tfhd = findBox(seg, ['moof', 'traf', 'tfhd']);
+  const trun = findBox(seg, ['moof', 'traf', 'trun']);
+  if (!moof || !traf || !tfhd || !trun) return null;
+  const dv = new DataView(seg.buffer, seg.byteOffset, seg.byteLength);
+  const moofStart = moof[0] - 8;
+  // tfhd: defaults (only default_sample_size matters here)
+  const tfFlags = dv.getUint32(tfhd[0]) & 0xffffff;
+  let p = tfhd[0] + 8; // version/flags + track_ID
+  let base = moofStart;
+  if (tfFlags & 0x1) {
+    base = Number(dv.getBigUint64(p));
+    p += 8;
+  }
+  if (tfFlags & 0x2) p += 4;
+  if (tfFlags & 0x8) p += 4;
+  const defSize = tfFlags & 0x10 ? dv.getUint32(p) : 0;
+  // trun: sample sizes
+  const trFlags = dv.getUint32(trun[0]) & 0xffffff;
+  const count = dv.getUint32(trun[0] + 4);
+  let q = trun[0] + 8;
+  let dataOffset = 0;
+  if (trFlags & 0x1) {
+    dataOffset = dv.getInt32(q);
+    q += 4;
+  } else return null;
+  if (trFlags & 0x4) q += 4;
+  const per = (trFlags & 0x100 ? 4 : 0) + (trFlags & 0x200 ? 4 : 0) + (trFlags & 0x400 ? 4 : 0) + (trFlags & 0x800 ? 4 : 0);
+  const sizes: number[] = [];
+  for (let i = 0; i < count; i++) {
+    let o = q + i * per;
+    if (trFlags & 0x100) o += 4;
+    sizes.push(trFlags & 0x200 ? dv.getUint32(o) : defSize);
+  }
+  let pos = base + dataOffset;
+  const total = sizes.reduce((a, b) => a + b + 7, 0);
+  if (!count || sizes.some((z) => !z) || pos < 0 || pos + sizes.reduce((a, b) => a + b, 0) > seg.length) return null;
+  const out = new Uint8Array(total);
+  let w = 0;
+  for (const z of sizes) {
+    const flen = z + 7;
+    out[w] = 0xff;
+    out[w + 1] = 0xf1; // MPEG-4, layer 0, no CRC
+    out[w + 2] = ((aot - 1) << 6) | (freq << 2) | ((chan >> 2) & 1);
+    out[w + 3] = ((chan & 3) << 6) | ((flen >> 11) & 3);
+    out[w + 4] = (flen >> 3) & 0xff;
+    out[w + 5] = ((flen & 7) << 5) | 0x1f;
+    out[w + 6] = 0xfc;
+    out.set(seg.subarray(pos, pos + z), w + 7);
+    pos += z;
+    w += flen;
+  }
+  return out;
+}
+
 // --- live controller ---------------------------------------------------------
 
 interface Chunk {
@@ -222,6 +309,7 @@ const MIN_CUES = 12;
 const COLD_RANGE = 90;
 const TRACK_RANGE = 4;
 const CONFIDENT = 0.8;
+const FAR_CONFIDENT = 0.6; // stricter for a cold estimate far from the current position
 // ±5% covers 25 <-> 23.976 fps (4.3%) and the odd retimed file (measured: 1.85%)
 const COLD_SLOPES = Array.from({ length: 41 }, (_, i) => +((i - 20) * 0.0025).toFixed(4));
 
@@ -293,13 +381,33 @@ export class SubtitleSync {
   }
 
   private decodes = 0;
+  private viaAdts = false; // this browser needs the ADTS path
 
   private async decode(init: Uint8Array, seg: Uint8Array, start: number) {
     const began = performance.now();
-    const buf = new Uint8Array(init.byteLength + seg.byteLength);
-    buf.set(init);
-    buf.set(seg, init.byteLength);
-    const decoded = await new OfflineAudioContext(1, RATE, RATE).decodeAudioData(buf.buffer);
+    const decode = (bytes: Uint8Array) => new OfflineAudioContext(1, RATE, RATE).decodeAudioData(bytes.buffer as ArrayBuffer);
+    const asFmp4 = () => {
+      const buf = new Uint8Array(init.byteLength + seg.byteLength);
+      buf.set(init);
+      buf.set(seg, init.byteLength);
+      return decode(buf);
+    };
+    let decoded: AudioBuffer;
+    if (this.viaAdts) {
+      const adts = fmp4ToAdts(init, seg);
+      if (!adts) return;
+      decoded = await decode(adts);
+    } else {
+      try {
+        decoded = await asFmp4();
+      } catch (e) {
+        // WebKit refuses hls.js's fMP4 audio; the same AAC as ADTS decodes (see fmp4ToAdts)
+        const adts = fmp4ToAdts(init, seg);
+        if (!adts) throw e;
+        decoded = await decode(adts);
+        this.viaAdts = true;
+      }
+    }
     const ctx = new OfflineAudioContext(1, decoded.length, RATE);
     const src = ctx.createBufferSource();
     src.buffer = decoded;
@@ -469,7 +577,10 @@ export class SubtitleSync {
     const began = performance.now();
     const e = estimateOffset(mask, t0, cues, center, locked ? TRACK_RANGE : COLD_RANGE, slopes, tref);
     this.state.tickMs = Math.max(this.state.tickMs, Math.round(performance.now() - began));
-    if (!e || e.ratio > CONFIDENT) return this.note(now, e, 'unsure');
+    // A far-off cold estimate (> 20 s from where the cues sit now) is where the search finds spurious peaks: a near-tie at the edge of
+    // the +-90 s window locked S1E6 of MobLand at -90 s (true offset ~0). Ask for a clear winner and keep away from the edge.
+    const far = !this.state.locked && !!e && Math.abs(e.offset - center) > 20;
+    if (!e || e.ratio > CONFIDENT || (far && (e.ratio > FAR_CONFIDENT || Math.abs(e.offset - center) > COLD_RANGE - 5))) return this.note(now, e, 'unsure');
     const point: Point = { x: tref - e.offset, t: tref, slope: e.slope };
 
     if (!locked) {

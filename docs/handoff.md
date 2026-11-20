@@ -2336,3 +2336,16 @@ session. Current model, in case it needs touching again:
   resets) and a dry-run of the watchdog with a stub agent (fail lines alone: no run; TRIGGER: run; cooldown holds; old `[resolve]` path runs).
   Not tested: a real agent run, and the segment text-sniff on live traffic. Backups: `relay.mjs.bak-health-20261119`,
   `scripts/autofix-watchdog.sh.bak-health-20261119`.
+
+## 2026-11-20 — subtitle sync: Safari/iOS never synced, and one false lock (MobLand tt31510819)
+
+- Report: users see subtitles "behind" on MobLand. On desktop Chrome the live sync locked within ~0.5 s on S1E1/E6/E10, S2E1/E5. Raw files drift
+  slightly (S1E6: about +1 s at the start to -2.6 s late = subtitles late by 40 min).
+- Found: in WebKit (Safari, all iOS) `decodeAudioData` rejects the fMP4 audio that hls.js remuxes from the provider's TS ("EncodingError: Decoding
+  failed", even with tfdt zeroed) but decodes the same AAC as ADTS or as ffmpeg-made fMP4. So `chunks=0` and sync never ran there, on any title.
+  Fix: `fmp4ToAdts(init, seg)` in `src/app/utils/subsync.ts` (esds AudioSpecificConfig + trun sample sizes -> ADTS), used as a fallback in
+  `decode()`; remembered per browser (`viaAdts`). Verified on real stream bytes (216 frames, ffmpeg decodes it) and live in Playwright WebKit
+  (S1E1/S1E6/S2E1 lock at -0.1..-0.3 s, same as Chrome). Not verified on a real iPhone/Safari.
+- Also: S1E6 at 40 min locked at -90 s (estimate at the edge of the +-90 s cold window, ratio 0.72-0.77, i.e. a near tie). Cold estimates > 20 s from
+  the current position now need ratio <= 0.6 and must not sit within 5 s of the window edge (`FAR_CONFIDENT`). There it now stays off instead.
+- Not unit-tested in Karma (no new spec); checked by `tools` scripts in the job tmp only.
