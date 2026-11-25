@@ -2349,3 +2349,17 @@ session. Current model, in case it needs touching again:
 - Also: S1E6 at 40 min locked at -90 s (estimate at the edge of the +-90 s cold window, ratio 0.72-0.77, i.e. a near tie). Cold estimates > 20 s from
   the current position now need ratio <= 0.6 and must not sit within 5 s of the window edge (`FAR_CONFIDENT`). There it now stays off instead.
 - Not unit-tested in Karma (no new spec); checked by `tools` scripts in the job tmp only.
+
+## 2026-11-25 — traffic numbers, test/warning cleanup, relay snapshot (branch `improve/gaps-1`, not merged, not deployed)
+
+- Real traffic (Cloudflare GraphQL, `$CLAUDE_JOB_DIR/tmp/cfq*.mjs`; needs a fresh wrangler login, `npx wrangler whoami` refreshes the token): Worker `fiesta-show` invocations/day were 89-99k on
+  2026-11-14..19 (right at the 100k free limit), 52-62k from 11-20 (after the Redis bot cache + script-less HTML for crawlers), ~52-53k on 11-22..24.
+  Zone requests fell from 270-550k/day to ~100k, unique IPs from ~4400 to ~600. `wrangler tail` is useless for rates (drops after a few seconds).
+- Tests: the 9 "stale" MovieService/TmdbService specs failed only because the generated `environment.ts` said `production: true` (proxy URLs) and one spec
+  hard-coded an OMDb key. Specs now pin `environment.production = false` per test and build URLs from `service['API_KEY']`; added a spec for the
+  production `/api/omdb` + `/api/movie` URLs. `ng test --watch=false --browsers=ChromeHeadless` needs `src/environments/environment.ts` first
+  (`node scripts/set-env.js`): 528/528 pass.
+- Build: removed the unused `PosterComponent` import from tv/top-rated/search-page/genre (NG8113); `anyComponentStyle` warning threshold 2 kB -> 3.5 kB
+  (movie-detail-panel css is 3.16 kB; the 4 kB error limit stays).
+- Relay under version control: `tools/fiesta-proxy/deployed/` is a code-only copy of the Mac mini relay + watchdog (see README note) and
+  `tools/fiesta-proxy/sync-from-mini.sh` refreshes it. The box remains the source of truth.

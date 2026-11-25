@@ -1,0 +1,11 @@
+{
+  "name": "fiesta-relay",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "description": "Residential-IP HLS relay for the fiesta stream",
+  "main": "relay.mjs",
+  "dependencies": {
+    "playwright-core": "1.58.0"
+  }
+}

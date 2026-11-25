@@ -2,7 +2,6 @@ import { Component, inject } from '@angular/core';
 import { Title, Meta } from '@angular/platform-browser';
 import { DecimalPipe } from '@angular/common';
 import { SearchBoxComponent } from '../../components/search-box/search-box.component';
-import { PosterComponent } from '../../components/poster/poster.component';
 import { MovieCollectionComponent } from '../../components/movie-collection/movie-collection.component';
 import { MovieService } from '../../services/movie.service';
 import { PersonSearchResult, TmdbService } from '../../services/tmdb.service';
@@ -16,7 +15,7 @@ import { genreGradient } from '../../utils/genre-style';
 
 @Component({
   selector: 'app-search-page',
-  imports: [PosterComponent, MovieCollectionComponent, NavbarComponent, NotfoundComponent, InfiniteScrollDirective, RouterLink, SearchBoxComponent, DecimalPipe],
+  imports: [MovieCollectionComponent, NavbarComponent, NotfoundComponent, InfiniteScrollDirective, RouterLink, SearchBoxComponent, DecimalPipe],
   templateUrl: './search-page.component.html',
   styleUrl: './search-page.component.css'
 })

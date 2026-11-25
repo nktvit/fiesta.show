@@ -3,13 +3,19 @@ import { HttpClientTestingModule, HttpTestingController } from '@angular/common/
 
 import { TmdbService } from './tmdb.service';
 import { LoggerService } from './logger.service';
+import { environment } from '../../environments/environment';
 
 describe('TmdbService', () => {
   let service: TmdbService;
   let httpMock: HttpTestingController;
   let logger: jasmine.SpyObj<LoggerService>;
 
+  // These specs assert the direct-API URLs used outside production; the generated environment file may say production,
+  // which routes through /api/* instead. Pin it per test and restore it.
+  const wasProduction = environment.production;
+
   beforeEach(() => {
+    environment.production = false;
     logger = jasmine.createSpyObj<LoggerService>('LoggerService', ['log', 'error']);
 
     TestBed.configureTestingModule({
@@ -26,6 +32,7 @@ describe('TmdbService', () => {
 
   afterEach(() => {
     httpMock.verify();
+    environment.production = wasProduction;
   });
 
   it('marks TV recommendations as TV so poster links keep the type hint', () => {

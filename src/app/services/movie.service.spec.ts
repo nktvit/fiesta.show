@@ -3,13 +3,19 @@ import { HttpClientTestingModule, HttpTestingController } from '@angular/common/
 
 import { MovieService } from './movie.service';
 import { LoggerService } from './logger.service';
+import { environment } from '../../environments/environment';
 
 describe('MovieService', () => {
   let service: MovieService;
   let httpMock: HttpTestingController;
   let logger: jasmine.SpyObj<LoggerService>;
 
+  // These specs assert the direct-API URLs used outside production; the generated environment file may say production,
+  // which routes through /api/* instead. Pin it per test and restore it.
+  const wasProduction = environment.production;
+
   beforeEach(() => {
+    environment.production = false;
     logger = jasmine.createSpyObj<LoggerService>('LoggerService', ['log', 'error']);
 
     TestBed.configureTestingModule({
@@ -26,6 +32,7 @@ describe('MovieService', () => {
 
   afterEach(() => {
     httpMock.verify();
+    environment.production = wasProduction;
   });
 
   it('updates search state from a successful search response', () => {
@@ -35,7 +42,7 @@ describe('MovieService', () => {
       responseBody = response;
     });
 
-    const req = httpMock.expectOne('https://www.omdbapi.com/?apikey=a1128251&s=matrix&page=3');
+    const req = httpMock.expectOne(`https://www.omdbapi.com/?apikey=${service['API_KEY']}&s=matrix&page=3`);
     expect(req.request.method).toBe('GET');
 
     req.flush({
@@ -57,7 +64,7 @@ describe('MovieService', () => {
 
     service.searchMovies('missing').subscribe();
 
-    const req = httpMock.expectOne('https://www.omdbapi.com/?apikey=a1128251&s=missing&page=1');
+    const req = httpMock.expectOne(`https://www.omdbapi.com/?apikey=${service['API_KEY']}&s=missing&page=1`);
     req.flush({ Response: 'False', Error: 'Movie not found!' });
 
     expect(service['searchResults'].value).toEqual([]);
@@ -73,7 +80,7 @@ describe('MovieService', () => {
       responseBody = response;
     });
 
-    const req = httpMock.expectOne('https://www.omdbapi.com/?apikey=a1128251&s=broken&page=1');
+    const req = httpMock.expectOne(`https://www.omdbapi.com/?apikey=${service['API_KEY']}&s=broken&page=1`);
     req.flush('network error', { status: 500, statusText: 'Server Error' });
 
     expect(responseBody).toBeNull();
@@ -89,7 +96,7 @@ describe('MovieService', () => {
       responseBody = response;
     });
 
-    const req = httpMock.expectOne('https://www.omdbapi.com/?apikey=a1128251&i=tt0133093&plot=full');
+    const req = httpMock.expectOne(`https://www.omdbapi.com/?apikey=${service['API_KEY']}&i=tt0133093&plot=full`);
     expect(req.request.method).toBe('GET');
     req.flush(
       { imdbID: 'tt0133093', Title: 'The Matrix', Type: 'movie' },
@@ -116,7 +123,7 @@ describe('MovieService', () => {
       responseBody = response;
     });
 
-    const req = httpMock.expectOne('https://www.omdbapi.com/?apikey=a1128251&i=tt0133093&plot=full');
+    const req = httpMock.expectOne(`https://www.omdbapi.com/?apikey=${service['API_KEY']}&i=tt0133093&plot=full`);
     req.flush({ Title: 'Missing imdbID' }, { status: 200, statusText: 'OK' });
 
     expect(responseBody).toBeNull();
@@ -162,5 +169,15 @@ describe('MovieService', () => {
       { label: 'Worldwide Gross', value: '$463,517,383', show: true },
       { label: 'Tagline', value: undefined, show: false }
     ]);
+  });
+
+  it('goes through the /api proxies in production (search and details)', () => {
+    environment.production = true;
+
+    service.searchMovies('matrix', 2).subscribe();
+    httpMock.expectOne('/api/omdb?action=search&q=matrix&page=2').flush({ Response: 'False' });
+
+    service.getMovieDetails('tt0133093').subscribe();
+    httpMock.expectOne('/api/movie?id=tt0133093').flush({ imdbID: 'tt0133093', Title: 'The Matrix' });
   });
 });

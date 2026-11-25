@@ -17,6 +17,12 @@ are no ads, no popups, and no anti-devtools redirect.
 > residential proxy it refers to is **gone** — see
 > [Anti-bot](#anti-bot-a-residential-ip-and-a-real-browser).
 
+> **Snapshot of the live code (2026-11-25):** `tools/fiesta-proxy/deployed/` is a copy of what runs on the Mac mini: `relay.mjs`,
+> `tidal-*.mjs`, `torrent-routes.mjs`, `package.json` and `scripts/` (the autofix watchdog + its launchd plist). It never contains
+> `.env*`, `tidal-session.json`, `.relayctl.json`, logs or the watchdog state. The box is still the source of truth (its folder is not a
+> git repo and the autofix agent edits `relay.mjs` there), so refresh the snapshot with `tools/fiesta-proxy/sync-from-mini.sh` and
+> commit whenever the relay or watchdog changes. Prefer `deployed/relay.mjs` over the old `relay.mjs` next to this README.
+
 ## Why this exists
 
 Two separate problems, one answer.
